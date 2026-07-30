@@ -1,0 +1,42 @@
+# 运行时配置示例。复制为 config/settings.yaml 后填写真实值（settings.yaml 已被 .gitignore 忽略）。
+# 所有配置经由 src/selfheal/config.py 用 pydantic 加载校验，请勿在代码中直接读取环境变量。
+
+browser:
+  headless: true
+  channel: chromium        # chromium / firefox / webkit
+  slow_mo: 0               # 毫秒，演示时可适当调大
+  viewport: { width: 1280, height: 800 }
+
+execution:
+  default_timeout_ms: 10000
+  retry_on_failure: 2      # 自愈成功后的重试次数
+  collect_on_failure: true # 失败时是否采集现场（截图/DOM/网络/trace）
+
+# LLM / VLM provider（待定）：通过 llm/ 抽象层接入，可切换
+llm:
+  provider: openai         # 示例；后续可替换
+  model: gpt-4o-mini
+  api_key_env: OPENAI_API_KEY   # 从环境变量名读取密钥，勿写明文
+  base_url: null
+  temperature: 0.0
+
+vision:
+  provider: openai         # 示例；多模态模型，待定
+  model: gpt-4o
+  api_key_env: OPENAI_API_KEY
+
+healing:
+  # 策略调度顺序（可插拔，见 agent/strategies/）
+  strategy_order: [heuristic, semantic, visual]
+  knowledge_first: true    # 调用 LLM 前先查知识库
+  confidence_threshold: 0.6
+
+knowledge:
+  backend: sqlite          # sqlite / json，知识库存储后端
+  path: .cache/knowledge.db
+
+reporting:
+  allure_results: allure-results
+  html_dir: reports
+  attach_screenshot: true
+  attach_dom: true

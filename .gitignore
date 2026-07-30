@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+
+# 工具缓存
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 运行时配置（含密钥，仅提交示例）
+config/settings.yaml
+
+# 测试 / 报告产物
+allure-results/
+reports/
+test-results/
+*.log
+videos/
+traces/
+
+# Claude Code 本地状态
+.claude/
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
