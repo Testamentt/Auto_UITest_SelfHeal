@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 开发规则（强制）
 
-本项目遵循 `RULE.md` 中的 R1–R5 规则（先计划后写入、测试覆盖、临时方案管理、代码质量与文档、变更沉淀），冲突时以 RULE.md 为准。
+本项目遵循 `RULE.md` 中的 R1–R6 规则（先计划后写入、测试覆盖、临时方案管理、代码质量与文档、变更沉淀、先收敛计划），冲突时以 RULE.md 为准。
 
 @RULE.md
 
@@ -20,6 +20,10 @@ AutoAiSelfHeal 是一个**带 AI 自愈能力的 UI 自动化测试框架**。�
 - **执行不稳定**：系统弹窗、权限申请等"突袭"使脚本平均通过率长期徘徊在 ~80%。
 
 框架在定位失败或执行异常时自动捕获现场、诊断根因、多策略修复并回试验证，成功修复沉淀进知识库，最终把过程写入报告用于审计。
+
+## 当前方向
+
+阶段路线、决策记录与下一步拆解见 **`docs/roadmap.md`**（活文档，随进展同步更新）。动手前先读它，避免与既定决策冲突。
 
 ## 技术选型
 
@@ -96,18 +100,20 @@ ruff format .         # 格式化
 
 ```
 AutoAiSelfHeal/
-├── CLAUDE.md / README.md / memory.md
-├── pyproject.toml              # 依赖 + pytest/ruff 配置
+├── CLAUDE.md / RULE.md / README.md / memory.md
+├── pyproject.toml              # 依赖 + pytest/ruff 配置（含 unit/e2e/healing marker）
 ├── config/settings.example.yaml# 运行时配置示例（复制为 settings.yaml 使用）
 ├── src/selfheal/               # 框架主体（见「架构」分层）
-├── tests/                      # unit/ 与 e2e/，conftest.py 提供公共 fixture
-├── docs/architecture.md        # 架构细节
-└── .github/workflows/ci.yml    # CI 流水线
+├── tests/                      # unit/（-m unit）与 e2e/（-m e2e），conftest.py 提供 fixture
+├── docs/                       # architecture.md 架构 · roadmap.md 路线图(活文档) · session-doc-template.md · sessions/ 沉淀
+└── .github/workflows/ci.yml    # CI 两阶段（unit 门禁 → e2e）
 ```
 
 ## 开发约定
 
 - 当前仓库为**骨架阶段**：多数模块是带 docstring 与 `TODO` 的桩，实现时遵循既有分层与命名，不要跨层直接耦合。
+- **自愈是插件，不侵入框架**：经 pytest fixture 按 `settings.healing.enabled` / CLI `--selfheal` 提供；`HealingPage` 与原生 `Page` 接口兼容（代理），POM 代码开/关自愈都能跑；关闭时为原生 Page、零开销。不用 import 替换 / monkeypatch（见 roadmap.md 决策 D5）。
+- **兜底优先**：`locator(sel, fallback=...)`；AI 不确定（置信度 < 阈值）时按 `healing.on_uncertain` 处理，默认 `use_fallback`，无备用则 fail（决策 D6）。
 - 新增模型能力一律走 `llm/` 抽象 + `registry` 注册，provider 相关配置放进 `config/settings.yaml`。
 - 修复策略是**可插拔**的：新策略继承 `agent/strategies/base.py`，由 orchestrator 按置信度/成本排序调度。
 - 配置通过 `src/selfheal/config.py` 用 pydantic 加载校验，不要在模块里散落读取环境变量。
