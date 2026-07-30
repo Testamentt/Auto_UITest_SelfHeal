@@ -5,9 +5,43 @@ on:
     branches: [main]
   pull_request:
 
+# 两阶段（见 RULE.md R2 配套约定）：unit 门禁 → e2e 集成
+
 jobs:
-  test:
+  unit:
+    name: 单元测试（门禁）
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Unit tests (-m unit)
+        run: pytest -m unit --alluredir=allure-results
+
+      - name: Upload unit allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-unit
+          path: allure-results
+          if-no-files-found: ignore
+
+  e2e:
+    name: 集成 / 端到端测试
+    runs-on: ubuntu-latest
+    needs: unit # 单测门禁全绿后才运行
     steps:
       - uses: actions/checkout@v4
 
@@ -22,16 +56,13 @@ jobs:
           pip install -e ".[dev]"
           playwright install --with-deps chromium
 
-      - name: Lint (ruff)
-        run: ruff check .
+      - name: Integration / e2e tests (-m e2e)
+        run: pytest -m e2e --alluredir=allure-results
 
-      - name: Unit tests
-        run: pytest tests/unit -m "unit or not e2e" --alluredir=allure-results
-
-      - name: Upload Allure results
+      - name: Upload e2e allure results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: allure-results
+          name: allure-e2e
           path: allure-results
           if-no-files-found: ignore

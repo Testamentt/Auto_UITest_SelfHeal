@@ -1,8 +1,12 @@
 """单元测试：不依赖浏览器与网络。"""
 
+import pytest
+
 from selfheal.config import Settings, load_settings
 from selfheal.knowledge.schema import RepairCase
 from selfheal.knowledge.store import KnowledgeStore
+
+pytestmark = pytest.mark.unit  # 见 RULE.md R2 配套约定
 
 
 def test_default_settings():

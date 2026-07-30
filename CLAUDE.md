@@ -77,7 +77,8 @@ playwright install chromium  # 安装浏览器内核
 
 ```bash
 pytest                                       # 运行全部测试
-pytest tests/unit                            # 只跑单元测试
+pytest -m unit                               # 按标记跑单元测试（CI 门禁，不依赖浏览器）
+pytest -m e2e                                # 按标记跑集成 / 端到端测试（需浏览器内核）
 pytest tests/unit/test_x.py::test_y -v       # 运行单个测试
 pytest --alluredir=allure-results            # 生成 Allure 结果
 allure serve allure-results                  # 本地查看 Allure 报告
