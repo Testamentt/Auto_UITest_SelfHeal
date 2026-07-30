@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auto-ai-self-heal"
+version = "0.1.0"
+description = "带 AI 自愈能力的 UI 自动化测试框架（感知-诊断-决策-修复闭环）"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "playwright>=1.44",
+    "pydantic>=2.5",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# 开发 / 测试 / 报告
+dev = [
+    "pytest>=8.0",
+    "pytest-playwright>=0.5",
+    "allure-pytest>=2.13",
+    "pytest-html>=4.1",
+    "ruff>=0.4",
+]
+# LLM / VLM provider（待定）：先以 openai 兼容接口为示例，后续可替换或追加
+llm = [
+    "openai>=1.30",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "unit: 单元测试（不依赖浏览器与网络）",
+    "e2e: 端到端测试（需要 Playwright 浏览器内核）",
+    "healing: 自愈闭环相关测试",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
