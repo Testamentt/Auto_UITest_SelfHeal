@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 开发规则（强制）
+
+本项目遵循 `RULE.md` 中的 R1–R5 规则（先计划后写入、测试覆盖、临时方案管理、代码质量与文档、变更沉淀），冲突时以 RULE.md 为准。
+
+@RULE.md
+
 ## 沟通约定
 
 - 始终使用**中文**回答问题、撰写文档与提交信息；代码、命令、标识符、路径保持英文。详见 `memory.md`。
