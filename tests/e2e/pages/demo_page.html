@@ -1,0 +1,49 @@
+<!--
+  自愈演示页（自建本地测试页，见 RULE.md 决策 D3）。
+  - 用 file:// 直接打开，零依赖、不起服务。
+  - 模拟"UI 改版"：提交按钮旧 id 已失效（#submit-btn-old → #submit-btn-v2），
+    但稳定属性齐全（data-testid / aria-label / 文本），供自愈重新识别。
+  - #result 用于让测试断言点击效果。
+  - 弹窗为占位（默认隐藏、不阻塞），自动处理留到 Phase 3。
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>AutoAiSelfHeal 演示页</title>
+  <style>
+    body { font-family: sans-serif; margin: 40px; }
+    form { display: flex; flex-direction: column; gap: 12px; max-width: 320px; }
+    [hidden] { display: none; }
+    #result { margin-top: 24px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div id="popup" role="dialog" aria-label="系统通知" hidden>
+    <p>欢迎！</p>
+    <button type="button" id="popup-close" data-testid="popup-close" aria-label="关闭弹窗">关闭</button>
+  </div>
+
+  <form id="login-form">
+    <input data-testid="username" name="username" aria-label="用户名" placeholder="用户名" />
+    <input data-testid="password" name="password" aria-label="密码" placeholder="密码" type="password" />
+    <!-- 旧 id 已被替换为 submit-btn-v2；稳定属性仍在 -->
+    <button type="button" id="submit-btn-v2" data-testid="submit-btn" aria-label="登录按钮">登录</button>
+    <!-- 属性稀少的元素，用于兜底（fallback）测试 -->
+    <button type="button" id="ghost-btn">Go</button>
+    <button type="button" id="real-secondary" data-testid="secondary" aria-label="备用入口">备用入口</button>
+  </form>
+
+  <div id="result" aria-live="polite"></div>
+
+  <script>
+    function setResult(text) { document.getElementById("result").textContent = text; }
+    document.querySelector('[data-testid="submit-btn"]')
+      .addEventListener("click", function (e) { e.preventDefault(); setResult("logged-in"); });
+    document.getElementById("real-secondary")
+      .addEventListener("click", function (e) { e.preventDefault(); setResult("secondary"); });
+    document.getElementById("ghost-btn")
+      .addEventListener("click", function (e) { e.preventDefault(); setResult("ghost"); });
+  </script>
+</body>
+</html>

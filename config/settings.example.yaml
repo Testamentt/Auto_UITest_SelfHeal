@@ -26,10 +26,12 @@ vision:
   api_key_env: OPENAI_API_KEY
 
 healing:
+  enabled: true            # 插件总开关；false 时透传为原生 Playwright 行为
   # 策略调度顺序（可插拔，见 agent/strategies/）
   strategy_order: [heuristic, semantic, visual]
   knowledge_first: true    # 调用 LLM 前先查知识库
   confidence_threshold: 0.6
+  on_uncertain: use_fallback   # use_fallback | pause | fail（见 RULE.md 决策 D6）
 
 knowledge:
   backend: sqlite          # sqlite / json，知识库存储后端
