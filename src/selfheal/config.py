@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel
@@ -30,9 +31,18 @@ class LLMConfig(BaseModel):
 
 
 class HealingConfig(BaseModel):
+    """自愈行为配置。
+
+    - enabled: 插件总开关。False 时 HealingPage 透传为原生行为，不触发任何修复。
+    - on_uncertain: AI 不确定（置信度 < confidence_threshold）时的兜底策略（见 RULE.md 决策 D6）。
+      use_fallback=用人工备用定位器（默认，CI 友好）；pause=交互模式下暂停等人工；fail=快速失败。
+    """
+
+    enabled: bool = True
     strategy_order: list[str] = ["heuristic", "semantic", "visual"]
     knowledge_first: bool = True
     confidence_threshold: float = 0.6
+    on_uncertain: Literal["use_fallback", "pause", "fail"] = "use_fallback"
 
 
 class Settings(BaseModel):
