@@ -24,9 +24,16 @@ AI 自愈 Agent agent/       大脑：编排闭环 / 诊断 / 多策略修复（
 
 ```bash
 pip install -e ".[dev,llm]"
-playwright install chromium
-pytest                      # 运行测试
-ruff check .                # 代码检查
+pytest -m unit        # 单元测试（CI 门禁，无需浏览器）
+pytest -m e2e         # 端到端测试（使用系统已装的 Chrome，headless）
+pytest                # 全部测试
+ruff check .          # 代码检查
 ```
 
-> ⚠️ 当前为**骨架阶段**：模块多为接口与桩实现，核心闭环逻辑待逐步填充。
+> **浏览器**：默认走系统已装的 Chrome（`channel: chrome`，免下载内核）。
+> 如需 Playwright 自带 Chromium：`playwright install chromium` 并把 `config/settings.yaml` 的 `browser.channel` 改为 `chromium`。
+
+> **自愈开关**：`pytest --selfheal` / `--no-selfheal`（优先于 `settings.healing.enabled`）。
+> **自愈演示**：`tests/e2e/pages/demo_page.html`（模拟 UI 改版导致定位器失效），由 `-m e2e` 覆盖三场景：自愈成功 / 兜底 / 关闭=原生。
+
+> ⚠️ 当前为**骨架阶段**：核心自愈闭环已跑通（启发式策略），LLM/VLM 与知识库持久化待 Phase 2/3。

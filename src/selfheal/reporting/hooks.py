@@ -5,7 +5,7 @@ TODO: 用 allure.attach 附加截图、DOM、修复审计表；汇总生成自�
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 
 
 @dataclass
@@ -20,7 +20,7 @@ class HealingRecord:
 
 class HealingReporter:
     def __init__(self) -> None:
-        self.records: list[HealingRecord] = field(default_factory=list)
+        self.records: list[HealingRecord] = []
 
     def record(self, rec: HealingRecord) -> None:
         self.records.append(rec)
