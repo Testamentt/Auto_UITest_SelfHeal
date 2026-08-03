@@ -6,10 +6,10 @@
 
 ## 🔥 高优先级（Phase 4 核心：证据 + 指标 + 加固）
 
-- [ ] **T1 · 策略短路，省 LLM/VLM 调用**（P1）
-  - `_best_candidate` 达到"早接受阈值"即停，或按 `strategy_order` 首个达标即返回
-  - 位置：`src/selfheal/agent/orchestrator.py`
-  - 验收：配真实 key 后，启发式命中的自愈不再触发 semantic/visual；补单测
+- [x] **T1 · 策略短路，省 LLM/VLM 调用**（P1）✅ 2026-08-04
+  - `_best_candidate` 达 `early_accept_threshold`(0.85) 即返回，不再尝试后续更贵策略
+  - 位置：`src/selfheal/agent/orchestrator.py`、`config.py`（新增 early_accept_threshold）
+  - 验收：启发式命中的自愈不再触发 semantic/visual（`test_strategy_short_circuit.py` 2 项）
 - [ ] **T2 · 真实模型跑通 + 证据留存**（P3）🔴 需 API key
   - 设 `OPENAI_API_KEY` / `DASHSCOPE_API_KEY`，跑 `pytest -m e2e -k "llm_smoke or visual"`
   - 留存真实命中的截图/日志作为展示素材

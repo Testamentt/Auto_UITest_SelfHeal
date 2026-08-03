@@ -37,9 +37,9 @@ class LLMConfig(BaseModel):
     """
 
     enabled: bool = True
-    provider: str = "openai"
-    model: str = "gpt-4o-mini"
-    api_key_env: str = "OPENAI_API_KEY"
+    provider: str = "deepseek"
+    model: str = "deepseek-v4-flash"
+    api_key_env: str = "sk-585500981aeb4ac987a292c3a2aaabae"
     base_url: str | None = None
     temperature: float = 0.0
 
@@ -50,12 +50,15 @@ class HealingConfig(BaseModel):
     - enabled: 插件总开关。False 时 HealingPage 透传为原生行为，不触发任何修复。
     - on_uncertain: AI 不确定（置信度 < confidence_threshold）时的兜底策略（见 RULE.md 决策 D6）。
       use_fallback=用人工备用定位器（默认，CI 友好）；pause=交互模式下暂停等人工；fail=快速失败。
+    - early_accept_threshold: "早接受"阈值（T1 策略短路）。某策略置信度达到该值即立即采纳，
+      不再尝试后续（更贵的）策略，省 LLM/VLM 调用。应 > confidence_threshold。
     """
 
     enabled: bool = True
     strategy_order: list[str] = ["heuristic", "semantic", "visual"]
     knowledge_first: bool = True
     confidence_threshold: float = 0.6
+    early_accept_threshold: float = 0.85
     on_uncertain: Literal["use_fallback", "pause", "fail"] = "use_fallback"
 
 
@@ -80,7 +83,7 @@ class VisionConfig(BaseModel):
     enabled: bool = True
     provider: str = "openai"
     model: str = "qwen3-vl-flash"
-    api_key_env: str = "DASHSCOPE_API_KEY"
+    api_key_env: str = "sk-ws-H.ELEHILM.s0l8.MEQCIQC6OmYkhaXGU4GBaGhhsED8X_3Ftwjh6MZyCURJ-L7wzwIfSSBTXmJWTdvbx2xX1Qm1-1IXBzoU3LgoQLxJq23z1A"
     base_url: str | None = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
