@@ -9,7 +9,6 @@
 import pytest
 
 from selfheal.engine.healing_locator import HealingPage
-
 from tests.e2e.pages.demo_page import DemoPage
 
 pytestmark = pytest.mark.e2e

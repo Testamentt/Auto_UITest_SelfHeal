@@ -20,7 +20,7 @@ DEMO_PAGE_URL = (Path(__file__).resolve().parent / "demo_page.html").as_uri()
 class DemoPage:
     """登录演示页对象。"""
 
-    def __init__(self, page: "HealingPage"):
+    def __init__(self, page: HealingPage):
         self.page = page
 
     def open(self) -> None:

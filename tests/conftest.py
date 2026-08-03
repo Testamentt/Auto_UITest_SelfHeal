@@ -18,11 +18,16 @@ from selfheal.knowledge.store import KnowledgeStore
 def pytest_addoption(parser):
     group = parser.getgroup("selfheal", "AI 自愈开关")
     group.addoption(
-        "--selfheal", dest="selfheal", action="store_true", default=None,
+        "--selfheal",
+        dest="selfheal",
+        action="store_true",
+        default=None,
         help="强制开启自愈（优先于配置）",
     )
     group.addoption(
-        "--no-selfheal", dest="selfheal", action="store_false",
+        "--no-selfheal",
+        dest="selfheal",
+        action="store_false",
         help="强制关闭自愈，回退原生 Playwright 行为",
     )
 

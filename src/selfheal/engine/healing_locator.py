@@ -13,8 +13,10 @@ Playwright 为运行期可选依赖：TimeoutError 导入做了降级，保证�
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
+from selfheal.agent.diagnose import FailureContext
 from selfheal.agent.orchestrator import HealOutcome, SelfHealOrchestrator
 from selfheal.config import HealingConfig, Settings
 from selfheal.knowledge.store import KnowledgeStore
@@ -72,8 +74,8 @@ class HealingLocator:
 
     def __init__(
         self,
-        locator: "Locator",
-        page: "Page",
+        locator: Locator,
+        page: Page,
         selector: str,
         cfg: HealingConfig,
         orchestrator: SelfHealOrchestrator,
@@ -107,29 +109,30 @@ class HealingLocator:
             except Exception as exc:  # noqa: BLE001 - 需甄别超时后决定自愈或上抛
                 if not _is_timeout_error(exc):
                     raise
-                relocated = self._heal_and_resolve()
+                relocated = self._heal_and_resolve(exc)
                 return getattr(relocated, name)(*args, **kwargs)
 
         wrapped.__name__ = name
         return wrapped
 
-    def _heal_and_resolve(self) -> "Locator":
-        """运行闭环，并决定用哪个定位器重试（含 D6 兜底）。"""
-        outcome = self._orch.run(self._selector, self._description)
+    def _heal_and_resolve(self, exc: BaseException | None = None) -> Locator:
+        """运行闭环，并决定用哪个定位器重试（含 D6 兜底）。失败异常供诊断参考。"""
+        failure = FailureContext(
+            failure_type=type(exc).__name__ if exc is not None else None,
+            message=str(exc) if exc is not None else None,
+        )
+        outcome = self._orch.run(self._selector, self._description, failure=failure)
         if outcome.success and outcome.new_selector:
             return self._page.locator(outcome.new_selector)
         return self._resolve_uncertain(outcome)
 
-    def _resolve_uncertain(self, outcome: HealOutcome) -> "Locator":
+    def _resolve_uncertain(self, outcome: HealOutcome) -> Locator:
         """AI 不确定时的兜底分支（决策 D6）。"""
         mode = self._cfg.on_uncertain
         if mode == "use_fallback" and self._fallback:
             return self._page.locator(self._fallback)
         if mode == "pause" and _interactive():
-            input(
-                f"[自愈] 定位器 {self._selector!r} 失败且无法自动修复，"
-                f"请人工处理后回车继续…"
-            )
+            input(f"[自愈] 定位器 {self._selector!r} 失败且无法自动修复，请人工处理后回车继续…")
             return self._page.locator(self._selector)
         raise HealingFailedError(self._failure_report(outcome))
 
@@ -150,7 +153,7 @@ class HealingPage:
 
     def __init__(
         self,
-        page: "Page",
+        page: Page,
         settings: Settings,
         *,
         knowledge: KnowledgeStore | None = None,
@@ -162,9 +165,7 @@ class HealingPage:
         self._enabled = settings.healing.enabled if enabled_override is None else enabled_override
         self._knowledge = knowledge or KnowledgeStore()
         self._reporter = reporter or HealingReporter()
-        self._orchestrator = SelfHealOrchestrator(
-            page, settings, self._knowledge, self._reporter
-        )
+        self._orchestrator = SelfHealOrchestrator(page, settings, self._knowledge, self._reporter)
 
     @property
     def healing_enabled(self) -> bool:

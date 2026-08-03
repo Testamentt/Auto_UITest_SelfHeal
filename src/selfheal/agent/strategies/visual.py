@@ -8,7 +8,6 @@ TODO: 经 llm.get_vision 调用，返回坐标或可转换的定位信息。
 from __future__ import annotations
 
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
-from selfheal.collect.collector import Scene
 
 
 class VisualStrategy(RepairStrategy):
