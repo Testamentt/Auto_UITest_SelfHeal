@@ -29,6 +29,14 @@ class BrowserConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
+    """LLM 配置。
+
+    - enabled: 模型能力总开关。False 或缺少 API key 时，诊断退回规则式、语义策略被跳过（等价 Phase 1）。
+    - provider / model / base_url: OpenAI 兼容接口，可指向 OpenAI / DeepSeek / Qwen / 智谱等。
+    - api_key_env: 从环境变量名读取密钥（如 OPENAI_API_KEY），不写明文。
+    """
+
+    enabled: bool = True
     provider: str = "openai"
     model: str = "gpt-4o-mini"
     api_key_env: str = "OPENAI_API_KEY"

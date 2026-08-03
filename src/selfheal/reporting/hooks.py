@@ -30,6 +30,8 @@ class HealingReporter:
         try:
             import allure
 
-            allure.attach(str(asdict(rec)), name="自愈记录", attachment_type=allure.attachment_type.JSON)
+            allure.attach(
+                str(asdict(rec)), name="自愈记录", attachment_type=allure.attachment_type.JSON
+            )
         except ImportError:
             pass  # 未安装 allure 时静默降级

@@ -26,7 +26,7 @@ class _FakeOrch:
     def __init__(self, outcome: HealOutcome):
         self._outcome = outcome
 
-    def run(self, selector, description=None):
+    def run(self, selector, description=None, failure=None):
         return self._outcome
 
 
@@ -46,7 +46,9 @@ def _make(outcome, *, on_uncertain="use_fallback", fallback=None):
 
 def test_uses_healed_selector():
     hl = _make(
-        HealOutcome(success=True, new_selector='[data-testid="x"]', confidence=0.9, strategy="heuristic")
+        HealOutcome(
+            success=True, new_selector='[data-testid="x"]', confidence=0.9, strategy="heuristic"
+        )
     )
     assert hl._heal_and_resolve().click() == 'clicked:[data-testid="x"]'
 
