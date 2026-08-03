@@ -9,13 +9,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from selfheal.agent.diagnose import Diagnoser
+from selfheal.agent.diagnose import Diagnoser, FailureContext
+from selfheal.agent.diagnose_llm import LLMDiagnoser
 from selfheal.agent.strategies import HeuristicStrategy, SemanticStrategy, VisualStrategy
 from selfheal.agent.strategies.base import RepairCandidate
 from selfheal.collect.collector import Scene, SceneCollector
 from selfheal.config import Settings
 from selfheal.knowledge.schema import RepairCase
 from selfheal.knowledge.store import KnowledgeStore
+from selfheal.llm.base import LLMClient
+from selfheal.llm.factory import get_llm_for_settings
 from selfheal.reporting.hooks import HealingRecord, HealingReporter
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免运行期强依赖 playwright
@@ -52,15 +55,23 @@ class SelfHealOrchestrator:
         settings: Settings,
         knowledge: KnowledgeStore | None = None,
         reporter: HealingReporter | None = None,
+        llm_client: LLMClient | None = None,
     ):
         self._page = page
         self._settings = settings
         self._collector = SceneCollector(page)
-        self._diagnoser = Diagnoser()
         self._knowledge = knowledge or KnowledgeStore()
         self._reporter = reporter or HealingReporter()
+        # LLM 可用才构建；缺省时按配置判定，不可用则 None（降级回规则式 / 跳过语义策略）
+        self._llm_client = llm_client if llm_client is not None else get_llm_for_settings(settings)
+        self._diagnoser = LLMDiagnoser(self._llm_client) if self._llm_client else Diagnoser()
 
-    def run(self, original_selector: str, description: str | None = None) -> HealOutcome:
+    def run(
+        self,
+        original_selector: str,
+        description: str | None = None,
+        failure: FailureContext | None = None,
+    ) -> HealOutcome:
         scene = self._collector.capture()
 
         # 1) 知识库优先：命中已有修复案例则直接复用（降本增效）
@@ -68,8 +79,8 @@ class SelfHealOrchestrator:
             if cached := self._lookup_knowledge(scene, original_selector):
                 return cached
 
-        # 2) 智能诊断根因
-        root_cause = self._diagnoser.diagnose(scene, original_selector)
+        # 2) 智能诊断根因（透传失败上下文，供 LLM 诊断参考）
+        root_cause = self._diagnoser.diagnose(scene, original_selector, failure)
 
         # 3) 按配置顺序尝试多策略，取置信度最高者
         best = self._best_candidate(scene, original_selector, description)
@@ -109,10 +120,16 @@ class SelfHealOrchestrator:
             strategy_cls = _STRATEGY_REGISTRY.get(name)
             if strategy_cls is None:
                 continue
-            candidate = strategy_cls().repair(scene, selector, description)
+            candidate = self._build_strategy(strategy_cls).repair(scene, selector, description)
             if candidate and (best is None or candidate.confidence > best.confidence):
                 best = candidate
         return best
+
+    def _build_strategy(self, strategy_cls: type) -> object:
+        """实例化策略；语义策略需要透传 LLM client（无 client 时其内部返回 None 被跳过）。"""
+        if strategy_cls is SemanticStrategy:
+            return strategy_cls(client=self._llm_client)
+        return strategy_cls()
 
     def _persist(self, scene: Scene, original_selector: str, outcome: HealOutcome) -> None:
         """修复成功后：写入知识库（供后续命中复用）+ 记录审计（供报告展示）。"""

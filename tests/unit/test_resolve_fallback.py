@@ -26,7 +26,7 @@ class _FakeOrch:
     def __init__(self, outcome: HealOutcome):
         self._outcome = outcome
 
-    def run(self, selector, description=None):
+    def run(self, selector, description=None, failure=None):
         return self._outcome
 
 

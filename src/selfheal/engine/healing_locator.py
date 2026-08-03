@@ -15,6 +15,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING, Any, Callable
 
+from selfheal.agent.diagnose import FailureContext
 from selfheal.agent.orchestrator import HealOutcome, SelfHealOrchestrator
 from selfheal.config import HealingConfig, Settings
 from selfheal.knowledge.store import KnowledgeStore
@@ -107,15 +108,19 @@ class HealingLocator:
             except Exception as exc:  # noqa: BLE001 - 需甄别超时后决定自愈或上抛
                 if not _is_timeout_error(exc):
                     raise
-                relocated = self._heal_and_resolve()
+                relocated = self._heal_and_resolve(exc)
                 return getattr(relocated, name)(*args, **kwargs)
 
         wrapped.__name__ = name
         return wrapped
 
-    def _heal_and_resolve(self) -> "Locator":
-        """运行闭环，并决定用哪个定位器重试（含 D6 兜底）。"""
-        outcome = self._orch.run(self._selector, self._description)
+    def _heal_and_resolve(self, exc: BaseException | None = None) -> "Locator":
+        """运行闭环，并决定用哪个定位器重试（含 D6 兜底）。失败异常供诊断参考。"""
+        failure = FailureContext(
+            failure_type=type(exc).__name__ if exc is not None else None,
+            message=str(exc) if exc is not None else None,
+        )
+        outcome = self._orch.run(self._selector, self._description, failure=failure)
         if outcome.success and outcome.new_selector:
             return self._page.locator(outcome.new_selector)
         return self._resolve_uncertain(outcome)
