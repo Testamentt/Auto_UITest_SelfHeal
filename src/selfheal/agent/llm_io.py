@@ -45,7 +45,7 @@ def build_compact_dom(dom: str | None, max_elems: int = 60, max_text: int = 24) 
             seen.add(line)
             rows.append(line)
     # 稳定属性齐全（data-testid/id）优先排在前面，帮助模型聚焦
-    rows.sort(key=lambda r: (("data-testid" in r) + (" id=" in r)), reverse=True)
+    rows.sort(key=lambda r: ("data-testid" in r) + (" id=" in r), reverse=True)
     return rows[:max_elems]
 
 

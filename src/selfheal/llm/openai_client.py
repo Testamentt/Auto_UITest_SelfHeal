@@ -10,6 +10,7 @@ OpenAI 兼容接口，provider 切换只改配置、不改代码。
 
 from __future__ import annotations
 
+import contextlib
 import os
 from typing import Any
 
@@ -75,10 +76,9 @@ class OpenAICompatibleLLM(LLMClient):
     def close(self) -> None:
         """幂等释放底层 client（生命周期管理用，非必须）。"""
         if self._client is not None:
-            try:
+            # 释放失败不掩盖业务异常（suppress 等价于 try-except-pass）
+            with contextlib.suppress(Exception):
                 self._client.close()
-            except Exception:  # noqa: BLE001 - 释放失败不掩盖业务异常
-                pass
             self._client = None
 
 

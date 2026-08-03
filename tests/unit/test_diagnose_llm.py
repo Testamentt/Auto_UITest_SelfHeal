@@ -19,8 +19,13 @@ SCENE = Scene(url="https://example.com/login", dom_snapshot=DOM)
 
 
 def test_valid_cause_accepted():
-    diag = LLMDiagnoser(FakeLLMClient(responses=['{"root_cause": "covered", "reason": "被弹窗遮挡"}']))
-    assert diag.diagnose(SCENE, "#submit-btn-old", FailureContext("TimeoutError", "timeout")) == "covered"
+    diag = LLMDiagnoser(
+        FakeLLMClient(responses=['{"root_cause": "covered", "reason": "被弹窗遮挡"}'])
+    )
+    assert (
+        diag.diagnose(SCENE, "#submit-btn-old", FailureContext("TimeoutError", "timeout"))
+        == "covered"
+    )
 
 
 def test_out_of_whitelist_returns_unknown():

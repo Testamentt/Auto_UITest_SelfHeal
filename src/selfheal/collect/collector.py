@@ -29,7 +29,7 @@ class Scene:
 class SceneCollector:
     """失败现场采集。page 在构造时不做任何调用，capture() 时才采集。"""
 
-    def __init__(self, page: "Page | None"):
+    def __init__(self, page: Page | None):
         self._page = page
 
     def capture(self) -> Scene:

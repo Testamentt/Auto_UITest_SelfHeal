@@ -62,4 +62,6 @@ class SemanticStrategy(RepairStrategy):
         # 护栏：selector 必须在真实索引中存在；置信度越界 / 空 → 拒绝
         if selector not in real_selectors or not (0.0 <= confidence <= 1.0):
             return None
-        return RepairCandidate(selector=selector, confidence=round(confidence, 3), strategy=self.name)
+        return RepairCandidate(
+            selector=selector, confidence=round(confidence, 3), strategy=self.name
+        )

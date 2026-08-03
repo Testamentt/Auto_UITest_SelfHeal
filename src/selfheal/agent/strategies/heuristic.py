@@ -74,4 +74,6 @@ class HeuristicStrategy(RepairStrategy):
         selector = build_stable_selector(best_el)
         if not selector:
             return None
-        return RepairCandidate(selector=selector, confidence=round(best_score, 3), strategy=self.name)
+        return RepairCandidate(
+            selector=selector, confidence=round(best_score, 3), strategy=self.name
+        )

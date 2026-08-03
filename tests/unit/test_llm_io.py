@@ -17,8 +17,8 @@ DOM = """
 
 def test_compact_dom_extracts_stable_elements():
     rows = build_compact_dom(DOM)
-    assert any("data-testid=\"submit-btn\"" in r for r in rows)
-    assert any("data-testid=\"username\"" in r for r in rows)
+    assert any('data-testid="submit-btn"' in r for r in rows)
+    assert any('data-testid="username"' in r for r in rows)
     # 稳定属性齐全的元素优先
     assert rows[0].startswith("button") or "data-testid" in rows[0]
 

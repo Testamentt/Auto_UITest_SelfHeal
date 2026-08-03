@@ -46,7 +46,9 @@ def _make(outcome, *, on_uncertain="use_fallback", fallback=None):
 
 def test_uses_healed_selector():
     hl = _make(
-        HealOutcome(success=True, new_selector='[data-testid="x"]', confidence=0.9, strategy="heuristic")
+        HealOutcome(
+            success=True, new_selector='[data-testid="x"]', confidence=0.9, strategy="heuristic"
+        )
     )
     assert hl._heal_and_resolve().click() == 'clicked:[data-testid="x"]'
 

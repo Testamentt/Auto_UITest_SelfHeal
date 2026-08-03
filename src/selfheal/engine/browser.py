@@ -19,7 +19,7 @@ class BrowserManager:
         self._pw: Playwright | None = None
         self._browser: Browser | None = None
 
-    def __enter__(self) -> "BrowserManager":
+    def __enter__(self) -> BrowserManager:
         self._pw = sync_playwright().start()
         cfg = self._settings.browser
         # channel 是 launch 参数而非 browser type（browser type 恒为 chromium）

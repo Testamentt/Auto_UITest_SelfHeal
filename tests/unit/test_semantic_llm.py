@@ -19,7 +19,9 @@ DOM = """
 """
 
 SCENE = Scene(url="x", dom_snapshot=DOM)
-_REAL = '[data-testid="submit-btn"]'  # 由 build_stable_selector 生成的稳定定位器（在 DOM 中真实存在）
+_REAL = (
+    '[data-testid="submit-btn"]'  # 由 build_stable_selector 生成的稳定定位器（在 DOM 中真实存在）
+)
 
 
 def _reply(selector: str, confidence: float) -> str:

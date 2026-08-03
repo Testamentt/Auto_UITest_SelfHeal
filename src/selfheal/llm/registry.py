@@ -6,7 +6,7 @@ TODO: 待 provider 确定后，在此或独立模块实现具体 client 并注�
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from selfheal.llm.base import LLMClient, VisionClient
 

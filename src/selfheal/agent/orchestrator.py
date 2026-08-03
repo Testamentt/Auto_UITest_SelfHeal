@@ -51,7 +51,7 @@ class SelfHealOrchestrator:
 
     def __init__(
         self,
-        page: "Page | None",
+        page: Page | None,
         settings: Settings,
         knowledge: KnowledgeStore | None = None,
         reporter: HealingReporter | None = None,
@@ -75,9 +75,10 @@ class SelfHealOrchestrator:
         scene = self._collector.capture()
 
         # 1) 知识库优先：命中已有修复案例则直接复用（降本增效）
-        if self._settings.healing.knowledge_first:
-            if cached := self._lookup_knowledge(scene, original_selector):
-                return cached
+        if self._settings.healing.knowledge_first and (
+            cached := self._lookup_knowledge(scene, original_selector)
+        ):
+            return cached
 
         # 2) 智能诊断根因（透传失败上下文，供 LLM 诊断参考）
         root_cause = self._diagnoser.diagnose(scene, original_selector, failure)
