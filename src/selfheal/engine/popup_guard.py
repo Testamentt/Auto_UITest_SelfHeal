@@ -1,20 +1,140 @@
 """弹窗处理。
 
 识别并自动关闭系统弹窗、权限申请、运营浮层等"突袭"，是提升通过率的关键能力。
-命中特征优先走知识库（弹窗特征库），未命中再交由 LLM 诊断。
-TODO: 接入 knowledge 弹窗特征库与 agent.diagnose。
+策略：**知识优先**——先查弹窗特征库，命中则直接用沉淀的关闭方式；未命中则在弹窗内
+启发式找关闭按钮（aria-label / 文本 / data-testid 含关闭类关键词），点击成功后沉淀特征。
+
+纯函数 _normalize_signature / _is_close_hint 抽离于类外，便于无浏览器单测。
 """
 
 from __future__ import annotations
 
-from playwright.sync_api import Page
+from typing import TYPE_CHECKING
+
+from selfheal.knowledge.base import KnowledgeBackend
+from selfheal.knowledge.schema import PopupFeature
+
+if TYPE_CHECKING:  # 仅类型检查时导入，避免运行期强依赖 playwright
+    from playwright.sync_api import Locator, Page
+
+# 常见弹窗容器特征（role / aria / 类名 / id 含弹窗语义）
+_POPUP_CONTAINER_SELECTOR = (
+    "[role='dialog'],[aria-modal='true'],.modal,.popup,.dialog,"
+    "[class*='overlay'],[id*='overlay'],[id*='popup'],[id*='modal']"
+)
+# 关闭按钮的识别关键词（aria-label / data-testid / 文本，统一小写匹配）。
+# 注意：刻意**不含**"取消/cancel"——取消是业务动作而非"关闭弹窗"，
+# 避免把测试流程中合法的确认对话框（确定/取消）误当干扰弹窗点掉。
+_CLOSE_KEYWORDS = ("关闭", "close", "dismiss", "×", "✕")
+_CLICK_TIMEOUT_MS = 2000
+
+
+def _normalize_signature(text: str | None) -> str | None:
+    """把弹窗文本归一化为签名（去空白、截断），供知识库匹配。"""
+    if not text:
+        return None
+    sig = "".join(text.split())[:50]
+    return sig or None
+
+
+def _is_close_hint(label: str, testid: str, text: str) -> bool:
+    """判断某元素的 aria-label / testid / 文本是否含关闭类关键词。"""
+    haystack = f"{label} {testid} {text}".lower()
+    return any(kw in haystack for kw in _CLOSE_KEYWORDS)
 
 
 class PopupGuard:
-    def __init__(self, page: Page):
+    """检测并自动关闭干扰弹窗；命中知识优先，未命中启发式找关闭按钮。"""
+
+    def __init__(self, page: Page, knowledge: KnowledgeBackend | None = None):
         self._page = page
+        self._knowledge = knowledge
 
     def dismiss_if_present(self) -> bool:
         """检测并关闭当前页面的干扰弹窗，返回是否处理了弹窗。"""
-        # TODO: 1) 查知识库弹窗特征；2) 未命中则截图 + DOM 交 LLM 判定关闭按钮。
+        container = self._find_visible_popup()
+        if container is None:
+            return False
+        signature = _normalize_signature(self._safe_text(container))
+
+        # 1) 知识优先：命中已沉淀的弹窗特征，直接用其关闭定位器
+        if self._knowledge is not None and signature:
+            feature = self._knowledge.find_popup(signature)
+            if feature is not None and self._try_click_selector(feature.dismiss_selector):
+                return True
+
+        # 2) 启发式：在弹窗内找关闭按钮并点击
+        close_btn = self._find_close_button(container)
+        if close_btn is None:
+            return False
+        dismiss_selector = self._stable_selector(close_btn)
+        try:
+            close_btn.click(timeout=_CLICK_TIMEOUT_MS)
+        except Exception:  # noqa: BLE001 - 点击失败视为未处理，交后续自愈
+            return False
+        # 3) 沉淀特征（仅当能生成可复用定位器时）
+        if self._knowledge is not None and signature and dismiss_selector:
+            self._knowledge.add_popup(
+                PopupFeature(signature=signature, dismiss_selector=dismiss_selector)
+            )
+        return True
+
+    # --- 内部步骤 ---
+
+    def _find_visible_popup(self) -> Locator | None:
+        containers = self._page.locator(_POPUP_CONTAINER_SELECTOR)
+        for i in range(containers.count()):
+            loc = containers.nth(i)
+            try:
+                if loc.is_visible():
+                    return loc
+            except Exception:  # noqa: BLE001 - 个别容器不可见判定失败则跳过
+                continue
+        return None
+
+    def _find_close_button(self, container: Locator) -> Locator | None:
+        candidates = container.locator("button, a, [role='button']")
+        for i in range(candidates.count()):
+            el = candidates.nth(i)
+            try:
+                if not el.is_visible():
+                    continue
+                label = el.get_attribute("aria-label") or ""
+                testid = el.get_attribute("data-testid") or ""
+                text = self._safe_text(el)
+            except Exception:  # noqa: BLE001 - 单元素读取失败则跳过
+                continue
+            if _is_close_hint(label, testid, text):
+                return el
+        return None
+
+    def _try_click_selector(self, selector: str) -> bool:
+        try:
+            loc = self._page.locator(selector)
+            if loc.count() > 0 and loc.first.is_visible():
+                loc.first.click(timeout=_CLICK_TIMEOUT_MS)
+                return True
+        except Exception:  # noqa: BLE001 - 关闭失败返回 False，交启发式兜底
+            pass
         return False
+
+    @staticmethod
+    def _safe_text(loc: Locator) -> str:
+        try:
+            return (loc.inner_text() or "").strip()
+        except Exception:  # noqa: BLE001 - 读取文本失败返回空串
+            return ""
+
+    @staticmethod
+    def _stable_selector(el: Locator) -> str | None:
+        """为关闭按钮生成可复用的稳定定位器（data-testid 优先，其次 id）。"""
+        try:
+            testid = el.get_attribute("data-testid")
+            if testid:
+                return f'[data-testid="{testid}"]'
+            el_id = el.get_attribute("id")
+            if el_id:
+                return f"#{el_id}"
+        except Exception:  # noqa: BLE001 - 读取属性失败则无法沉淀
+            pass
+        return None

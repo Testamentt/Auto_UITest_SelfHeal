@@ -11,6 +11,7 @@ heuristic（启发式打分）、llm_io（构造精简 DOM 给 LLM）、semantic
 
 from __future__ import annotations
 
+import hashlib
 from html.parser import HTMLParser
 
 # 视为可交互候选的标签（另含 role=button / 带 data-testid 的任意元素）
@@ -85,3 +86,19 @@ def build_stable_selector(el: Element) -> str | None:
     if aria := el.attr("aria-label"):
         return f'[aria-label="{aria}"]'
     return None
+
+
+def dom_fingerprint(dom: str | None) -> str | None:
+    """计算 DOM 指纹：可交互元素稳定定位器排序后的哈希。
+
+    用于知识库相似度匹配——同一页面结构（可交互元素集合一致）指纹相同，
+    使修复案例可在"同结构页面"上可靠复用。无可交互元素时返回 None。
+    """
+    if not dom:
+        return None
+    selectors = sorted(
+        s for el in parse_interactive_elements(dom) if (s := build_stable_selector(el))
+    )
+    if not selectors:
+        return None
+    return hashlib.sha1("\n".join(selectors).encode("utf-8")).hexdigest()

@@ -1,12 +1,12 @@
 # 项目路线图（Roadmap）
 
 > **活文档**：随进展同步更新，不是快照（见 `RULE.md` R5）。
-> 最后更新：2026-08-03 · 当前阶段：**Phase 2 已完成，准备进入 Phase 3**
+> 最后更新：2026-08-03 · 当前阶段：**Phase 3 已完成，准备进入 Phase 4**
 
 ## 当前目标
 
-**Phase 3 —— 沉淀与进阶**：知识库持久化（SQLite）、弹窗自动处理、视觉定位（VLM）、智能等待。
-Phase 1（最小闭环）与 Phase 2（AI 大脑）均已完成并通过全量测试。
+**Phase 4 —— 展示包装**：自愈看板增强（可视化统计）、视频回放、CI 增强、README 打磨，形成面试级展示。
+Phase 1（最小闭环）、Phase 2（AI 大脑）、Phase 3（沉淀与进阶）均已完成并通过全量测试。
 
 ## 关键约束
 
@@ -33,8 +33,8 @@ Phase 1（最小闭环）与 Phase 2（AI 大脑）均已完成并通过全量�
 | --- | --- | --- |
 | **Phase 1 · 最小闭环** | 端到端自愈跑通（启发式）+ 插件化骨架 | ✅ 完成 |
 | **Phase 2 · AI 大脑** | LLM 智能诊断 + 语义定位 + 自愈看板 v0 | ✅ 完成 |
-| **Phase 3 · 沉淀与进阶** | 知识库持久化 + 弹窗 + 视觉 + 智能等待 | ⏳ 下一步 |
-| **Phase 4 · 展示包装** | 面试级展示（看板增强 / 视频回放 / CI 增强） | 待启动 |
+| **Phase 3 · 沉淀与进阶** | 知识库持久化 + 弹窗 + 视觉 + 智能等待 | ✅ 完成 |
+| **Phase 4 · 展示包装** | 面试级展示（看板增强 / 视频回放 / CI 增强） | ⏳ 下一步 |
 
 ## 已达成结论（决策记录）
 
@@ -49,18 +49,22 @@ Phase 1（最小闭环）与 Phase 2（AI 大脑）均已完成并通过全量�
 | D7 | LLM 客户端形态 | 单一 OpenAI 兼容客户端（base_url+model 覆盖多 provider），openai SDK 惰性导入 | 切换 provider 只改配置；CI 无 openai 也能 import |
 | D8 | DOM 公共能力 | 抽 `agent/dom.py`（解析 + 稳定定位器），heuristic/llm_io/semantic 共用 | 消除循环导入、重复与私有耦合（R4） |
 | D9 | LLM 降级策略 | 不依赖 response_format；extract_json 容错 + 白名单；防幻觉护栏（selector 须真实存在） | 模型不稳定时闭环不中断 |
+| D10 | 知识库后端形态 | KnowledgeBackend 接口 + 内存/SQLite 双实现 + factory 按配置选择；DOM 指纹（可交互元素稳定定位器排序哈希）参与检索择优 | 可切换、可持久化、同结构页面复用更可靠 |
+| D11 | 弹窗处理 | PopupGuard 知识优先（弹窗特征库）+ 关闭按钮启发式识别，成功后沉淀特征；动作超时先清弹窗再走自愈 | 直击"被遮挡"类失败，通过率卖点 |
+| D12 | 智能等待 | wait_until_stable 先可见后要求 bounding_box 连续 stable_ms 不变；POM 显式调用（可选增强） | 减少加载抖动误判，不改变默认行为 |
+| D13 | 视觉定位 | OpenAICompatibleVLM 走 DashScope 兼容端点（qwen3-vl-flash）；候选集护栏（VLM 只能从真实候选中选）；key 走 `DASHSCOPE_API_KEY` 环境变量 | 复用 OpenAI 兼容机制；防幻觉；密钥参数化不入库 |
 
 ## 待解决问题
 
-- 知识库持久化后端落地（SQLite schema / 相似度检索）——Phase 3。
-- 弹窗特征库与自动关闭策略——Phase 3。
-- 视觉定位（VLM）的控件画像方案——Phase 3。
-- 真实 LLM provider 选型与 API key 配置（当前走 `OPENAI_API_KEY` 环境变量）——有 key 时跑 `-k smoke` 验证。
+- **真实 VLM 校准**：视觉冒烟（`-k visual`）需 `pip install openai` + 设置 `DASHSCOPE_API_KEY` 环境变量后运行，校准 qwen3-vl-flash 的识别准确率与置信度。
+- **真实 LLM 校准**：语义/诊断冒烟（`-k llm_smoke`）需 `OPENAI_API_KEY`（或改为 DashScope 文本模型）后运行。
+- 知识库相似度检索目前为"精确 selector + 指纹择优"，向量/模糊检索可视需要增强。
+- 弹窗特征签名基于文本归一化，结构指纹（DOM 结构哈希）可视需要增强。
+- 智能等待目前 POM 显式调用；是否默认融入动作前置等待可视实测决定。
 
-## 下一步计划（Phase 3 拆解）
+## 下一步计划（Phase 4 拆解）
 
-1. `knowledge/`：SQLite 持久化后端 + DOM 指纹相似度检索 + 弹窗特征库 schema。
-2. `engine/popup_guard.py`：弹窗识别与自动关闭（命中知识库优先）。
-3. `agent/strategies/visual.py`：VLM 截图分析定位（经 `llm/` VisionClient 抽象）。
-4. `engine/smart_wait.py`：基于 DOM 稳定度 / 网络空闲的自适应等待。
-5. 测试：单测 + e2e 覆盖弹窗自愈、知识库命中复用、视觉定位（可 mock VLM）。
+1. 自愈看板增强：统计维度（自愈成功率 / 策略分布 / 根因分布）、趋势，纯 HTML 无依赖。
+2. 视频回放：e2e 录制 trace/视频并在看板/Allure 关联。
+3. CI 增强：e2e 产物（Allure/看板）上传 artifact；可选定时跑冒烟。
+4. README 打磨：架构图、快速开始、自愈演示说明，形成面试级展示。

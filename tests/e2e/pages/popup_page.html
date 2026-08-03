@@ -1,0 +1,49 @@
+<!--
+  弹窗演示页（自建本地测试页，见 RULE.md 决策 D3）。
+  - 一个覆盖全屏的干扰弹窗（role=dialog）盖住目标按钮，必须先关闭才能点击。
+  - 用于验证 PopupGuard：动作因"被遮挡"超时 → 自动关闭弹窗 → 重试成功 → 沉淀弹窗特征。
+  - 用 file:// 打开，零依赖、不起服务。
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>弹窗演示页</title>
+  <style>
+    body { font-family: sans-serif; margin: 40px; }
+    #overlay {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5);
+      display: flex; align-items: center; justify-content: center; z-index: 100;
+    }
+    #popup-box { background: #fff; padding: 24px 32px; border-radius: 8px; text-align: center; }
+    #result { margin-top: 24px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <button type="button" id="target-btn" data-testid="target-btn" aria-label="目标按钮">点我</button>
+  <!-- 智能等待演示：加载后短暂移动一次再稳定（验证 wait_until_stable） -->
+  <button type="button" id="moving-btn" data-testid="moving-btn" aria-label="移动按钮" style="margin-top: 0">移动目标</button>
+  <div id="result" aria-live="polite"></div>
+
+  <!-- 干扰弹窗：覆盖全屏，遮住目标按钮 -->
+  <div id="overlay">
+    <div id="popup-box" role="dialog" aria-label="系统通知">
+      <p>欢迎！请先关闭此弹窗。</p>
+      <button type="button" id="popup-close" data-testid="popup-close" aria-label="关闭弹窗">关闭</button>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById("target-btn").addEventListener("click", function () {
+      document.getElementById("result").textContent = "clicked";
+    });
+    document.getElementById("popup-close").addEventListener("click", function () {
+      document.getElementById("overlay").remove();
+    });
+    // 智能等待演示：30ms 后移动一次，模拟加载抖动后稳定
+    setTimeout(function () {
+      document.getElementById("moving-btn").style.marginTop = "60px";
+    }, 30);
+  </script>
+</body>
+</html>

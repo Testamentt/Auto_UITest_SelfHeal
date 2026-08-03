@@ -1,16 +1,17 @@
-"""LLM 可用性判定与构建（agent 层唯一入口）。
+"""LLM / VLM 可用性判定与构建（agent 层唯一入口）。
 
-get_llm_for_settings 集中做四级检查（enabled → API key → provider 已注册 → SDK 可导入），
-全部通过才实例化客户端；任一步不满足返回 None，使 agent 层完全不感知 provider 细节。
+get_llm_for_settings / get_vision_for_settings 集中做四级检查
+（enabled → API key → provider 已注册 → SDK 可导入），全部通过才实例化客户端；
+任一步不满足返回 None，使 agent 层完全不感知 provider 细节。
 """
 
 from __future__ import annotations
 
 from selfheal.config import Settings
 from selfheal.llm._exceptions import UnavailableError
-from selfheal.llm.base import LLMClient
+from selfheal.llm.base import LLMClient, VisionClient
 from selfheal.llm.openai_client import get_api_key
-from selfheal.llm.registry import get_llm
+from selfheal.llm.registry import get_llm, get_vision
 
 
 def get_llm_for_settings(settings: Settings) -> LLMClient | None:
@@ -28,6 +29,27 @@ def get_llm_for_settings(settings: Settings) -> LLMClient | None:
             model=llm_cfg.model,
             base_url=llm_cfg.base_url,
             temperature=llm_cfg.temperature,
+        )
+    except KeyError:  # provider 未注册
+        return None
+    except UnavailableError:  # SDK 缺失 / 不可用
+        return None
+
+
+def get_vision_for_settings(settings: Settings) -> VisionClient | None:
+    """按配置构建可用 VLM 客户端；不可用返回 None（调用方优雅降级）。"""
+    vcfg = settings.vision
+    if not vcfg.enabled:
+        return None
+    api_key = get_api_key(vcfg.api_key_env)
+    if not api_key:
+        return None
+    try:
+        return get_vision(
+            vcfg.provider,
+            api_key=api_key,
+            model=vcfg.model,
+            base_url=vcfg.base_url,
         )
     except KeyError:  # provider 未注册
         return None

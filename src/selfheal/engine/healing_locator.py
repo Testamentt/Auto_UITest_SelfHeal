@@ -19,7 +19,10 @@ from typing import TYPE_CHECKING, Any
 from selfheal.agent.diagnose import FailureContext
 from selfheal.agent.orchestrator import HealOutcome, SelfHealOrchestrator
 from selfheal.config import HealingConfig, Settings
-from selfheal.knowledge.store import KnowledgeStore
+from selfheal.engine.popup_guard import PopupGuard
+from selfheal.engine.smart_wait import wait_until_stable as _wait_until_stable
+from selfheal.knowledge.base import KnowledgeBackend
+from selfheal.knowledge.factory import build_knowledge_store
 from selfheal.reporting.hooks import HealingReporter
 
 if TYPE_CHECKING:  # 仅类型检查时导入
@@ -83,6 +86,7 @@ class HealingLocator:
         fallback: str | None = None,
         description: str | None = None,
         enabled: bool = True,
+        popup_guard: PopupGuard | None = None,
     ):
         self._locator = locator
         self._page = page
@@ -92,6 +96,7 @@ class HealingLocator:
         self._fallback = fallback
         self._description = description
         self._enabled = enabled
+        self._popup_guard = popup_guard
 
     def __getattr__(self, name: str) -> Any:
         # 仅对实例上不存在的属性触发；__init__ 设置的属性不走这里
@@ -109,6 +114,12 @@ class HealingLocator:
             except Exception as exc:  # noqa: BLE001 - 需甄别超时后决定自愈或上抛
                 if not _is_timeout_error(exc):
                     raise
+                # 先尝试清除弹窗（"被遮挡"类失败的高频根因）；清掉则直接重试原动作
+                if self._popup_guard is not None and self._popup_guard.dismiss_if_present():
+                    try:
+                        return action(*args, **kwargs)
+                    except Exception:  # noqa: BLE001 - 弹窗非根因，继续走自愈闭环
+                        pass
                 relocated = self._heal_and_resolve(exc)
                 return getattr(relocated, name)(*args, **kwargs)
 
@@ -143,6 +154,12 @@ class HealingLocator:
             f"备用定位器={self._fallback!r}, on_uncertain={self._cfg.on_uncertain!r}"
         )
 
+    def wait_until_stable(
+        self, timeout_ms: int = 10000, stable_ms: int = 300, poll_ms: int = 100
+    ) -> None:
+        """智能等待：等元素可见且位置/尺寸稳定（可选增强，POM 显式调用）。"""
+        _wait_until_stable(self._locator, timeout_ms, stable_ms, poll_ms)
+
 
 class HealingPage:
     """带自愈能力的 Page 代理（插件层）。
@@ -156,16 +173,23 @@ class HealingPage:
         page: Page,
         settings: Settings,
         *,
-        knowledge: KnowledgeStore | None = None,
+        knowledge: KnowledgeBackend | None = None,
         reporter: HealingReporter | None = None,
         enabled_override: bool | None = None,
     ):
         self._page = page
         self._settings = settings
         self._enabled = settings.healing.enabled if enabled_override is None else enabled_override
-        self._knowledge = knowledge or KnowledgeStore()
         self._reporter = reporter or HealingReporter()
-        self._orchestrator = SelfHealOrchestrator(page, settings, self._knowledge, self._reporter)
+        if self._enabled:
+            # 仅开启时构建知识库 / 闭环 / 弹窗处理（关闭时零开销、等同原生 Page，不产生文件副作用）
+            self._knowledge = knowledge or build_knowledge_store(settings)
+            self._orchestrator = SelfHealOrchestrator(page, settings, self._knowledge, self._reporter)
+            self._popup_guard = PopupGuard(page, self._knowledge)
+        else:
+            self._knowledge = knowledge
+            self._orchestrator = None
+            self._popup_guard = None
 
     @property
     def healing_enabled(self) -> bool:
@@ -194,6 +218,7 @@ class HealingPage:
             fallback=fallback,
             description=description,
             enabled=self._enabled,
+            popup_guard=self._popup_guard,
         )
 
     def __getattr__(self, name: str) -> Any:
