@@ -1,6 +1,7 @@
 # TODO — 优化与待办清单
 
 > 来源：`docs/reviews/2026-08-04-phase3-retrospective.md` · 随进展勾选/更新（R5 活文档）
+> T1–T4 具体实现方案：`docs/plans/2026-08-04-phase4-t1-t4-implementation.md`
 > 图例：⬜ 待办 · 🟡 进行中 · ✅ 完成 · 🔴 阻断项 · 🟠 部分完成
 
 ## 🔥 高优先级（Phase 4 核心：证据 + 指标 + 加固）
