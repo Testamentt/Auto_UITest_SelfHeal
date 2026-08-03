@@ -59,12 +59,39 @@ class HealingConfig(BaseModel):
     on_uncertain: Literal["use_fallback", "pause", "fail"] = "use_fallback"
 
 
+class KnowledgeConfig(BaseModel):
+    """知识库配置。
+
+    - backend: memory=进程内（测试/临时）；sqlite=持久化（默认，重启后仍可命中复用）。
+    - path: sqlite 数据库文件路径（.cache/ 已 gitignore）。
+    """
+
+    backend: Literal["memory", "sqlite"] = "sqlite"
+    path: str = ".cache/knowledge.db"
+
+
+class VisionConfig(BaseModel):
+    """视觉模型配置（VLM）。
+
+    qwen3-vl-flash 走 DashScope 的 OpenAI 兼容端点；key 从 api_key_env 指定的
+    环境变量读取（参数化，绝不硬编码 / 提交 git）。
+    """
+
+    enabled: bool = True
+    provider: str = "openai"
+    model: str = "qwen3-vl-flash"
+    api_key_env: str = "DASHSCOPE_API_KEY"
+    base_url: str | None = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+
 class Settings(BaseModel):
-    """顶层配置模型。TODO: 补全 execution / vision / knowledge / reporting 子模型。"""
+    """顶层配置模型。TODO: 补全 execution / reporting 子模型。"""
 
     browser: BrowserConfig = BrowserConfig()
     llm: LLMConfig = LLMConfig()
     healing: HealingConfig = HealingConfig()
+    knowledge: KnowledgeConfig = KnowledgeConfig()
+    vision: VisionConfig = VisionConfig()
 
 
 def load_settings(path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:

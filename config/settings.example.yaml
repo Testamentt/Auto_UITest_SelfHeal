@@ -21,9 +21,10 @@ llm:
   temperature: 0.0
 
 vision:
-  provider: openai         # 示例；多模态模型，待定
-  model: gpt-4o
-  api_key_env: OPENAI_API_KEY
+  provider: openai         # OpenAI 兼容端点（DashScope）
+  model: qwen3-vl-flash    # 通义千问多模态模型
+  api_key_env: DASHSCOPE_API_KEY   # 从环境变量名读取密钥，勿写明文
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
 
 healing:
   enabled: true            # 插件总开关；false 时透传为原生 Playwright 行为
@@ -34,7 +35,7 @@ healing:
   on_uncertain: use_fallback   # use_fallback | pause | fail（见 RULE.md 决策 D6）
 
 knowledge:
-  backend: sqlite          # sqlite / json，知识库存储后端
+  backend: sqlite          # sqlite=持久化（默认）/ memory=进程内
   path: .cache/knowledge.db
 
 reporting:

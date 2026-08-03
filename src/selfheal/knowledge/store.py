@@ -21,14 +21,21 @@ class KnowledgeStore:
         self._popups.append(feature)
 
     def find_repair(self, original_selector: str, dom_fingerprint: str | None = None):
-        # TODO: 相似度检索，返回置信度最高的 RepairCase
-        for case in self._repairs:
-            if case.original_selector == original_selector:
-                return case
-        return None
+        """按原定位器检索；多条命中时优先指纹匹配者，否则取置信度最高（对齐 SQLite 语义）。"""
+        matches = [c for c in self._repairs if c.original_selector == original_selector]
+        if not matches:
+            return None
+        if dom_fingerprint:
+            for case in matches:
+                if case.dom_fingerprint == dom_fingerprint:
+                    return case
+        return max(matches, key=lambda c: c.confidence)
 
     def find_popup(self, signature: str):
         for feature in self._popups:
             if feature.signature == signature:
                 return feature
         return None
+
+    def count_popups(self) -> int:
+        return len(self._popups)

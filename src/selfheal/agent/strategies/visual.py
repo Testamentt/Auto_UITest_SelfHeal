@@ -1,20 +1,63 @@
-"""视觉定位策略。
+"""视觉定位策略（Phase 3）。
 
-把截图交给多模态视觉模型（VLM），做控件识别 / 坐标定位 / 控件画像。
-作为兜底策略，成本最高。视觉模型待定。
-TODO: 经 llm.get_vision 调用，返回坐标或可转换的定位信息。
+把截图 + 描述 + 候选稳定定位器交给多模态模型（VLM），让模型从候选中选出与描述
+最匹配的元素并返回 JSON（selector + confidence）。
+
+**防幻觉护栏**：VLM 返回的 selector 必须是候选集中真实存在者（由
+dom.build_stable_selector 生成），编造的定位器直接拒绝。
+不可用（无 client / 无截图 / 无描述 / 异常 / 解析失败）一律返回 None，被编排器跳过。
 """
 
 from __future__ import annotations
 
+from selfheal.agent.dom import build_stable_selector, parse_interactive_elements
+from selfheal.agent.llm_io import extract_json, safe_float, safe_str
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
+from selfheal.collect.collector import Scene
+from selfheal.llm.base import VisionClient
+
+_PROMPT_TEMPLATE = """你是 Web UI 自动化测试专家。原定位器已失效，请根据描述在截图中识别目标元素。
+目标描述: {description}
+已失效的原始选择器: {selector}
+当前页面候选稳定定位器如下，你的答案必须是其中之一:
+{candidates}
+要求: 只输出一个 JSON 对象，不要输出解释:
+{{"selector": "上面候选之一，找不到则留空字符串", "confidence": 0.0~1.0}}"""
 
 
 class VisualStrategy(RepairStrategy):
     name = "visual"
 
-    def repair(self, scene, original_selector, description=None) -> RepairCandidate | None:
-        if not scene.screenshot:
+    def __init__(self, client: VisionClient | None = None):
+        self._client = client
+
+    def repair(self, scene: Scene, original_selector: str, description: str | None = None):
+        if self._client is None or not description or not scene.screenshot:
             return None
-        # TODO: 调用 VLM 分析截图
-        return None
+        candidates = [
+            s
+            for el in parse_interactive_elements(scene.dom_snapshot)
+            if (s := build_stable_selector(el))
+        ]
+        if not candidates:
+            return None
+        prompt = _PROMPT_TEMPLATE.format(
+            description=description,
+            selector=original_selector,
+            candidates="\n".join(candidates),
+        )
+        try:
+            reply = self._client.analyze_image(scene.screenshot, prompt)
+            data = extract_json(reply)
+        except Exception:  # noqa: BLE001 - VLM 异常返回 None，被编排器跳过
+            return None
+        if not data:
+            return None
+        selector = safe_str(data, "selector")
+        confidence = safe_float(data, "confidence")
+        # 护栏：selector 必须是真实候选之一；置信度越界 → 拒绝
+        if selector not in candidates or not (0.0 <= confidence <= 1.0):
+            return None
+        return RepairCandidate(
+            selector=selector, confidence=round(confidence, 3), strategy=self.name
+        )

@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from selfheal.config import Settings, load_settings
-from selfheal.knowledge.store import KnowledgeStore
+from selfheal.knowledge.base import KnowledgeBackend
 
 
 def pytest_addoption(parser):
@@ -38,9 +38,12 @@ def settings() -> Settings:
 
 
 @pytest.fixture(scope="session")
-def knowledge() -> KnowledgeStore:
-    """会话级共享知识库，便于演示"修复后命中复用"。"""
-    return KnowledgeStore()
+def knowledge(tmp_path_factory) -> KnowledgeBackend:
+    """会话级共享知识库（临时 SQLite：验证持久化，且不污染仓库）。"""
+    from selfheal.knowledge.sqlite_store import SqliteKnowledgeStore  # 惰性导入
+
+    db_path = tmp_path_factory.mktemp("knowledge") / "knowledge.db"
+    return SqliteKnowledgeStore(str(db_path))
 
 
 @pytest.fixture(scope="session")
