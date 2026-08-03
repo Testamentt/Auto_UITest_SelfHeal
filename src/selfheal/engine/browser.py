@@ -22,8 +22,11 @@ class BrowserManager:
     def __enter__(self) -> "BrowserManager":
         self._pw = sync_playwright().start()
         cfg = self._settings.browser
-        launcher = getattr(self._pw, cfg.channel, self._pw.chromium)
-        self._browser = launcher.launch(headless=cfg.headless, slow_mo=cfg.slow_mo)
+        # channel 是 launch 参数而非 browser type（browser type 恒为 chromium）
+        launch_kwargs: dict = {"headless": cfg.headless, "slow_mo": cfg.slow_mo}
+        if cfg.channel not in ("chromium", "default"):
+            launch_kwargs["channel"] = cfg.channel
+        self._browser = self._pw.chromium.launch(**launch_kwargs)
         return self
 
     def new_page(self) -> Page:

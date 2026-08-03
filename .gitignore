@@ -28,6 +28,9 @@ traces/
 # Claude Code 本地状态
 .claude/
 
+# Selenium / 本地调试产物（本项目基于 Playwright，不使用 chromedriver）
+chromedriver-win64/
+
 # IDE / 系统
 .idea/
 .vscode/

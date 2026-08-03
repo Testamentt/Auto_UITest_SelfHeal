@@ -3,7 +3,7 @@
 
 browser:
   headless: true
-  channel: chromium        # chromium / firefox / webkit
+  channel: chrome          # chrome=系统已装 Chrome（免下载内核）/ chromium=Playwright 自带内核 / firefox / webkit
   slow_mo: 0               # 毫秒，演示时可适当调大
   viewport: { width: 1280, height: 800 }
 

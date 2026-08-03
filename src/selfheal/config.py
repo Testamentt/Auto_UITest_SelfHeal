@@ -16,8 +16,14 @@ DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "settings
 
 
 class BrowserConfig(BaseModel):
+    """浏览器配置。
+
+    channel: 传给 launch 的浏览器渠道。"chrome" 使用系统已装的 Chrome（无需下载 Chromium），
+    "chromium" 使用 Playwright 自带内核（需 playwright install chromium）。
+    """
+
     headless: bool = True
-    channel: str = "chromium"
+    channel: str = "chrome"
     slow_mo: int = 0
     viewport: dict[str, int] = {"width": 1280, "height": 800}
 
