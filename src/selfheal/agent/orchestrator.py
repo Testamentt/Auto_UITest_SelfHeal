@@ -6,19 +6,22 @@ Playwright 仅作类型依赖（TYPE_CHECKING），核心逻辑可在无浏览�
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from selfheal.agent.diagnose import Diagnoser, FailureContext
 from selfheal.agent.diagnose_llm import LLMDiagnoser
+from selfheal.agent.dom import dom_fingerprint
 from selfheal.agent.strategies import HeuristicStrategy, SemanticStrategy, VisualStrategy
 from selfheal.agent.strategies.base import RepairCandidate
 from selfheal.collect.collector import Scene, SceneCollector
 from selfheal.config import Settings
+from selfheal.knowledge.base import KnowledgeBackend
+from selfheal.knowledge.factory import build_knowledge_store
 from selfheal.knowledge.schema import RepairCase
-from selfheal.knowledge.store import KnowledgeStore
-from selfheal.llm.base import LLMClient
-from selfheal.llm.factory import get_llm_for_settings
+from selfheal.llm.base import LLMClient, VisionClient
+from selfheal.llm.factory import get_llm_for_settings, get_vision_for_settings
 from selfheal.reporting.hooks import HealingRecord, HealingReporter
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免运行期强依赖 playwright
@@ -53,18 +56,23 @@ class SelfHealOrchestrator:
         self,
         page: Page | None,
         settings: Settings,
-        knowledge: KnowledgeStore | None = None,
+        knowledge: KnowledgeBackend | None = None,
         reporter: HealingReporter | None = None,
         llm_client: LLMClient | None = None,
+        vision_client: VisionClient | None = None,
     ):
         self._page = page
         self._settings = settings
         self._collector = SceneCollector(page)
-        self._knowledge = knowledge or KnowledgeStore()
+        self._knowledge = knowledge or build_knowledge_store(settings)
         self._reporter = reporter or HealingReporter()
         # LLM 可用才构建；缺省时按配置判定，不可用则 None（降级回规则式 / 跳过语义策略）
         self._llm_client = llm_client if llm_client is not None else get_llm_for_settings(settings)
         self._diagnoser = LLMDiagnoser(self._llm_client) if self._llm_client else Diagnoser()
+        # VLM 可用才构建；不可用则 None（视觉策略返回 None 被跳过）
+        self._vision_client = (
+            vision_client if vision_client is not None else get_vision_for_settings(settings)
+        )
 
     def run(
         self,
@@ -73,10 +81,11 @@ class SelfHealOrchestrator:
         failure: FailureContext | None = None,
     ) -> HealOutcome:
         scene = self._collector.capture()
+        fingerprint = dom_fingerprint(scene.dom_snapshot)
 
         # 1) 知识库优先：命中已有修复案例则直接复用（降本增效）
         if self._settings.healing.knowledge_first and (
-            cached := self._lookup_knowledge(scene, original_selector)
+            cached := self._lookup_knowledge(scene, original_selector, fingerprint)
         ):
             return cached
 
@@ -94,15 +103,17 @@ class SelfHealOrchestrator:
                 strategy=best.strategy,
                 root_cause=root_cause,
             )
-            self._persist(scene, original_selector, outcome)  # 4) 验证成功后沉淀
+            self._persist(scene, original_selector, outcome, fingerprint)  # 4) 验证成功后沉淀
             return outcome
 
         return HealOutcome(success=False, root_cause=root_cause)
 
     # --- 内部步骤 ---
 
-    def _lookup_knowledge(self, scene: Scene, selector: str) -> HealOutcome | None:
-        case = self._knowledge.find_repair(selector)
+    def _lookup_knowledge(
+        self, scene: Scene, selector: str, dom_fingerprint: str | None = None
+    ) -> HealOutcome | None:
+        case = self._knowledge.find_repair(selector, dom_fingerprint)
         if case and case.confidence >= self._settings.healing.confidence_threshold:
             return HealOutcome(
                 success=True,
@@ -127,22 +138,33 @@ class SelfHealOrchestrator:
         return best
 
     def _build_strategy(self, strategy_cls: type) -> object:
-        """实例化策略；语义策略需要透传 LLM client（无 client 时其内部返回 None 被跳过）。"""
+        """实例化策略；语义/视觉策略需透传 LLM/VLM client（无 client 时其内部返回 None 被跳过）。"""
         if strategy_cls is SemanticStrategy:
             return strategy_cls(client=self._llm_client)
+        if strategy_cls is VisualStrategy:
+            return strategy_cls(client=self._vision_client)
         return strategy_cls()
 
-    def _persist(self, scene: Scene, original_selector: str, outcome: HealOutcome) -> None:
+    def _persist(
+        self,
+        scene: Scene,
+        original_selector: str,
+        outcome: HealOutcome,
+        dom_fingerprint: str | None = None,
+    ) -> None:
         """修复成功后：写入知识库（供后续命中复用）+ 记录审计（供报告展示）。"""
-        self._knowledge.add_repair(
-            RepairCase(
-                original_selector=original_selector,
-                new_selector=outcome.new_selector or "",
-                strategy=outcome.strategy or "",
-                confidence=outcome.confidence,
-                page_url=scene.url,
+        # 沉淀失败不应影响已成功的自愈结果
+        with contextlib.suppress(Exception):
+            self._knowledge.add_repair(
+                RepairCase(
+                    original_selector=original_selector,
+                    new_selector=outcome.new_selector or "",
+                    strategy=outcome.strategy or "",
+                    confidence=outcome.confidence,
+                    page_url=scene.url,
+                    dom_fingerprint=dom_fingerprint,
+                )
             )
-        )
         self._reporter.record(
             HealingRecord(
                 original_selector=original_selector,

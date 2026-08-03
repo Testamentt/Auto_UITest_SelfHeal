@@ -14,7 +14,11 @@ def test_get_api_key_blank_is_none(monkeypatch):
     assert get_api_key("OPENAI_API_KEY") is None
 
 
-def test_chat_raises_unavailable_when_openai_missing():
+def test_chat_raises_unavailable_when_openai_missing(monkeypatch):
+    import sys
+
+    # 强制 openai 导入失败（即使环境已装 openai，行为也等价于缺失）
+    monkeypatch.setitem(sys.modules, "openai", None)
     client = OpenAICompatibleLLM(api_key="sk-test", model="gpt-4o-mini")
     with pytest.raises(UnavailableError):
         client.chat([ChatMessage("user", "hi")])
