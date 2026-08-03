@@ -37,10 +37,10 @@ class LLMConfig(BaseModel):
     """
 
     enabled: bool = True
-    provider: str = "deepseek"
-    model: str = "deepseek-v4-flash"
-    api_key_env: str = "sk-585500981aeb4ac987a292c3a2aaabae"
-    base_url: str | None = None
+    provider: str = "openai"
+    model: str = "deepseek-chat"
+    api_key_env: str = "OPENAI_API_KEY"
+    base_url: str | None = "https://api.deepseek.com"
     temperature: float = 0.0
 
 
@@ -83,7 +83,7 @@ class VisionConfig(BaseModel):
     enabled: bool = True
     provider: str = "openai"
     model: str = "qwen3-vl-flash"
-    api_key_env: str = "sk-ws-H.ELEHILM.s0l8.MEQCIQC6OmYkhaXGU4GBaGhhsED8X_3Ftwjh6MZyCURJ-L7wzwIfSSBTXmJWTdvbx2xX1Qm1-1IXBzoU3LgoQLxJq23z1A"
+    api_key_env: str = "DASHSCOPE_API_KEY"
     base_url: str | None = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
