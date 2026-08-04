@@ -87,6 +87,7 @@ class SelfHealOrchestrator:
         if self._settings.healing.knowledge_first and (
             cached := self._lookup_knowledge(scene, original_selector, fingerprint)
         ):
+            self._record(original_selector, cached)  # 知识复用也记录（供审计/指标）
             return cached
 
         # 2) 智能诊断根因（透传失败上下文，供 LLM 诊断参考）
@@ -172,6 +173,10 @@ class SelfHealOrchestrator:
                     dom_fingerprint=dom_fingerprint,
                 )
             )
+        self._record(original_selector, outcome)
+
+    def _record(self, original_selector: str, outcome: HealOutcome) -> None:
+        """记录一次成功自愈（含知识复用），供审计与指标统计（T3）。"""
         self._reporter.record(
             HealingRecord(
                 original_selector=original_selector,

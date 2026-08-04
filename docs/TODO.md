@@ -10,11 +10,11 @@
   - `_best_candidate` 达 `early_accept_threshold`(0.85) 即返回，不再尝试后续更贵策略
   - 位置：`src/selfheal/agent/orchestrator.py`、`config.py`（新增 early_accept_threshold）
   - 验收：启发式命中的自愈不再触发 semantic/visual（`test_strategy_short_circuit.py` 2 项）
-- [ ] **T2 · 真实模型跑通 + 证据留存**（P3）🟠 2026-08-04 真实模型已验证
-  - ✅ 真实模型跑通：DeepSeek LLM 连通 OK（direct 调用返回正确）；**qwen3-vl-flash 视觉定位真实 e2e 通过**（`test_visual_smoke`，strategy=="visual"）
-  - ⬜ 证据留存：截图/模型结果自动保存到 `reports/evidence/` 待实现
-  - 注：LLM 冒烟里语义策略因启发式短路（T1 按设计生效）未被实际调用；如需真正跑 semantic 需构造启发式失败场景
-  - key 一律走环境变量（`OPENAI_API_KEY`/`DASHSCOPE_API_KEY`），不入 git
+- [x] **T2 · 真实模型跑通 + 证据留存**（P3）✅ 2026-08-04
+  - 真实模型跑通：DeepSeek LLM 连通 OK；**qwen3-vl-flash 视觉定位真实 e2e 通过**（从截图识别登录按钮，置信度 0.95，strategy=="visual"）
+  - 证据留存：冒烟测试自动保存截图 + 模型结果到 `reports/evidence/`（visual_scene.png / visual_result.json / llm_healing_records.json）
+  - key 支持从 `.env` 加载（python-dotenv，已 gitignore）+ `.env.example` 模板；key 绝不入 git
+  - 附带修复：①知识命中也记录（提取 `_record`），解决会话级知识缓存致冒烟 0 记录；②视觉冒烟加重试适配 VLM 输出非确定性
 - [ ] **T3 · 自愈指标看板（价值叙事落点）**（P4）
   - 聚合：自愈成功率、策略命中分布、根因分布、（理想）通过率前后对比
   - 位置：`src/selfheal/reporting/`（在 dashboard.py 基础上增强）

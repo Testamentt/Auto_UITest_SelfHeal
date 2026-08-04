@@ -14,6 +14,15 @@ from pydantic import BaseModel
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "settings.yaml"
 
+# 加载本地 .env（已被 .gitignore 忽略，绝不提交）；不覆盖已存在的同名环境变量。
+# 未安装 python-dotenv 时静默跳过（此时仅从系统环境变量读取密钥）。
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+except ImportError:  # pragma: no cover - 取决于是否安装 python-dotenv
+    pass
+
 
 class BrowserConfig(BaseModel):
     """浏览器配置。
