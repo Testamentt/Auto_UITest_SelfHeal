@@ -79,12 +79,14 @@ class SelfHealOrchestrator:
         original_selector: str,
         description: str | None = None,
         failure: FailureContext | None = None,
+        use_knowledge: bool = True,
     ) -> HealOutcome:
         scene = self._collector.capture()
         fingerprint = dom_fingerprint(scene.dom_snapshot)
 
-        # 1) 知识库优先：命中已有修复案例则直接复用（降本增效）
-        if self._settings.healing.knowledge_first and (
+        # 1) 知识库优先：命中已有修复案例则直接复用（降本增效）。
+        #    use_knowledge=False 用于二次自愈（跳过缓存，防重复命中同一失效项）。
+        if use_knowledge and self._settings.healing.knowledge_first and (
             cached := self._lookup_knowledge(scene, original_selector, fingerprint)
         ):
             self._record(original_selector, cached)  # 知识复用也记录（供审计/指标）
@@ -115,15 +117,27 @@ class SelfHealOrchestrator:
         self, scene: Scene, selector: str, dom_fingerprint: str | None = None
     ) -> HealOutcome | None:
         case = self._knowledge.find_repair(selector, dom_fingerprint)
-        if case and case.confidence >= self._settings.healing.confidence_threshold:
-            return HealOutcome(
-                success=True,
-                new_selector=case.new_selector,
-                confidence=case.confidence,
-                strategy="knowledge",
-                root_cause="cached",
-            )
-        return None
+        if not case or case.confidence < self._settings.healing.confidence_threshold:
+            return None
+        # 缓存验证（T4）：缓存的新选择器须仍可在当前页面定位，否则视为失效、转策略重修
+        if not self._selector_exists(case.new_selector):
+            return None
+        return HealOutcome(
+            success=True,
+            new_selector=case.new_selector,
+            confidence=case.confidence,
+            strategy="knowledge",
+            root_cause="cached",
+        )
+
+    def _selector_exists(self, selector: str) -> bool:
+        """校验选择器能否在当前页面定位到元素（缓存验证）。无 page 时视为存在（纯逻辑场景不校验）。"""
+        if self._page is None:
+            return True
+        try:
+            return self._page.locator(selector).count() > 0
+        except Exception:  # noqa: BLE001 - 读取失败按"不存在"处理
+            return False
 
     def _best_candidate(
         self, scene: Scene, selector: str, description: str | None
