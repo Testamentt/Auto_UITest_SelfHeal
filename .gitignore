@@ -37,3 +37,9 @@ chromedriver-win64/
 .idea/
 .vscode/
 .DS_Store
+
+# 覆盖率产物
+.coverage
+coverage.json
+cov.json
+*.coverage
