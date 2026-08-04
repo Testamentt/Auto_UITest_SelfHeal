@@ -42,9 +42,38 @@ def test_visual_locate_login_button(healing_page):
         screenshot=healing_page.screenshot(full_page=True),
         dom_snapshot=healing_page.content(),
     )
-    cand = VisualStrategy(client=client).repair(scene, "#submit-btn-old", description="登录按钮")
+    # VLM 输出非确定性：偶尔返回越界/幻觉/解析失败结果（护栏拒绝后为 None），
+    # 生产上 orchestrator 会回退其他策略；冒烟测试单测 visual，故允许重试。
+    strategy = VisualStrategy(client=client)
+    cand = None
+    for _attempt in range(3):
+        cand = strategy.repair(scene, "#submit-btn-old", description="登录按钮")
+        if cand is not None:
+            break
 
     # 真实 VLM 应能从候选中识别出登录按钮（护栏保证 selector 真实存在）
     assert cand is not None
     assert cand.strategy == "visual"
     assert cand.confidence >= 0.3
+
+    # T2 证据留存：截图 + VLM 定位结果（reports/ 已 gitignore，如需展示可另行提交）
+    import json
+    from pathlib import Path
+
+    evidence_dir = Path("reports/evidence")
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    (evidence_dir / "visual_scene.png").write_bytes(scene.screenshot)
+    (evidence_dir / "visual_result.json").write_text(
+        json.dumps(
+            {
+                "description": "登录按钮",
+                "original_selector": "#submit-btn-old",
+                "healed_selector": cand.selector,
+                "strategy": cand.strategy,
+                "confidence": cand.confidence,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )

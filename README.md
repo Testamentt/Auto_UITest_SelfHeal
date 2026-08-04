@@ -36,4 +36,6 @@ ruff check .          # 代码检查
 > **自愈开关**：`pytest --selfheal` / `--no-selfheal`（优先于 `settings.healing.enabled`）。
 > **自愈演示**：`tests/e2e/pages/demo_page.html`（模拟 UI 改版导致定位器失效），由 `-m e2e` 覆盖三场景：自愈成功 / 兜底 / 关闭=原生。
 
-> ⚠️ 当前为**骨架阶段**：核心自愈闭环已跑通（启发式策略），LLM/VLM 与知识库持久化待 Phase 2/3。
+> ✅ **核心自愈闭环已跑通**：启发式 + 语义（DeepSeek）+ 视觉（qwen3-vl-flash）多策略、SQLite 知识沉淀、弹窗处理、智能等待；真实模型已验证（见 `docs/roadmap.md`）。
+
+> ⚠️ **生产使用请先读「预期与风险」**：默认**不自动乱合库**（修复建议须人审）、**多模态按图计费**、勿把 **flaky 偶发绿**当自愈成功、**高风险页**（支付/授权/审计）通常不自愈。详见 [docs/architecture.md · 预期与风险](docs/architecture.md)。
