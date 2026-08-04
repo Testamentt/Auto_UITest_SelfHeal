@@ -26,3 +26,15 @@ def test_semantic_healing_smoke(healing_page):
     assert len(healing_page.reporter.records) >= 1
     rec = healing_page.reporter.records[0]
     assert rec.original_selector == "#submit-btn-old"
+
+    # T2 证据留存：自愈记录（reports/ 已 gitignore，如需展示可另行提交）
+    import json
+    from dataclasses import asdict
+    from pathlib import Path
+
+    evidence_dir = Path("reports/evidence")
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    (evidence_dir / "llm_healing_records.json").write_text(
+        json.dumps([asdict(r) for r in healing_page.reporter.records], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )

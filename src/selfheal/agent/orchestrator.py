@@ -87,6 +87,7 @@ class SelfHealOrchestrator:
         if self._settings.healing.knowledge_first and (
             cached := self._lookup_knowledge(scene, original_selector, fingerprint)
         ):
+            self._record(original_selector, cached)  # 知识复用也记录（供审计/指标）
             return cached
 
         # 2) 智能诊断根因（透传失败上下文，供 LLM 诊断参考）
@@ -127,13 +128,20 @@ class SelfHealOrchestrator:
     def _best_candidate(
         self, scene: Scene, selector: str, description: str | None
     ) -> RepairCandidate | None:
+        """按 strategy_order 逐个尝试策略取最优；置信度达"早接受"阈值即短路（T1，省 LLM/VLM）。"""
         best: RepairCandidate | None = None
+        early_accept = self._settings.healing.early_accept_threshold
         for name in self._settings.healing.strategy_order:
             strategy_cls = _STRATEGY_REGISTRY.get(name)
             if strategy_cls is None:
                 continue
             candidate = self._build_strategy(strategy_cls).repair(scene, selector, description)
-            if candidate and (best is None or candidate.confidence > best.confidence):
+            if candidate is None:
+                continue
+            # 短路：已达"早接受"阈值，不再尝试后续（更贵的）策略
+            if candidate.confidence >= early_accept:
+                return candidate
+            if best is None or candidate.confidence > best.confidence:
                 best = candidate
         return best
 
@@ -165,6 +173,10 @@ class SelfHealOrchestrator:
                     dom_fingerprint=dom_fingerprint,
                 )
             )
+        self._record(original_selector, outcome)
+
+    def _record(self, original_selector: str, outcome: HealOutcome) -> None:
+        """记录一次成功自愈（含知识复用），供审计与指标统计（T3）。"""
         self._reporter.record(
             HealingRecord(
                 original_selector=original_selector,

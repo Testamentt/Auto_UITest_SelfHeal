@@ -32,6 +32,7 @@ healing:
   strategy_order: [heuristic, semantic, visual]
   knowledge_first: true    # 调用 LLM 前先查知识库
   confidence_threshold: 0.6
+  early_accept_threshold: 0.85   # T1 策略短路：达此置信度即采纳，不再试更贵策略（应 > confidence_threshold）
   on_uncertain: use_fallback   # use_fallback | pause | fail（见 RULE.md 决策 D6）
 
 knowledge:
