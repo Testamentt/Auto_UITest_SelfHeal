@@ -1,7 +1,7 @@
-"""自愈看板 v0 —— 纯 HTML 审计表（零依赖，供面试展示）。
+"""自愈看板（T3）—— 指标摘要 + 纯 HTML 审计表（零依赖，供面试展示）。
 
-消费 reporter.records，渲染一张自愈过程审计表：
-原定位器 → 新定位器 / 策略 / 置信度 / 根因 / 结果。
+消费 reporter.records：顶部渲染量化指标（自愈总数/成功率/策略分布/根因分布），
+下方渲染自愈过程审计表（原定位器 → 新定位器 / 策略 / 置信度 / 根因 / 结果）。
 字段经 html.escape 转义，避免注入与乱码。
 """
 
@@ -11,10 +11,32 @@ import html
 from pathlib import Path
 
 from selfheal.reporting.hooks import HealingRecord
+from selfheal.reporting.metrics import compute_metrics
+
+
+def _render_metrics(metrics: dict) -> str:
+    """渲染指标摘要区（成功率卡片 + 策略分布 + 根因分布）。"""
+    rate = metrics["success_rate"]
+    strategy_items = "".join(
+        f"<li>{html.escape(k)}：{v} 次</li>" for k, v in sorted(metrics["strategy_distribution"].items())
+    ) or "<li>（无）</li>"
+    rootcause_items = "".join(
+        f"<li>{html.escape(k)}：{v} 次</li>" for k, v in sorted(metrics["root_cause_distribution"].items())
+    ) or "<li>（无）</li>"
+    return f"""<div class="metrics">
+  <div class="card"><div class="num">{metrics['total']}</div><div class="label">自愈总数</div></div>
+  <div class="card"><div class="num">{metrics['success']}</div><div class="label">成功次数</div></div>
+  <div class="card"><div class="num">{rate:.0%}</div><div class="label">自愈成功率</div></div>
+</div>
+<div class="dist">
+  <div><h3>策略命中分布</h3><ul>{strategy_items}</ul></div>
+  <div><h3>根因分布</h3><ul>{rootcause_items}</ul></div>
+</div>"""
 
 
 def render_dashboard(records: list[HealingRecord]) -> str:
     """把自愈记录渲染为一张完整 HTML 页面（内嵌样式，零依赖）。"""
+    metrics = compute_metrics(records)
     rows: list[str] = []
     for rec in records:
         rows.append(
@@ -35,10 +57,18 @@ def render_dashboard(records: list[HealingRecord]) -> str:
   table {{ border-collapse: collapse; width: 100%; }}
   th, td {{ border: 1px solid #ccc; padding: 6px 10px; text-align: left; font-size: 13px; }}
   th {{ background: #f5f5f5; }}
+  .metrics {{ display: flex; gap: 16px; margin-bottom: 16px; }}
+  .card {{ border: 1px solid #ccc; border-radius: 8px; padding: 12px 24px; text-align: center; }}
+  .card .num {{ font-size: 28px; font-weight: bold; }}
+  .card .label {{ font-size: 13px; color: #666; }}
+  .dist {{ display: flex; gap: 32px; margin-bottom: 16px; }}
+  .dist h3 {{ font-size: 14px; margin: 0 0 6px; }}
+  .dist ul {{ margin: 0; padding-left: 18px; font-size: 13px; }}
 </style></head>
 <body>
-<h2>AI 自愈审计看板（v0）</h2>
-<p>共 {len(records)} 次自愈记录</p>
+<h2>AI 自愈看板（指标 + 审计）</h2>
+{_render_metrics(metrics)}
+<h3>自愈审计明细</h3>
 <table>
 <thead><tr><th>原定位器</th><th>新定位器</th><th>策略</th><th>置信度</th><th>根因</th><th>结果</th></tr></thead>
 <tbody>
@@ -51,5 +81,6 @@ def render_dashboard(records: list[HealingRecord]) -> str:
 def write_dashboard(records: list[HealingRecord], out_path: str | Path) -> Path:
     """把看板写入文件并返回路径。"""
     path = Path(out_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_dashboard(records), encoding="utf-8")
     return path

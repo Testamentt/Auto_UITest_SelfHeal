@@ -14,6 +14,15 @@ from pydantic import BaseModel
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "settings.yaml"
 
+# 加载本地 .env（已被 .gitignore 忽略，绝不提交）；不覆盖已存在的同名环境变量。
+# 未安装 python-dotenv 时静默跳过（此时仅从系统环境变量读取密钥）。
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+except ImportError:  # pragma: no cover - 取决于是否安装 python-dotenv
+    pass
+
 
 class BrowserConfig(BaseModel):
     """浏览器配置。
@@ -38,9 +47,9 @@ class LLMConfig(BaseModel):
 
     enabled: bool = True
     provider: str = "openai"
-    model: str = "gpt-4o-mini"
+    model: str = "deepseek-chat"
     api_key_env: str = "OPENAI_API_KEY"
-    base_url: str | None = None
+    base_url: str | None = "https://api.deepseek.com"
     temperature: float = 0.0
 
 
@@ -50,12 +59,15 @@ class HealingConfig(BaseModel):
     - enabled: 插件总开关。False 时 HealingPage 透传为原生行为，不触发任何修复。
     - on_uncertain: AI 不确定（置信度 < confidence_threshold）时的兜底策略（见 RULE.md 决策 D6）。
       use_fallback=用人工备用定位器（默认，CI 友好）；pause=交互模式下暂停等人工；fail=快速失败。
+    - early_accept_threshold: "早接受"阈值（T1 策略短路）。某策略置信度达到该值即立即采纳，
+      不再尝试后续（更贵的）策略，省 LLM/VLM 调用。应 > confidence_threshold。
     """
 
     enabled: bool = True
     strategy_order: list[str] = ["heuristic", "semantic", "visual"]
     knowledge_first: bool = True
     confidence_threshold: float = 0.6
+    early_accept_threshold: float = 0.85
     on_uncertain: Literal["use_fallback", "pause", "fail"] = "use_fallback"
 
 
