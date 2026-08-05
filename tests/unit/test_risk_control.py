@@ -26,7 +26,7 @@ class _FakeCollector:
 
 def _orch(settings: Settings, store: KnowledgeStore | None = None, url: str = "", dom: str | None = None):
     orch = SelfHealOrchestrator(page=None, settings=settings, knowledge=store or KnowledgeStore())
-    orch._collector = _FakeCollector(url, dom)
+    orch._assembler._collector = _FakeCollector(url, dom)
     return orch
 
 
@@ -65,9 +65,9 @@ def test_exclude_pattern_matching():
     settings = Settings()
     settings.healing.exclude_url_patterns = ["*://*/pay*"]
     orch = _orch(settings, url="https://x/pay")
-    assert orch._is_excluded("https://x/pay/step1") is True
-    assert orch._is_excluded("https://x/login") is False
-    assert orch._is_excluded("") is False
+    assert orch._assembler._is_excluded("https://x/pay/step1") is True
+    assert orch._assembler._is_excluded("https://x/login") is False
+    assert orch._assembler._is_excluded("") is False
 
 
 # --- T14 dry-run 仅报告不执行 ---

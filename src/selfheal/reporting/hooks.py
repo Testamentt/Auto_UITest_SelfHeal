@@ -7,6 +7,10 @@ record() 逐条记录并附 Allure；metrics() 聚合自愈指标（T3 指标看
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # 仅类型检查时导入，避免 metrics → hooks 循环
+    from selfheal.reporting.metrics import MetricsSnapshot
 
 
 @dataclass
@@ -32,8 +36,8 @@ class HealingReporter:
         self.records.append(rec)
         self._attach_allure(rec)
 
-    def metrics(self) -> dict:
-        """聚合自愈记录指标（T3）：总数/成功率/策略分布/根因分布。"""
+    def metrics(self) -> MetricsSnapshot:
+        """聚合自愈记录指标（T3）：总数/成功率/策略分布/根因分布（类型化快照，A6）。"""
         from selfheal.reporting.metrics import compute_metrics  # 惰性导入避免循环
 
         return compute_metrics(self.records)

@@ -11,24 +11,26 @@ import html
 from pathlib import Path
 
 from selfheal.reporting.hooks import HealingRecord
-from selfheal.reporting.metrics import compute_metrics
+from selfheal.reporting.metrics import MetricsSnapshot, compute_metrics
 
 
-def _render_metrics(metrics: dict) -> str:
+def _render_metrics(metrics: MetricsSnapshot) -> str:
     """渲染指标摘要区（成功率卡片 + 真自愈/flaky + 策略分布 + 根因分布）。"""
-    rate = metrics["success_rate"]
+    rate = metrics.success_rate
     strategy_items = "".join(
-        f"<li>{html.escape(k)}：{v} 次</li>" for k, v in sorted(metrics["strategy_distribution"].items())
+        f"<li>{html.escape(k)}：{v} 次</li>"
+        for k, v in sorted(metrics.strategy_distribution.items())
     ) or "<li>（无）</li>"
     rootcause_items = "".join(
-        f"<li>{html.escape(k)}：{v} 次</li>" for k, v in sorted(metrics["root_cause_distribution"].items())
+        f"<li>{html.escape(k)}：{v} 次</li>"
+        for k, v in sorted(metrics.root_cause_distribution.items())
     ) or "<li>（无）</li>"
     return f"""<div class="metrics">
-  <div class="card"><div class="num">{metrics['total']}</div><div class="label">自愈总数</div></div>
-  <div class="card"><div class="num">{metrics['success']}</div><div class="label">成功次数</div></div>
+  <div class="card"><div class="num">{metrics.total}</div><div class="label">自愈总数</div></div>
+  <div class="card"><div class="num">{metrics.success}</div><div class="label">成功次数</div></div>
   <div class="card"><div class="num">{rate:.0%}</div><div class="label">自愈成功率</div></div>
-  <div class="card"><div class="num">{metrics['verified']}</div><div class="label">真自愈 (verified)</div></div>
-  <div class="card"><div class="num">{metrics['flaky']}</div><div class="label">flaky 侥幸通过</div></div>
+  <div class="card"><div class="num">{metrics.verified}</div><div class="label">真自愈 (verified)</div></div>
+  <div class="card"><div class="num">{metrics.flaky}</div><div class="label">flaky 侥幸通过</div></div>
 </div>
 <div class="dist">
   <div><h3>策略命中分布</h3><ul>{strategy_items}</ul></div>
