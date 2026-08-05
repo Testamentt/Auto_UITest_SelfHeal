@@ -92,11 +92,13 @@ class KnowledgeStore:
         return results
 
     def bump_hit(self, repair_key: str) -> None:
-        """命中递增（热度 / 衰减用）。"""
+        """命中递增（热度 / 衰减用）；last_hit_at 用真实 UTC 时间戳（与 SQLite 端一致，B6）。"""
+        from datetime import datetime, timezone
+
         for case in self._repairs:
             if case.repair_key == repair_key:
                 case.hit_count += 1
-                case.last_hit_at = "now"
+                case.last_hit_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
                 return
 
     def set_verified(self, repair_key: str, verified: bool) -> None:

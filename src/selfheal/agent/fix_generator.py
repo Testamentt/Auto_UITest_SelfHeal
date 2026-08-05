@@ -188,10 +188,20 @@ class FixGenerator:
                 embedding=self._embedding,
                 page_fingerprint=context.page_fingerprint,
                 element_context=context.element_context,
+                review_writer=self._review_writer,  # B6：L3 人审清单收敛出口
             )
         if strategy_cls is VisualStrategy:
             return strategy_cls(client=self._counting_client(self._vision_client, "vlm_calls"))
         return strategy_cls()
+
+    def _review_writer(self, **kwargs) -> None:
+        """L3 人审清单写出（B6 收敛出口）：策略不直连 reporting，由编排侧统一落盘。best-effort。"""
+        try:
+            from selfheal.reporting.fix_proposals import append_review_proposal
+
+            append_review_proposal(**kwargs)
+        except Exception:  # noqa: BLE001 - 人审清单写出失败不阻塞流水线
+            logger.warning("L3 人审清单写出失败", exc_info=True)
 
     def _counting_client(self, client, key: str):
         """T17：计数代理（委托模块级 counting_proxy，与 orchestrator 共享同一实现）。"""

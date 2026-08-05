@@ -1,9 +1,12 @@
 """智能诊断（v1：规则式，无 LLM）。
 
-Phase 1 不接入大模型，用轻量规则对失败根因做粗分类，供报告与策略参考：
+Phase 1 不接入大模型，用轻量规则对失败根因做粗分类，供报告与策略参考。
+注意：**规则式实际只产出两个值**——
 - not_found：选择器主键在 DOM 中完全不存在（最常见，UI 改版导致）。
-- not_visible：主键存在但当前不可见（可能被遮挡/隐藏）。
-- unknown：无法仅凭 DOM 判定（交后续策略尝试修复）。
+- unknown：主键出现在 DOM 中，无法仅凭静态 DOM 判定（可能被遮挡/隐藏/仍在）。
+
+not_visible / covered / timeout 需运行时信息（is_visible / 交互状态），静态规则判不出，
+由 LLMDiagnoser（Phase 2）在规则式之上精判（白名单 5 值）。
 
 Phase 2 的 LLM 诊断（diagnose_llm.LLMDiagnoser）继承本类，
 本规则式保留为降级基底（LLM 不可用时回退到它）。
