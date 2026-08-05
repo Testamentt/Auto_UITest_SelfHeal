@@ -1,8 +1,8 @@
 # 合并问题清单 + 分阶段修改方案（定稿）
 
 > 来源：2026-08-05 全项目复盘 + 两轮源码核实。活文档，随实施勾选更新（R5）。
-> 状态：**Phase 1（正确性修复 P1–P4）全部完成 ✅**：P1（C1+C2+C6）· P2（C3+B2+B4+C7）· P3（B1）· P4（C4）。
-> 下一步：Phase 2（架构收敛 A6→A2→A1）。实施进度见「五、下一步计划」。
+> 状态：**Phase 1 完成 ✅（P1–P4 正确性修复）· Phase 2 完成 ✅（P5 架构收敛 A6→A2→A1）**。
+> 下一步：Phase 3（P6 清理 A5+A3）→ Phase 4（P7 展示与一致性）。实施进度见「五、下一步计划」。
 
 ## 当前目标
 
@@ -97,10 +97,11 @@
 
 ### Phase 2 · 架构收敛（吸收 Phase 1，顺序 A6→A2→A1）
 
-**P5 · 架构收敛（A6 + A2 + A1）**
-- A6：`reporting/metrics.py` 定义 `MetricsSnapshot`（dataclass frozen 或 pydantic），`compute_metrics` 返回它，dashboard 改点属性
-- A2：`agent/context.py` 定义不可变 `HealingContext`，替换 orchestrator 实例状态与参数列表
-- A1（T12）：run() 拆 `ContextAssembler` / `FixGenerator` / `PersistenceHandler`，orchestrator 降 Router
+**P5 · 架构收敛（A6 + A2 + A1）** ✅ 已完成 2026-08-05
+- **A6**：`reporting/metrics.py` 定义 `@dataclass(frozen=True) MetricsSnapshot`，`compute_metrics` 返回它；dashboard/hooks 改点属性访问（`metrics.total`）；测试断言同步
+- **A2**：新增 `agent/context.py`——`HealingContext`（不可变，scene/selector/description/指纹/element_context）替代 orchestrator 的 `_page_fingerprint`/`_current_ctx` 实例状态；`HealOutcome`/`FixProposal` 也迁入（独立 DTO 模块，打破 orchestrator ↔ 协作者循环导入）
+- **A1（T12）**：`run()` 拆为三个协作者 + Router——`ContextAssembler`（采集/豁免/指纹/元素上下文，agent/context.py）、`FixGenerator`（知识库/诊断/策略链，agent/fix_generator.py）、`PersistenceHandler`（阈值路由/暂存/commit/沉淀/审计，agent/persistence.py）；orchestrator 降为 Router（assemble→generate→resolve），保留薄委托器兼容既有内部调用测试
+- 测试：`orch._collector` 注入点改为 `orch._assembler._collector`（4 个测试文件）；`orch._emit_proposal`/`_record`/`_is_excluded`/`_pending` 相应指向协作者；173 单测 + e2e 7 + 真实 LLM/VLM 冒烟全过
 
 ### Phase 3 · 低风险清理
 

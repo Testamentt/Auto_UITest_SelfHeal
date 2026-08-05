@@ -64,9 +64,9 @@ def test_metrics_verified_stats():
         HealingRecord("#c", None, "heuristic", 0.3, "not_found", False, False),
     ]
     m = compute_metrics(records)
-    assert m["verified"] == 1
-    assert m["flaky"] == 2
-    assert m["verified_rate"] == 0.5  # 成功 2 条中 1 条真修复
+    assert m.verified == 1
+    assert m.flaky == 2
+    assert m.verified_rate == 0.5  # 成功 2 条中 1 条真修复
 
 
 def test_record_verified_true_when_original_still_broken():
@@ -74,7 +74,7 @@ def test_record_verified_true_when_original_still_broken():
     page = _FakePage(present={'[data-testid="login"]'})
     orch = SelfHealOrchestrator(page, Settings(), knowledge=KnowledgeStore())
     outcome = HealOutcome(success=True, new_selector='[data-testid="login"]', confidence=0.9, strategy="heuristic")
-    orch._record("#old", outcome)
+    orch._persister._record("#old", outcome)
     assert orch._reporter.records[0].verified is True
 
 
@@ -83,7 +83,7 @@ def test_record_verified_false_when_flaky():
     page = _FakePage(present={'[data-testid="login"]', "#old"})
     orch = SelfHealOrchestrator(page, Settings(), knowledge=KnowledgeStore())
     outcome = HealOutcome(success=True, new_selector='[data-testid="login"]', confidence=0.9, strategy="heuristic")
-    orch._record("#old", outcome)
+    orch._persister._record("#old", outcome)
     assert orch._reporter.records[0].verified is False
 
 
@@ -145,7 +145,7 @@ def test_fix_proposal_written_on_heal(monkeypatch, tmp_path):
     settings.healing.fix_proposals = True
     store = KnowledgeStore()
     orch = SelfHealOrchestrator(None, settings, knowledge=store)
-    orch._collector = _FakeCollector("https://x/login", LOGIN_DOM)
+    orch._assembler._collector = _FakeCollector("https://x/login", LOGIN_DOM)
     out = orch.run("#old", description="登录")
     assert out.success
     orch.commit_pending(out.attempt_id)  # B1：引擎层重试成功后提交
@@ -162,7 +162,7 @@ def test_fix_proposal_disabled_by_default():
     settings = Settings()
     store = KnowledgeStore()
     orch = SelfHealOrchestrator(None, settings, knowledge=store)
-    orch._collector = _FakeCollector("https://x/login", LOGIN_DOM)
+    orch._assembler._collector = _FakeCollector("https://x/login", LOGIN_DOM)
     out = orch.run("#old", description="登录")
     assert out.success
     orch.commit_pending(out.attempt_id)  # B1：引擎层重试成功后提交
