@@ -85,3 +85,11 @@ class BasePage:
 - **不破坏自愈插件**：BasePage 只是持有 page 接口，不自知 HealingPage；重构 Demo/PopupPage 必须保持既有 e2e 通过。
 - B2 多浏览器需额外内核下载（网络环境），失败不阻塞 B1/B3。
 - 断言层（软断言等）本次不纳入，避免范围膨胀；后续需要再评估。
+
+---
+
+## 实施进度
+
+- ✅ **B1 BasePage**（2026-08-05）：`engine/base_page.py`（url/open/locator，healing 增强参数按需透传）；DemoPage/PopupPage 重构继承 BasePage；`test_base_page.py` 5 项单测；**重构后 e2e 7 项零回归**。
+- ✅ **B3 fixtures 标准化**（2026-08-05）：conftest 增 `page`（函数级原生页，覆盖 pytest-playwright 自带，用自研 BrowserManager）+ `pom` 工厂；`healing_page`/`disabled_page` 保持兼容。
+- ⬜ B5 用例文档 · ⬜ B4 数据驱动 · ⬜ B2 浏览器增强（选型已记：视频回放 = Playwright Trace）

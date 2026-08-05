@@ -66,7 +66,7 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 - 修复写回代码的人审清单（PR 化建议）。
 - 看板区分"真自愈 vs flaky 侥幸通过"。
 - **网络日志 / trace 采集**（见 TODO T11）：当前 `collector` 只采集截图 + DOM，`Scene.network_logs`/`trace_path` 为占位。
-- **视频回放**（见 roadmap Phase 4-5）：当前无录制实现，为规划能力。
+- **视频回放**（见 roadmap Phase 4-5）：**选型 = Playwright Trace**（`context.tracing` 录制 → `playwright show-trace` 交互式步骤回放，含 DOM + 操作时间线）；当前无录制实现，为规划能力。
 
 ## 已定选型与遗留 TBD
 
