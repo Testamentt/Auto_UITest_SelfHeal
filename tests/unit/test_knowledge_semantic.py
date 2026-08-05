@@ -3,7 +3,7 @@
 import pytest
 
 from selfheal.agent.dom import compute_page_fingerprint, compute_repair_key
-from selfheal.knowledge.schema import RepairCase
+from selfheal.knowledge.schema import RepairCase, RepairQuery
 from selfheal.knowledge.sqlite_store import SqliteKnowledgeStore
 from selfheal.knowledge.store import KnowledgeStore
 
@@ -48,6 +48,19 @@ def test_repair_key_sibling_index_distinguishes():
     a = compute_repair_key("pg1", "html>body>div>button:nth-of-type(1)")
     b = compute_repair_key("pg1", "html>body>div>button:nth-of-type(2)")
     assert a != b
+
+
+def test_query_facade_l1_then_legacy(tmp_path):
+    """A3 门面：query 按 L1 精确 → 旧式检索优先级返回候选；同一案例不重复。"""
+    store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
+    store.add_repair(_case(original="#a", new="#l1-new"))
+    q = RepairQuery(original_selector="#a", repair_key=compute_repair_key("pg1", "html>body>button"))
+    results = store.query(q)
+    assert [(c.new_selector, s) for c, s in results] == [("#l1-new", "l1")]  # 同一案例去重
+    # 无 L1 命中 → 仅旧式检索
+    q2 = RepairQuery(original_selector="#a", repair_key=compute_repair_key("pg9", "x"))
+    results2 = store.query(q2)
+    assert [(c.new_selector, s) for c, s in results2] == [("#l1-new", "legacy")]
 
 
 def test_page_fingerprint_distinct():

@@ -1,8 +1,8 @@
 # 合并问题清单 + 分阶段修改方案（定稿）
 
 > 来源：2026-08-05 全项目复盘 + 两轮源码核实。活文档，随实施勾选更新（R5）。
-> 状态：**Phase 1 完成 ✅（P1–P4 正确性修复）· Phase 2 完成 ✅（P5 架构收敛 A6→A2→A1）**。
-> 下一步：Phase 3（P6 清理 A5+A3）→ Phase 4（P7 展示与一致性）。实施进度见「五、下一步计划」。
+> 状态：**Phase 1 完成 ✅（P1–P4）· Phase 2 完成 ✅（P5 A6→A2→A1）· Phase 3 完成 ✅（P6 A5+A3）**。
+> 下一步：Phase 4（P7 展示与一致性 C5/B3/B5/B6）。实施进度见「五、下一步计划」。
 
 ## 当前目标
 
@@ -105,9 +105,10 @@
 
 ### Phase 3 · 低风险清理
 
-**P6 · 清理（A5 + 评审#6 + A3）**
-- A5 + #6：dom.py 拆 `dom/` 包（parser/fingerprint/selector_builder/extractor），popup_guard 重复 selector 统一收编，保留 re-export
-- A3：KnowledgeBackend 收敛 `query(QueryRequest)`（内部 L1→legacy 择优），阈值/缓存验证留编排器；`find_semantic` 仍由语义策略直调
+**P6 · 清理（A5 + 评审#6 + A3）** ✅ 已完成 2026-08-05
+- **A5 + 评审#6**：`agent/dom.py`（292 行）拆为 `agent/dom/` 包——`parser.py`（HTMLParser/parse_interactive_elements）、`selector_builder.py`（build_stable_selector）、`fingerprint.py`（dom/page/repair_key 哈希）、`extractor.py`（元素上下文三级回退）；`dom/__init__.py` re-export 保持 `from selfheal.agent.dom import X` 兼容；`popup_guard.py` 的重复 `_stable_selector` 改为投影 dom.Element 复用共享 `build_stable_selector`（补齐 text/aria 兜底）
+- **A3（折中）**：`knowledge/schema.py` 新增 `RepairQuery`；`KnowledgeBackend` Protocol + 双 store 新增 `query(RepairQuery) -> list[(RepairCase, source)]`（L1 精确 → 旧式检索按优先级，按 (new_selector, confidence) 去重）；`FixGenerator.lookup_knowledge` 改走门面，**置信度/缓存验证仍留在调用方**；`find_semantic` 仍由语义策略直调
+- 测试：`test_query_facade_l1_then_legacy`（L1 优先/去重/无 L1 走 legacy）+ 174 单测 + e2e 6 + ruff 全过
 
 ### Phase 4 · 展示与一致性
 

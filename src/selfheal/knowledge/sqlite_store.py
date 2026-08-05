@@ -12,7 +12,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from selfheal.knowledge.schema import PopupFeature, RepairCase
+from selfheal.knowledge.schema import PopupFeature, RepairCase, RepairQuery
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS repairs (
@@ -117,6 +117,24 @@ class SqliteKnowledgeStore:
             "SELECT * FROM repairs WHERE repair_key = ? LIMIT 1", (repair_key,)
         ).fetchone()
         return self._row_to_repair(row) if row else None
+
+    def query(self, q: RepairQuery) -> list[tuple[RepairCase, str]]:
+        """按优先级返回候选（L1 精确命中优先，其次旧式 selector+指纹）；可能为空列表。
+
+        去重按 (new_selector, confidence)：同一案例经两条路径取回时不重复追加。
+        """
+        results: list[tuple[RepairCase, str]] = []
+        if q.repair_key:
+            case = self.find_by_repair_key(q.repair_key)
+            if case is not None:
+                results.append((case, "l1"))
+        legacy = self.find_repair(q.original_selector, q.dom_fingerprint)
+        if legacy is not None and not any(
+            (c.new_selector, c.confidence) == (legacy.new_selector, legacy.confidence)
+            for c, _s in results
+        ):
+            results.append((legacy, "legacy"))
+        return results
 
     def find_semantic(
         self,

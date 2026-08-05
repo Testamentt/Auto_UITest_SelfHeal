@@ -54,6 +54,11 @@ class _ThrowingStore(KnowledgeBackend):
     def find_repair(self, original_selector, dom_fingerprint=None):
         return None
 
+    def query(self, q):
+        """A3 门面：委托 find_repair（此 fake 无 L1 命中）。"""
+        case = self.find_repair(q.original_selector, q.dom_fingerprint)
+        return [(case, "legacy")] if case else []
+
     def find_popup(self, signature):
         return None
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from selfheal.agent.dom import Element, build_stable_selector
 from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.knowledge.schema import PopupFeature
 
@@ -149,14 +150,18 @@ class PopupGuard:
 
     @staticmethod
     def _stable_selector(el: Locator) -> str | None:
-        """为关闭按钮生成可复用的稳定定位器（data-testid 优先，其次 id）。"""
+        """为关闭按钮生成可复用的稳定定位器（复用 dom 公共工具：data-testid > id > 文本 > aria）。"""
         try:
-            testid = el.get_attribute("data-testid")
-            if testid:
-                return f'[data-testid="{testid}"]'
-            el_id = el.get_attribute("id")
-            if el_id:
-                return f"#{el_id}"
+            # 把 live Locator 的关键属性投影为 dom.Element，复用共享的 build_stable_selector（评审 #6 去重）。
+            # tag 不参与选择器生成（build_stable_selector 只用属性/text/aria），传占位。
+            return build_stable_selector(
+                Element(
+                    "",
+                    [
+                        ("data-testid", el.get_attribute("data-testid")),
+                        ("id", el.get_attribute("id")),
+                    ],
+                )
+            )
         except Exception:  # noqa: BLE001 - 读取属性失败则无法沉淀
-            pass
-        return None
+            return None

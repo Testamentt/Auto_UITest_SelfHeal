@@ -41,3 +41,16 @@ class PopupFeature:
     signature: str  # 识别特征（文本 / 结构指纹）
     dismiss_selector: str  # 关闭按钮定位器
     category: str = "generic"  # permission / ad / system ...
+
+
+@dataclass(frozen=True)
+class RepairQuery:
+    """一次修复案例检索请求（A3 门面）。
+
+    repair_key 提供时优先 L1 精确命中；未提供或未命中则按 original_selector + dom_fingerprint
+    旧式检索。置信度/缓存验证等编排决策保留在调用方（FixGenerator）。
+    """
+
+    original_selector: str
+    dom_fingerprint: str | None = None
+    repair_key: str | None = None
