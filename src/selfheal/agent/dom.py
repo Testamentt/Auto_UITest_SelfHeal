@@ -20,8 +20,9 @@ _INTERACTIVE_TAGS = {"button", "input", "a", "select", "textarea"}
 
 # live evaluate 提取失败时的 JS 兜底：取兄弟文本上限 / 标签路径深度
 # 用占位符 + .replace 注入常量（避免 %-format / f-string 与 JS 花括号冲突）
+# v2（2026-08-05）：路径深度 4→8 且带 nth-of-type 索引，支撑 L1 键去文本化后仍能区分同路径兄弟
 _MAX_SIBLINGS = 5
-_MAX_PATH_DEPTH = 4
+_MAX_PATH_DEPTH = 8
 
 _LIVE_JS = (
     """(sel) => {
@@ -31,7 +32,15 @@ _LIVE_JS = (
     const path = [];
     let node = el;
     while (node && node.tagName && path.length < _MAX_DEPTH) {
-      path.unshift(node.tagName.toLowerCase());
+      const tag = node.tagName.toLowerCase();
+      // nth-of-type 索引（同类兄弟序号，从 1 起）：区分同路径兄弟，供 L1 键防碰撞
+      let index = 1;
+      let sib = node.previousElementSibling;
+      while (sib) {
+        if (sib.tagName && sib.tagName.toLowerCase() === tag) index += 1;
+        sib = sib.previousElementSibling;
+      }
+      path.unshift(`${tag}:nth-of-type(${index})`);
       node = node.parentElement;
     }
     const siblings = [];
@@ -187,14 +196,17 @@ def compute_page_fingerprint(url: str, dom: str | None) -> str:
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
-def compute_repair_key(page_fingerprint: str, element_text: str, tag_path: str) -> str:
-    """L1 精确命中键 = md5(页面指纹 + 元素文本 + 标签路径)。
+def compute_repair_key(page_fingerprint: str, tag_path: str) -> str:
+    """L1 精确命中键 = md5(page_fingerprint|tag_path)，带 v2 版本前缀。
 
-    确定性哈希（弃用内置 hash()）；不用失效的 selector 字符串——ID 变化但文本/结构
-    不变时仍能命中历史修复，L1 硬短路。
+    v2 变更（2026-08-05 决策）：
+    - tag_path 含 nth-of-type 索引（如 html>body>div:nth-of-type(2)>button:nth-of-type(1)），
+      区分同路径兄弟，防 L1 键碰撞；
+    - 不再包含元素文本——文案变化（"提交订单"→"提交"）不破键；结构变动 → L1 miss 交 L2 补位。
+    版本前缀（v2:）防止旧库（v1 含 text 的键）残留误命中。
     """
-    raw = f"{page_fingerprint}|{element_text}|{tag_path}"
-    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+    raw = f"{page_fingerprint}|{tag_path}"
+    return "v2:" + hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
 def _live_element_context(page, failed_selector: str) -> dict | None:
@@ -241,13 +253,18 @@ def _snapshot_element_context(dom_snapshot: str, failed_selector: str) -> dict |
         return None
 
     # 标签路径摘要：手动向上走，最多 _MAX_PATH_DEPTH 层（跳过 bs4 的 [document] 根）
+    # 带 nth-of-type 索引，与 live JS 路径格式一致（L1 键防碰撞、两端可互换）
     parts: list[str] = []
     node = el
     while node is not None and len(parts) < _MAX_PATH_DEPTH:
         name = getattr(node, "name", None)
         if name in (None, "[document]"):
             break
-        parts.insert(0, str(name).lower())
+        index = 1
+        for sib in node.previous_siblings:  # 同类兄弟序号（从 1 起），过滤文本节点
+            if getattr(sib, "name", None) == name:
+                index += 1
+        parts.insert(0, f"{name}:nth-of-type({index})")
         node = node.parent
     siblings: list[str] = []
     if el.parent is not None:

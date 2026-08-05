@@ -31,7 +31,9 @@ def test_hit_returns_candidate():
     cand = VisualStrategy(client=fake).repair(SCENE, "#old", description="登录按钮")
     assert isinstance(cand, RepairCandidate)
     assert cand.selector == _REAL
-    assert cand.confidence == 0.88
+    # C4：VLM 置信度 0.88 × (0.4 + 0.6×L2)。该候选 L2≈0.95（描述"登录按钮"与 aria-label 强匹配）
+    # → final = 0.88 × 0.97 = 0.854（不再直接采用 VLM 自报值，防虚高）
+    assert cand.confidence == 0.854
     assert fake.calls and fake.calls[0][0] == b"fake-png-bytes"  # 截图已传给 VLM
 
 

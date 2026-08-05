@@ -36,6 +36,28 @@ def _tokenize(text: str | None) -> set[str]:
     return {t.lower() for t in _TOKEN_RE.findall(text)}
 
 
+def score_selector(
+    dom_snapshot: str | None,
+    selector: str,
+    original_selector: str,
+    description: str | None,
+) -> float:
+    """跨策略一致性校验（C4）：给一个已生成的稳定定位器算一次 L2 启发式分数（0~1）。
+
+    供视觉策略在"VLM 选中候选"后交叉验证：若 L2 分数也很低，说明该候选与
+    「原选择器 + 描述」的意图严重偏离，应降权/拒绝（防静默误修、置信度自报虚高）。
+    反查不到该 selector → 返回 0.0（保守拒绝）。
+    """
+    if not dom_snapshot:
+        return 0.0
+    intent_tokens = _tokenize(original_selector) | _tokenize(description)
+    best = 0.0
+    for el in parse_interactive_elements(dom_snapshot):
+        if build_stable_selector(el) == selector:
+            best = max(best, _score(el, intent_tokens, description))
+    return best
+
+
 def _score(el: Element, intent_tokens: set[str], description: str | None) -> float:
     """计算候选元素与意图的相似度，归一化到 [0, 1]。"""
     # 1) 强信号：描述与候选文本/aria-label 互为子串
