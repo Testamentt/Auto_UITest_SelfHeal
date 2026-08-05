@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 
 from selfheal.config import Settings, load_settings
@@ -29,6 +31,20 @@ def pytest_addoption(parser):
         dest="selfheal",
         action="store_false",
         help="强制关闭自愈，回退原生 Playwright 行为",
+    )
+    # 注意：pytest 自带 --trace（进入 pdb），故本框架用 --trace-healing 避免冲突
+    group.addoption(
+        "--trace-healing",
+        dest="trace_healing",
+        action="store_true",
+        default=None,
+        help="录制 Playwright trace（优先于配置，用于视频回放）",
+    )
+    group.addoption(
+        "--no-trace-healing",
+        dest="trace_healing",
+        action="store_false",
+        help="不录制 trace",
     )
 
 
@@ -55,12 +71,37 @@ def browser_manager(settings):
 
 
 @pytest.fixture
-def page(browser_manager):
+def context(browser_manager, settings, request):
+    """函数级浏览器上下文（基座标准，见 docs/plans/2026-08-05-base-framework.md B3）。
+
+    开启 trace 时录制；teardown 保存 trace 并关闭上下文（修复 context 泄漏，评审 #25）。
+    trace 开关：CLI --trace-healing/--no-trace-healing > settings.browser.trace。
+    """
+    from pathlib import Path
+
+    cli = request.config.getoption("trace_healing")
+    trace_enabled = settings.browser.trace if cli is None else cli
+    ctx = browser_manager.new_context()
+    if trace_enabled:
+        ctx.tracing.start(screenshots=True, snapshots=True)
+    yield ctx
+    if trace_enabled:
+        trace_dir = Path(settings.browser.trace_dir)
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        safe = request.node.name.replace("/", "_").replace("\\", "_")
+        # trace 保存失败不影响用例结果
+        with contextlib.suppress(Exception):
+            ctx.tracing.stop(path=str(trace_dir / f"trace-{safe}.zip"))
+    ctx.close()
+
+
+@pytest.fixture
+def page(context):
     """函数级原生页面（基座标准，见 docs/plans/2026-08-05-base-framework.md B3）。
 
     有意覆盖 pytest-playwright 自带的 page fixture——本框架用自研 BrowserManager 控制生命周期。
     """
-    return browser_manager.new_page()
+    return context.new_page()
 
 
 @pytest.fixture
@@ -78,19 +119,17 @@ def pom(page):
 
 
 @pytest.fixture
-def healing_page(settings, knowledge, browser_manager, request):
+def healing_page(settings, knowledge, context, request):
     """自愈页面插件。开关：CLI > settings.healing.enabled。"""
     from selfheal.engine.healing_locator import HealingPage  # 惰性导入
 
     cli = request.config.getoption("selfheal")
-    page = browser_manager.new_page()
-    yield HealingPage(page, settings, knowledge=knowledge, enabled_override=cli)
+    yield HealingPage(context.new_page(), settings, knowledge=knowledge, enabled_override=cli)
 
 
 @pytest.fixture
-def disabled_page(settings, browser_manager):
+def disabled_page(settings, context):
     """强制关闭自愈的页面，用于验证"关闭=原生行为"。"""
     from selfheal.engine.healing_locator import HealingPage  # 惰性导入
 
-    page = browser_manager.new_page()
-    yield HealingPage(page, settings, enabled_override=False)
+    yield HealingPage(context.new_page(), settings, enabled_override=False)

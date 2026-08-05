@@ -6,6 +6,8 @@ browser:
   channel: chrome          # chrome=系统已装 Chrome（免下载内核）/ chromium=Playwright 自带内核
   slow_mo: 0               # 毫秒，演示时可适当调大
   viewport: { width: 1280, height: 800 }
+  trace: false             # 录制 Playwright trace（Phase 4 视频回放选型）；用 playwright show-trace 回放
+  trace_dir: reports/traces
 
 # LLM（已定选型，见 docs/architecture.md「已定选型」）：DeepSeek OpenAI 兼容端点
 llm:

@@ -1,12 +1,13 @@
 """Playwright 浏览器封装。
 
-统一管理浏览器/上下文/页面的生命周期，并在步骤执行失败时触发采集与自愈。
-TODO: 接入 config.BrowserConfig；在定位失败处调用 agent.orchestrator。
+统一管理浏览器 / 上下文 / 页面的生命周期。BrowserConfig（headless/channel/slow_mo/viewport）已接入。
 """
 
 from __future__ import annotations
 
-from playwright.sync_api import Browser, Page, Playwright, sync_playwright
+from typing import Any
+
+from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
 
 from selfheal.config import Settings
 
@@ -29,10 +30,16 @@ class BrowserManager:
         self._browser = self._pw.chromium.launch(**launch_kwargs)
         return self
 
-    def new_page(self) -> Page:
+    def new_context(self, **kwargs: Any) -> BrowserContext:
+        """创建浏览器上下文（可传 record_video/trace 等 Playwright context 参数）。"""
         assert self._browser is not None, "浏览器尚未启动，请先进入上下文"
-        ctx = self._browser.new_context(viewport=self._settings.browser.viewport)
-        return ctx.new_page()
+        opts: dict[str, Any] = {"viewport": self._settings.browser.viewport}
+        opts.update(kwargs)
+        return self._browser.new_context(**opts)
+
+    def new_page(self) -> Page:
+        """为便捷创建新上下文 + 页面（每调用一个独立 context，调用方负责关闭）。"""
+        return self.new_context().new_page()
 
     def __exit__(self, exc_type, exc, tb) -> None:
         if self._browser:
