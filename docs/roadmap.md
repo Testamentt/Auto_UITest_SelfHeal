@@ -1,12 +1,13 @@
 # 项目路线图（Roadmap）
 
 > **活文档**：随进展同步更新，不是快照（见 `RULE.md` R5）。
-> 最后更新：2026-08-04 · 当前阶段：**Phase 3 已完成，准备进入 Phase 4**
-> 关联文档：Phase 3 评审 `docs/reviews/2026-08-04-phase3-retrospective.md` · 优化 TODO `docs/TODO.md`
+> 最后更新：2026-08-05 · 当前阶段：**Phase 4 高优先级 T1–T4 已完成，剩展示包装 / 风险控制**
+> 关联文档：评审 `docs/reviews/2026-08-04-architecture-review.md` · 优化 TODO `docs/TODO.md`
 
 ## 当前目标
 
-**Phase 4 —— 证据与指标（据 Phase 3 评审调整）**：先跑通真实模型并留存证据（T2）、做出自愈指标看板（T3）、修策略短路（T1）与二次自愈（T4），再做展示包装（视频回放 / CI / README）。详见 `docs/TODO.md`。
+**Phase 4 收尾 —— 展示包装与风险控制**：视频回放 / CI 产物上传 / README 打磨（⬜）；风险控制 T13–T17（⬜）。
+T1 策略短路、T2 真实模型+证据、T3 指标看板、T4 二次自愈/缓存验证均已完成。
 Phase 1（最小闭环）、Phase 2（AI 大脑）、Phase 3（沉淀与进阶）均已完成并通过全量测试。
 
 ## 关键约束
