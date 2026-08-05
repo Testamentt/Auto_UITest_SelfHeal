@@ -20,10 +20,15 @@ def compute_metrics(records: list[HealingRecord]) -> dict:
             "success_rate": float,            # 成功率 [0,1]（total=0 时为 0.0）
             "strategy_distribution": dict,    # 策略 -> 次数
             "root_cause_distribution": dict,  # 根因 -> 次数
+            "verified": int,                  # T16 真自愈数（原定位器确已失效）
+            "flaky": int,                     # T16 flaky 侥幸通过数（失败瞬时）
+            "verified_rate": float,           # T16 真自愈率 [0,1]（成功中真修复占比）
         }
     """
     total = len(records)
     success = sum(1 for r in records if r.success)
+    verified = sum(1 for r in records if r.verified)
+    flaky = sum(1 for r in records if not r.verified)
     strategy_dist: dict[str, int] = {}
     rootcause_dist: dict[str, int] = {}
     for r in records:
@@ -37,4 +42,7 @@ def compute_metrics(records: list[HealingRecord]) -> dict:
         "success_rate": (success / total) if total else 0.0,
         "strategy_distribution": strategy_dist,
         "root_cause_distribution": rootcause_dist,
+        "verified": verified,
+        "flaky": flaky,
+        "verified_rate": (verified / success) if success else 0.0,
     }

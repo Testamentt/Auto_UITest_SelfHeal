@@ -17,11 +17,16 @@ class HealingRecord:
     confidence: float
     root_cause: str | None
     success: bool
+    # T16：真自愈 vs flaky 侥幸通过。True=原定位器确已失效（真修复）；
+    # False=修复后原定位器已恢复（失败是瞬时的，勿计为真修复）。
+    verified: bool = True
 
 
 class HealingReporter:
     def __init__(self) -> None:
         self.records: list[HealingRecord] = []
+        # T17：LLM / VLM 调用计数（估算费用用；策略短路省下的调用不计数）
+        self.stats: dict[str, int] = {}
 
     def record(self, rec: HealingRecord) -> None:
         self.records.append(rec)
@@ -32,6 +37,12 @@ class HealingReporter:
         from selfheal.reporting.metrics import compute_metrics  # 惰性导入避免循环
 
         return compute_metrics(self.records)
+
+    def cost_summary(self) -> dict:
+        """T17：按 LLM/VLM 调用计数估算费用（默认单价，可覆盖）。"""
+        from selfheal.reporting.fix_proposals import estimate_cost  # 惰性导入避免循环
+
+        return estimate_cost(self.stats.get("llm_calls", 0), self.stats.get("vlm_calls", 0))
 
     def _attach_allure(self, rec: HealingRecord) -> None:
         try:
