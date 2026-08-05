@@ -3,8 +3,8 @@
 
 用可控 fake page + 临时 SQLite 纯逻辑、确定性演示三类命中：
   1) 首次修复并沉淀 —— 旧 UI 改版、旧定位器失效，启发式凭描述重新定位 → 知识沉淀（含向量/指纹）。
-  2) L1 精确命中复用 —— 同场景再次失败 → repair_key 硬短路，不跑策略直接复用。
-  3) L3 语义向量检索 —— 结构微变（按钮移入表单，标签路径变了 → L1 键不等）→ 语义相似命中，打印 sim。
+  2) 知识库复用 —— 同场景再次失败 → 知识库命中（静态上下文走旧式精确检索，不跑策略）。
+  3) L3 语义向量检索 —— 结构微变（按钮移入表单，标签路径变了 → 结构键不等）→ 语义相似命中，打印 sim。
 
 运行：python scripts/demo_semantic_reuse.py
 """
@@ -97,16 +97,21 @@ def _demo(db_path: str) -> None:
     orch1 = SelfHealOrchestrator(page1, settings)
     out1 = orch1.run("#submit-btn-old", description="登录按钮", failure=_timeout())
     _print_outcome("首次自愈", out1)
+    if out1.success and out1.attempt_id:
+        orch1.commit_pending(out1.attempt_id)  # B1：验证后沉淀（demo 直连 run，模拟引擎层提交）
     kb = orch1._knowledge
-    print(f"  已沉淀 {kb.count_repairs()} 条修复案例（含 page_fingerprint / repair_key / embedding）")
+    # 静态兜底上下文（元素已从 DOM 移除）不产生 L1 键，故沉淀含 page_fingerprint / embedding
+    print(f"  已沉淀 {kb.count_repairs()} 条修复案例（含 page_fingerprint / embedding）")
 
-    # ---------- 场景 2 · L1 精确命中复用（跨"会话"持久化） ----------
-    print("\n[场景 2] 另一会话同场景再次失败 → L1 repair_key 硬短路，不跑策略直接复用")
+    # ---------- 场景 2 · 知识库复用（跨"会话"持久化） ----------
+    # 失效元素已从 DOM 移除 → 静态兜底上下文（tag_path 为空）不产生 L1 键（防碰撞），
+    # 复用走旧式精确检索（find_repair 按 original_selector 命中），同样不跑策略。
+    print("\n[场景 2] 另一会话同场景再次失败 → 知识库复用（不跑策略直接命中）")
     page2 = _FakePage(url=DEMO_URL, dom=DOM, present={NEW_SELECTOR})
     orch2 = SelfHealOrchestrator(page2, settings)  # 新实例，共享同一 SQLite → 模拟跨会话
     out2 = orch2.run("#submit-btn-old", description="登录按钮", failure=_timeout())
     _print_outcome("二次自愈（知识复用）", out2)
-    assert out2.root_cause == "cached_l1", f"期望 L1 硬短路，实际 {out2.root_cause}"
+    assert out2.root_cause == "cached", f"期望知识库复用，实际 {out2.root_cause}"
 
     # ---------- 场景 3 · L3 语义向量检索（结构微变） ----------
     print("\n[场景 3] 结构微变：按钮被新增 <form> 包裹（路径多一层 → L1 键不等）→ L3 语义向量命中")
@@ -120,7 +125,7 @@ def _demo(db_path: str) -> None:
             confidence=0.9,
             page_url=DEMO_URL,
             page_fingerprint=page_fp,
-            repair_key=compute_repair_key(page_fp, "登录", "html>body>div>button"),
+            repair_key=compute_repair_key(page_fp, "html>body>div>button"),
             embedding=NgramEmbedding().embed(seed_ctx.query_text),
             embedding_version="v1-ngram",
             created_at=datetime.now(timezone.utc).isoformat(),  # 新鲜窗口 → sim>0.80 自动采纳
