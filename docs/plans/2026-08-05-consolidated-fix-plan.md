@@ -1,8 +1,8 @@
 # 合并问题清单 + 分阶段修改方案（定稿）
 
 > 来源：2026-08-05 全项目复盘 + 两轮源码核实。活文档，随实施勾选更新（R5）。
-> 状态：**Phase 1 完成 ✅（P1–P4）· Phase 2 完成 ✅（P5 A6→A2→A1）· Phase 3 完成 ✅（P6 A5+A3）**。
-> 下一步：Phase 4（P7 展示与一致性 C5/B3/B5/B6）。实施进度见「五、下一步计划」。
+> 状态：**Phase 1–4 全部完成 ✅**（P1–P4 正确性 · P5 架构收敛 · P6 清理 · P7 展示与一致性）。
+> 剩余可选：Phase 5（语义化 v2 fastembed 等远期项，见「待解决问题」）。
 
 ## 当前目标
 
@@ -112,11 +112,12 @@
 
 ### Phase 4 · 展示与一致性
 
-**P7 · 展示与一致性（C5 + B3 + B5 + B6）**
-- C5：collector 接 `on_request/on_response` 填 `Scene.network_logs`；`Scene.trace_path` 由 conftest 回填；`_record` 附 trace 进 Allure
-- B3：conftest teardown / CI 调 `write_dashboard(records, cost_summary)`，产物上 artifact
-- B5：修 `reporting/__init__.py:5` 陈旧 TODO、diagnose docstring
-- B6：`store.py` bump_hit 用真实 UTC；L3 人审清单落盘收敛到 orchestrator 出口
+**P7 · 展示与一致性（C5 + B3 + B5 + B6）** ✅ 已完成 2026-08-05
+- **C5**：`collector.py` 构造时挂载 `page.on('request'/'response')`（限长 200 防膨胀），`capture()` 带出 `Scene.network_logs`（供"页面加载分析"展示）；conftest `context` fixture 落盘 trace 后附 Allure（`_attach_trace_to_allure`）
+- **B3**：conftest 新增 `_session_reporters` 聚合 + `pytest_sessionfinish` 调 `write_dashboard(records, cost_summary)` → 看板有了运行时生成路径；CI e2e 作业上传 `reports/dashboard.html` 产物
+- **B5**：`reporting/__init__.py` 陈旧 TODO 更新为已实现说明；`diagnose.py` docstring 修正（规则式只产 not_found/unknown，not_visible 等归 LLM）
+- **B6**：`store.py` bump_hit 的 `last_hit_at='now'` 字面量改为真实 UTC（与 SQLite 端一致）；L3 人审清单收敛——semantic.py 去掉 reporting 模块导入，`SemanticStrategy` 注入 `review_writer`（由 FixGenerator `_review_writer` 提供），strategies→reporting 依赖边断裂
+- 测试：`test_collector.py` +2（网络监听挂载/缺失跳过）、`test_semantic_suggest_stale_unverified` 注入 review_writer；176 单测 + e2e 7 + ruff 全过
 
 ## 四、待解决问题
 
