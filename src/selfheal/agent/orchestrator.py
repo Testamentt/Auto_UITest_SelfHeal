@@ -6,7 +6,7 @@ Playwright 仅作类型依赖（TYPE_CHECKING），核心逻辑可在无浏览�
 
 from __future__ import annotations
 
-import contextlib
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -26,6 +26,8 @@ from selfheal.reporting.hooks import HealingRecord, HealingReporter
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免运行期强依赖 playwright
     from playwright.sync_api import Page
+
+logger = logging.getLogger(__name__)
 
 # 策略注册表：名字 → 策略类。新增策略在此登记即可被 orchestrator 调度。
 _STRATEGY_REGISTRY: dict[str, type] = {
@@ -175,8 +177,8 @@ class SelfHealOrchestrator:
         dom_fingerprint: str | None = None,
     ) -> None:
         """修复成功后：写入知识库（供后续命中复用）+ 记录审计（供报告展示）。"""
-        # 沉淀失败不应影响已成功的自愈结果
-        with contextlib.suppress(Exception):
+        # 沉淀失败不应影响已成功的自愈结果；但按 R4 不能静默吞错，记 warning。
+        try:
             self._knowledge.add_repair(
                 RepairCase(
                     original_selector=original_selector,
@@ -187,17 +189,22 @@ class SelfHealOrchestrator:
                     dom_fingerprint=dom_fingerprint,
                 )
             )
+        except Exception:  # noqa: BLE001 - 沉淀失败不影响已成功的自愈
+            logger.warning("知识沉淀失败（自愈本身已成功）", exc_info=True)
         self._record(original_selector, outcome)
 
     def _record(self, original_selector: str, outcome: HealOutcome) -> None:
-        """记录一次成功自愈（含知识复用），供审计与指标统计（T3）。"""
-        self._reporter.record(
-            HealingRecord(
-                original_selector=original_selector,
-                new_selector=outcome.new_selector,
-                strategy=outcome.strategy,
-                confidence=outcome.confidence,
-                root_cause=outcome.root_cause,
-                success=True,
+        """记录一次成功自愈（含知识复用），供审计与指标统计（T3）。审计失败不影响主流程。"""
+        try:
+            self._reporter.record(
+                HealingRecord(
+                    original_selector=original_selector,
+                    new_selector=outcome.new_selector,
+                    strategy=outcome.strategy,
+                    confidence=outcome.confidence,
+                    root_cause=outcome.root_cause,
+                    success=True,
+                )
             )
-        )
+        except Exception:  # noqa: BLE001 - 审计失败不影响已成功的自愈
+            logger.warning("自愈审计记录失败", exc_info=True)

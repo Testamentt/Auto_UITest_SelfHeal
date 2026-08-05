@@ -3,6 +3,7 @@
 > 日期：2026-08-04 · 方法：5 维度并行评审 + 逐条对抗性核实（33 个评审代理，28 条发现全部确认为真）
 > 维度：耦合与内聚 · 可扩展性 · 健壮性与降级 · 测试充分性 · 一致性与文档对齐
 > 基线：`feat/t4-secondary-healing`（含 Phase 1–4 高优先级 T1–T4）
+> 状态：**H1/H2/H3 已修复（2026-08-05）**——见「高危修复记录」
 
 ## 总体结论
 
@@ -107,3 +108,24 @@
 5. 解耦与开闭（#4/#5/#6/#7/#18-24）：组合根上移、策略自注册、知识后端注册制、DOM 工具下沉、reporting 数据模型抽离。这些是结构性重构，改动面大，建议单独开分支、逐项小步、充分回归。
 
 > 说明：第三优先的重构会触碰核心链路，风险高于收益的时间窗，建议在 H1-H3 与中危修复稳定后、且有需要（如真的要加新策略/新后端）时再启动，避免过早重构。
+
+---
+
+## 高危修复记录（2026-08-05）
+
+### H1 · 自愈管线兜底 ✅
+- `collect/collector.py`：capture() 改尽力而为——url/screenshot/content 分别 try，失败置默认，采集失败不炸闭环（visual 无截图自然跳过）。
+- `engine/popup_guard.py`：`containers.count()` 纳入 try；`find_popup`/`add_popup` 改 `_safe_find_popup`/`_safe_add_popup` 异常隔离（读失败按未命中、写失败仅记日志）。
+- `agent/orchestrator.py`：`_persist` 由 `suppress(Exception)` 改 try/except+warning（不静默）；`_record` 纳入 best-effort。
+- `engine/healing_locator.py`：`_heal_and_resolve` 顶层兜底——闭环内部异常转"自愈内部失败"outcome 走 D6 兜底，不替换原始定位失败异常。
+- 各模块加 `logging.getLogger`。
+
+### H2 · wrapped 重试闭环单测 ✅
+- 新增 `tests/unit/test_wrapped_healing.py`：自愈+重试、二次自愈有界（T4 不变量：第二次 use_knowledge=False 且最多两次）、非超时原样上抛、`_is_timeout_error` 三种判定，均为无浏览器纯逻辑测试。
+
+### H3 · 沉淀-复用闭环单测 + 日志化 ✅
+- `_persist` 记 warning（R4 不再静默）。
+- 新增 `tests/unit/test_persist_failure.py`：写→读闭环（run 沉淀字段正确 + 二次 run 知识短路）+ 沉淀失败容忍（注入抛异常后端，run 仍 success）。
+- 新增 `tests/unit/test_collector.py`：capture 尽力而为四场景。
+
+**验证**：ruff 全过；unit 84 + 核心 e2e 5 + 真实模型冒烟 2 全绿。

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from selfheal.knowledge.base import KnowledgeBackend
@@ -16,6 +17,8 @@ from selfheal.knowledge.schema import PopupFeature
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免运行期强依赖 playwright
     from playwright.sync_api import Locator, Page
+
+logger = logging.getLogger(__name__)
 
 # 常见弹窗容器特征（role / aria / 类名 / id 含弹窗语义）
 _POPUP_CONTAINER_SELECTOR = (
@@ -57,9 +60,10 @@ class PopupGuard:
             return False
         signature = _normalize_signature(self._safe_text(container))
 
-        # 1) 知识优先：命中已沉淀的弹窗特征，直接用其关闭定位器
+        # 1) 知识优先：命中已沉淀的弹窗特征，直接用其关闭定位器。
+        #    知识读取 best-effort：失败按未命中继续走启发式。
         if self._knowledge is not None and signature:
-            feature = self._knowledge.find_popup(signature)
+            feature = self._safe_find_popup(signature)
             if feature is not None and self._try_click_selector(feature.dismiss_selector):
                 return True
 
@@ -72,18 +76,36 @@ class PopupGuard:
             close_btn.click(timeout=_CLICK_TIMEOUT_MS)
         except Exception:  # noqa: BLE001 - 点击失败视为未处理，交后续自愈
             return False
-        # 3) 沉淀特征（仅当能生成可复用定位器时）
+        # 3) 沉淀特征（仅当能生成可复用定位器时）。沉淀 best-effort：失败仅记日志、不影响关闭结果。
         if self._knowledge is not None and signature and dismiss_selector:
-            self._knowledge.add_popup(
-                PopupFeature(signature=signature, dismiss_selector=dismiss_selector)
-            )
+            self._safe_add_popup(PopupFeature(signature=signature, dismiss_selector=dismiss_selector))
         return True
 
     # --- 内部步骤 ---
 
+    def _safe_find_popup(self, signature: str) -> PopupFeature | None:
+        """知识库读取隔离：失败按未命中处理（不炸主流程）。"""
+        try:
+            return self._knowledge.find_popup(signature)
+        except Exception:  # noqa: BLE001 - 读取失败按未命中继续启发式
+            logger.warning("弹窗特征读取失败，转启发式", exc_info=True)
+            return None
+
+    def _safe_add_popup(self, feature: PopupFeature) -> None:
+        """知识库沉淀隔离：失败仅记日志（关闭动作已成功，不影响返回 True）。"""
+        try:
+            self._knowledge.add_popup(feature)
+        except Exception:  # noqa: BLE001 - 沉淀失败不影响主流程
+            logger.warning("弹窗特征沉淀失败", exc_info=True)
+
     def _find_visible_popup(self) -> Locator | None:
         containers = self._page.locator(_POPUP_CONTAINER_SELECTOR)
-        for i in range(containers.count()):
+        try:
+            count = containers.count()
+        except Exception:  # noqa: BLE001 - 页面不可用时 count 失败按无弹窗处理
+            logger.warning("弹窗容器检测失败（页面可能不可用）", exc_info=True)
+            return None
+        for i in range(count):
             loc = containers.nth(i)
             try:
                 if loc.is_visible():
