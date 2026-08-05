@@ -66,3 +66,63 @@ def test_capture_all_fail():
     assert scene.url == ""
     assert scene.screenshot is None
     assert scene.dom_snapshot is None  # 全部失败也不抛异常
+
+
+def test_capture_network_logs_from_listeners():
+    """C5：构造时挂载 on_request/on_response，capture() 带出近期网络日志。"""
+
+    class _Req:
+        url = "https://x/api"
+        method = "GET"
+
+    class _Resp:
+        url = "https://x/api"
+        status = 200
+
+    class _Page:
+        def __init__(self):
+            self.handlers = {}
+
+        def on(self, event, handler):
+            self.handlers[event] = handler
+
+        def emit(self, event, obj):
+            self.handlers[event](obj)
+
+        @property
+        def url(self):
+            return "file:///demo"
+
+        def screenshot(self, **k):
+            return b""
+
+        def content(self):
+            return "<html></html>"
+
+    page = _Page()
+    collector = SceneCollector(page)
+    page.emit("request", _Req())
+    page.emit("response", _Resp())
+    scene = collector.capture()
+    assert scene.network_logs == [
+        {"type": "request", "url": "https://x/api", "method": "GET"},
+        {"type": "response", "url": "https://x/api", "status": 200},
+    ]
+
+
+def test_network_listeners_absent_skipped():
+    """页面无 on 方法 → 跳过监听，capture 仍正常（network_logs 空）。"""
+
+    class _NoOnPage:
+        @property
+        def url(self):
+            return "file:///demo"
+
+        def screenshot(self, **k):
+            return b""
+
+        def content(self):
+            return "<html></html>"
+
+    scene = SceneCollector(_NoOnPage()).capture()
+    assert scene.network_logs == []

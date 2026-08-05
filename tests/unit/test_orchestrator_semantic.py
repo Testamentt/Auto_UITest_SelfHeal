@@ -134,13 +134,18 @@ def test_semantic_suggest_stale_unverified(monkeypatch, tmp_path):
     import datetime
 
     from selfheal.reporting import fix_proposals
+    from selfheal.reporting.fix_proposals import append_review_proposal
 
     monkeypatch.setattr(fix_proposals, "REVIEW_QUEUE_PATH", tmp_path / "review-queue.md")
     store = KnowledgeStore()
     stale = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)).isoformat()
     _store_case(store, text="登录", new="#login", verified=False, created_at=stale)
     strat = SemanticStrategy(
-        knowledge=store, embedding=EMB, page_fingerprint="pg1", element_context=_ctx("登录")
+        knowledge=store,
+        embedding=EMB,
+        page_fingerprint="pg1",
+        element_context=_ctx("登录"),
+        review_writer=append_review_proposal,  # B6：注入收敛出口（策略不再直连 reporting）
     )
     cand = strat.repair(Scene(url=""), "#old", "登录按钮")
     assert cand is None  # 不采纳 → 继续 L4

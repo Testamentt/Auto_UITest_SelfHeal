@@ -15,6 +15,7 @@ Phase 5 A 语义化后，本策略成为调度链的 **L3 语义向量检索**�
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from selfheal.agent.dom import (
@@ -28,7 +29,6 @@ from selfheal.collect.collector import Scene
 from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.llm.base import ChatMessage, LLMClient
 from selfheal.llm.embedding import EmbeddingClient
-from selfheal.reporting.fix_proposals import append_review_proposal
 
 # L3 语义检索：最低相似度 / 自动采纳阈值 / 新鲜窗口
 L3_MIN_SIM = 0.75
@@ -70,12 +70,15 @@ class SemanticStrategy(RepairStrategy):
         embedding: EmbeddingClient | None = None,
         page_fingerprint: str | None = None,
         element_context: ElementContext | None = None,
+        review_writer: Callable | None = None,
     ):
         self._client = client
         self._knowledge = knowledge
         self._embedding = embedding
         self._page_fingerprint = page_fingerprint or ""
         self._element_context = element_context
+        # B6：L3 未达自动采纳时的人审清单写出（由编排侧注入，策略不再直连 reporting 层）
+        self._review_writer = review_writer
 
     def repair(self, scene: Scene, original_selector: str, description: str | None = None):
         # L3 知识语义向量检索（Phase 5 A）—— 优先；未命中再退回 LLM 语义定位
@@ -108,15 +111,17 @@ class SemanticStrategy(RepairStrategy):
             return RepairCandidate(
                 selector=case.new_selector, confidence=round(sim, 3), strategy=self.name
             )
-        # 未达自动采纳：写人审清单，不采纳（继续 L4），不阻塞流水线
-        append_review_proposal(
-            original_selector=original_selector,
-            new_selector=case.new_selector,
-            confidence=sim,
-            page_url=case.page_url,
-            strategy=self.name,
-            reason="sim_not_auto_accept",
-        )
+        # 未达自动采纳：写人审清单（经编排侧注入的 review_writer，B6 收敛出口），
+        # 不采纳（继续 L4）、不阻塞流水线；writer 未注入则跳过（不写不炸）。
+        if self._review_writer is not None:
+            self._review_writer(
+                original_selector=original_selector,
+                new_selector=case.new_selector,
+                confidence=sim,
+                page_url=case.page_url,
+                strategy=self.name,
+                reason="sim_not_auto_accept",
+            )
         return None
 
     def _accept(self, case, sim: float) -> bool:
