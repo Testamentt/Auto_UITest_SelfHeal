@@ -119,7 +119,9 @@ class SelfHealOrchestrator:
         self, scene: Scene, selector: str, dom_fingerprint: str | None = None
     ) -> HealOutcome | None:
         case = self._knowledge.find_repair(selector, dom_fingerprint)
-        if not case or case.confidence < self._settings.healing.confidence_threshold:
+        conf = case.confidence if case else None
+        # #10：读取时校验置信度边界（None/越界按未命中），防脏数据进入复用
+        if conf is None or not (0.0 <= conf <= 1.0) or conf < self._settings.healing.confidence_threshold:
             return None
         # 缓存验证（T4）：缓存的新选择器须仍可在当前页面定位，否则视为失效、转策略重修
         if not self._selector_exists(case.new_selector):
@@ -150,6 +152,8 @@ class SelfHealOrchestrator:
         for name in self._settings.healing.strategy_order:
             strategy_cls = _STRATEGY_REGISTRY.get(name)
             if strategy_cls is None:
+                # #8：未知策略名不再静默跳过，记 warning 便于排查配置笔误
+                logger.warning("strategy_order 含未知策略名 %r，已跳过（可用: %s）", name, list(_STRATEGY_REGISTRY))
                 continue
             candidate = self._build_strategy(strategy_cls).repair(scene, selector, description)
             if candidate is None:

@@ -32,8 +32,8 @@ AutoAiSelfHeal 是一个**带 AI 自愈能力的 UI 自动化测试框架**。�
 | 自动化框架 | Playwright (Python) | 现代、高效、原生支持 trace/截图/网络拦截 |
 | 测试框架 | pytest + pytest-playwright | 用例组织与 fixture |
 | 自愈定位器 | 自研 LLM 定位器 + 开源库辅助 | 灵活可控 |
-| 大语言模型 | **待定**，经 `llm/` 抽象层接入 | 支持 API 付费调用、可切换 provider |
-| 视觉模型 | **待定**，经 `llm/` 抽象层接入 | 多模态，视觉定位与控件画像 |
+| 大语言模型 | DeepSeek（`deepseek-v4-flash`，OpenAI 兼容端点），经 `llm/` 抽象层接入 | 支持 API 付费调用、可切换 provider |
+| 视觉模型 | 通义 `qwen3-vl-flash`（DashScope 兼容端点），经 `llm/` 抽象层接入 | 多模态，视觉定位与控件画像 |
 | 报告 | Allure + 自研 HTML | 自愈看板、视频回放 |
 | CI/CD | GitHub Actions | 演示自动化流水线 |
 

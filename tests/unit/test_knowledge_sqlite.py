@@ -66,6 +66,17 @@ def test_find_repair_prefers_matching_fingerprint(tmp_path):
     store.close()
 
 
+def test_add_repair_upsert_dedup(tmp_path):
+    """#10：同 (原,新,指纹) 重复沉淀 → upsert 更新，不产生重复行。"""
+    store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
+    case = _case(fingerprint="fp")
+    store.add_repair(case)
+    store.add_repair(case)  # 重复写入
+    store.add_repair(case)  # 再写一次
+    assert store.count_repairs() == 1  # 去重生效
+    store.close()
+
+
 def test_factory_backend_selection(tmp_path):
     sqlite_settings = Settings()
     sqlite_settings.knowledge.backend = "sqlite"

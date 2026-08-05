@@ -1,8 +1,11 @@
 """单元测试：编排器知识优先与配置默认值（不依赖浏览器）。"""
 
+import logging
+
 import pytest
 
 from selfheal.agent.orchestrator import SelfHealOrchestrator
+from selfheal.collect.collector import Scene
 from selfheal.config import Settings
 from selfheal.knowledge.schema import RepairCase
 from selfheal.knowledge.store import KnowledgeStore
@@ -40,3 +43,14 @@ def test_knowledge_first_hit():
 def test_knowledge_first_miss():
     orch = SelfHealOrchestrator(page=None, settings=Settings(), knowledge=KnowledgeStore())
     assert orch._lookup_knowledge(None, "#never-seen") is None
+
+
+def test_unknown_strategy_logs_warning(caplog):
+    """#8：strategy_order 含未知策略名 → 记 warning，不静默跳过也不崩溃。"""
+    settings = Settings()
+    settings.healing.strategy_order = ["heuristic", "nope"]
+    orch = SelfHealOrchestrator(page=None, settings=settings, knowledge=KnowledgeStore())
+    scene = Scene(url="x", dom_snapshot="<html><body></body></html>")
+    with caplog.at_level(logging.WARNING, logger="selfheal.agent.orchestrator"):
+        orch._best_candidate(scene, "#a", None)
+    assert any("未知策略名" in r.message for r in caplog.records)
