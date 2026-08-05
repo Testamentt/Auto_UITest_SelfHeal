@@ -43,8 +43,8 @@
 
 ## ⚪ 低优先级（清理 / 可维护性）
 
-- [ ] **T9 · 对齐 config 与 example yaml**（P6）
-  - `execution`/`reporting` 段在 `Settings` 建模，或从 example yaml 移除
+- [x] **T9 · 对齐 config 与 example yaml**（P6）✅ 2026-08-05（即评审 #16）
+  - 移除 example 的 execution/reporting 死配置段；`Settings` 加 `extra='forbid'`，未来漂移加载期报错
   - 位置：`src/selfheal/config.py`、`config/settings.example.yaml`
 - [ ] **T10 · 工具模块归位**（P8）
   - `agent/dom.py`、`agent/llm_io.py` 迁至 `collect/` 或独立 `utils/`
