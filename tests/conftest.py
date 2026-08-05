@@ -55,6 +55,29 @@ def browser_manager(settings):
 
 
 @pytest.fixture
+def page(browser_manager):
+    """函数级原生页面（基座标准，见 docs/plans/2026-08-05-base-framework.md B3）。
+
+    有意覆盖 pytest-playwright 自带的 page fixture——本框架用自研 BrowserManager 控制生命周期。
+    """
+    return browser_manager.new_page()
+
+
+@pytest.fixture
+def pom(page):
+    """POM 工厂：`demo = pom(DemoPage)`。
+
+    POM 面向 Page 接口编写，自愈开/关由注入的 page 决定（注入原生 page 则原生、
+    注入 healing_page 则带自愈）。配合 BasePage 使用（见 B1）。
+    """
+
+    def _factory(pom_cls):
+        return pom_cls(page)
+
+    return _factory
+
+
+@pytest.fixture
 def healing_page(settings, knowledge, browser_manager, request):
     """自愈页面插件。开关：CLI > settings.healing.enabled。"""
     from selfheal.engine.healing_locator import HealingPage  # 惰性导入
