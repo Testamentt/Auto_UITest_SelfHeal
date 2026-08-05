@@ -27,14 +27,18 @@ except ImportError:  # pragma: no cover - 取决于是否安装 python-dotenv
 class BrowserConfig(BaseModel):
     """浏览器配置。
 
-    channel: 传给 launch 的浏览器渠道。"chrome" 使用系统已装的 Chrome（无需下载 Chromium），
-    "chromium" 使用 Playwright 自带内核（需 playwright install chromium）。
+    - channel: 传给 launch 的浏览器渠道。"chrome" 使用系统已装的 Chrome（无需下载 Chromium），
+      "chromium" 使用 Playwright 自带内核（需 playwright install chromium）。
+    - trace: 是否录制 Playwright trace（Phase 4 视频回放选型），用 `playwright show-trace` 回放。
+    - trace_dir: trace .zip 输出目录。
     """
 
     headless: bool = True
     channel: str = "chrome"
     slow_mo: int = 0
     viewport: dict[str, int] = {"width": 1280, "height": 800}
+    trace: bool = False
+    trace_dir: str = "reports/traces"
 
 
 class LLMConfig(BaseModel):

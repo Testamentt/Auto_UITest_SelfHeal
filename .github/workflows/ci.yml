@@ -57,7 +57,7 @@ jobs:
           playwright install --with-deps chromium
 
       - name: Integration / e2e tests (-m e2e)
-        run: pytest -m e2e --alluredir=allure-results
+        run: pytest -m e2e --trace-healing --alluredir=allure-results
 
       - name: Upload e2e allure results
         if: always()
@@ -65,4 +65,12 @@ jobs:
         with:
           name: allure-e2e
           path: allure-results
+          if-no-files-found: ignore
+
+      - name: Upload e2e traces (Playwright Trace 回放)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traces
+          path: reports/traces
           if-no-files-found: ignore

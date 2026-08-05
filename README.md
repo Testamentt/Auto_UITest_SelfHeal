@@ -36,6 +36,49 @@ ruff check .          # 代码检查
 > **自愈开关**：`pytest --selfheal` / `--no-selfheal`（优先于 `settings.healing.enabled`）。
 > **自愈演示**：`tests/e2e/pages/demo_page.html`（模拟 UI 改版导致定位器失效），由 `-m e2e` 覆盖三场景：自愈成功 / 兜底 / 关闭=原生。
 
+> **视频回放（Playwright Trace）**：`pytest --trace-healing` 录制，用 `playwright show-trace reports/traces/trace-<test>.zip` 交互式回放（DOM + 操作时间线）；CI 会随 e2e 上传 traces 产物。
+
 > ✅ **核心自愈闭环已跑通**：启发式 + 语义（DeepSeek）+ 视觉（qwen3-vl-flash）多策略、SQLite 知识沉淀、弹窗处理、智能等待；真实模型已验证（见 `docs/roadmap.md`）。
 
 > ⚠️ **生产使用请先读「预期与风险」**：默认**不自动乱合库**（修复建议须人审）、**多模态按图计费**、勿把 **flaky 偶发绿**当自愈成功、**高风险页**（支付/授权/审计）通常不自愈。详见 [docs/architecture.md · 预期与风险](docs/architecture.md)。
+
+## 写你的第一个 POM + 用例
+
+基座提供 `BasePage` 与 `pom` fixture（详见 `docs/plans/2026-08-05-base-framework.md`）。POM 只依赖 `page` 接口——注入原生 page 或带自愈的 `healing_page`，**同一份代码都能跑**（决策 D3）。
+
+```python
+from selfheal.engine.base_page import BasePage
+
+class LoginPage(BasePage):
+    url = "https://example.com/login"
+
+    def login(self, user="tester", pwd="secret") -> None:
+        self.locator('[data-testid="username"]', description="用户名输入框").fill(user)
+        self.locator('[data-testid="password"]', description="密码输入框").fill(pwd)
+        # description 让自愈能凭语义重定位；fallback 提供人工备用定位器（HealingPage 增强参数）
+        self.locator("#submit", description="登录按钮", fallback="#submit-v2").click()
+```
+
+用例用 `pom` fixture 拿页面对象（原生 page）：
+
+```python
+def test_login(pom):
+    login = pom(LoginPage)
+    login.open()
+    login.login()
+    assert "欢迎" in login.locator("#result").text_content()
+```
+
+想要自愈时，改用 `healing_page` 注入（演示页示例见 `tests/e2e/pages/demo_page.py`）：
+
+```python
+def test_login_with_healing(healing_page):
+    demo = DemoPage(healing_page)   # 带自愈：失效定位器自动修复
+    demo.open()
+    demo.login()
+```
+
+要点：
+- `description` / `fallback` 是 HealingPage 增强参数；原生 Page 下不传即可（`BasePage.locator` 按需透传）。
+- 自愈开关：`pytest --selfheal` / `--no-selfheal`。
+- 录 trace：`pytest --trace-healing`。
