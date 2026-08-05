@@ -16,6 +16,9 @@ import pytest
 from selfheal.config import Settings, load_settings
 from selfheal.knowledge.base import KnowledgeBackend
 
+# B3：会话级自愈记录聚合（写 HTML 看板的运行时生成路径）
+_session_reporters: list = []
+
 
 def pytest_addoption(parser):
     group = parser.getgroup("selfheal", "AI 自愈开关")
@@ -89,10 +92,26 @@ def context(browser_manager, settings, request):
         trace_dir = Path(settings.browser.trace_dir)
         trace_dir.mkdir(parents=True, exist_ok=True)
         safe = request.node.name.replace("/", "_").replace("\\", "_")
+        trace_path = trace_dir / f"trace-{safe}.zip"
         # trace 保存失败不影响用例结果
         with contextlib.suppress(Exception):
-            ctx.tracing.stop(path=str(trace_dir / f"trace-{safe}.zip"))
+            ctx.tracing.stop(path=str(trace_path))
+            _attach_trace_to_allure(trace_path)  # C5：trace 作为证据附件进报告
     ctx.close()
+
+
+def _attach_trace_to_allure(trace_path) -> None:
+    """把已落盘的 trace 附到 Allure 报告（best-effort；未装 allure 或文件缺失则跳过）。"""
+    import os
+
+    if not os.path.exists(trace_path):
+        return
+    try:
+        import allure
+
+        allure.attach.file(str(trace_path), name="Playwright Trace（回放）", attachment_type=allure.attachment_type.ZIP)
+    except ImportError:  # pragma: no cover - allure 可选
+        pass
 
 
 @pytest.fixture
@@ -124,7 +143,9 @@ def healing_page(settings, knowledge, context, request):
     from selfheal.engine.healing_locator import HealingPage  # 惰性导入
 
     cli = request.config.getoption("selfheal")
-    yield HealingPage(context.new_page(), settings, knowledge=knowledge, enabled_override=cli)
+    page = HealingPage(context.new_page(), settings, knowledge=knowledge, enabled_override=cli)
+    _session_reporters.append(page.reporter)  # B3：登记 reporter 供会话结束聚合写看板
+    yield page
 
 
 @pytest.fixture
@@ -133,3 +154,26 @@ def disabled_page(settings, context):
     from selfheal.engine.healing_locator import HealingPage  # 惰性导入
 
     yield HealingPage(context.new_page(), settings, enabled_override=False)
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 - pytest 钩子签名固定
+    """会话结束（B3）：把全部自愈记录聚合写入 HTML 看板（运行时生成路径）。
+
+    此前看板只能手工导出；本钩子让 CI / 本地跑完测试即产出 reports/dashboard.html。
+    """
+    records = []
+    stats: dict[str, int] = {}
+    for reporter in _session_reporters:
+        records.extend(reporter.records)
+        for key, value in reporter.stats.items():
+            stats[key] = stats.get(key, 0) + value
+    if not records:
+        return
+    try:
+        from selfheal.reporting.dashboard import write_dashboard
+        from selfheal.reporting.fix_proposals import estimate_cost
+
+        cost = estimate_cost(stats.get("llm_calls", 0), stats.get("vlm_calls", 0))
+        write_dashboard(records, "reports/dashboard.html", cost=cost)
+    except Exception:  # noqa: BLE001 - 看板生成失败不影响测试结果
+        pass

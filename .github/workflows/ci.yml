@@ -74,3 +74,11 @@ jobs:
           name: traces
           path: reports/traces
           if-no-files-found: ignore
+
+      - name: Upload self-heal dashboard (B3 运行时生成)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selfheal-dashboard
+          path: reports/dashboard.html
+          if-no-files-found: ignore
