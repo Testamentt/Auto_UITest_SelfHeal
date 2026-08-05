@@ -14,7 +14,7 @@
 四层结构（详见 [CLAUDE.md](CLAUDE.md) 与 [docs/architecture.md](docs/architecture.md)）：
 
 ```
-展示层        reporting/   Allure + 自研 HTML 看板（视频回放：规划中）
+展示层        reporting/   Allure + 自研 HTML 看板 + 视频回放（Playwright Trace）
 AI 自愈 Agent agent/       大脑：编排闭环 / 诊断 / 多策略修复（llm 抽象 + knowledge 知识库）
 数据采集层    collect/     截图 / DOM 快照 / 网络日志 / 执行轨迹
 能力建设层    engine/      Playwright 封装 / 自愈定位器 / 智能等待 / 弹窗处理
@@ -39,6 +39,10 @@ ruff check .          # 代码检查
 > **视频回放（Playwright Trace）**：`pytest --trace-healing` 录制，用 `playwright show-trace reports/traces/trace-<test>.zip` 交互式回放（DOM + 操作时间线）；CI 会随 e2e 上传 traces 产物。
 
 > ✅ **核心自愈闭环已跑通**：启发式 + 语义（DeepSeek）+ 视觉（qwen3-vl-flash）多策略、SQLite 知识沉淀、弹窗处理、智能等待；真实模型已验证（见 `docs/roadmap.md`）。
+
+> 🧠 **Phase 5 · 知识库语义化「越用越聪明」**：修复知识经本地确定性向量（零 API 费用）检索复用——L1 精确命中（`repair_key` 硬短路，ID 变了文本/结构不变仍命中）→ L3 语义向量检索（相似场景直接复用）。演示：`python scripts/demo_semantic_reuse.py`。
+
+> 🛡️ **Phase 5 · 风险控制**（`config/settings.yaml` `healing` 段）：高风险页豁免（`exclude_url_patterns`）、dry-run 仅报告不执行（`dry_run`）、修复写回人审清单（`fix_proposals`，不自动改库）、看板区分真自愈 vs flaky、多模态成本看板（T13–T17）。
 
 > ⚠️ **生产使用请先读「预期与风险」**：默认**不自动乱合库**（修复建议须人审）、**多模态按图计费**、勿把 **flaky 偶发绿**当自愈成功、**高风险页**（支付/授权/审计）通常不自愈。详见 [docs/architecture.md · 预期与风险](docs/architecture.md)。
 
