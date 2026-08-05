@@ -6,7 +6,7 @@ Playwright 仅作类型依赖（TYPE_CHECKING），核心逻辑可在无浏览�
 
 from __future__ import annotations
 
-import contextlib
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -26,6 +26,8 @@ from selfheal.reporting.hooks import HealingRecord, HealingReporter
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免运行期强依赖 playwright
     from playwright.sync_api import Page
+
+logger = logging.getLogger(__name__)
 
 # 策略注册表：名字 → 策略类。新增策略在此登记即可被 orchestrator 调度。
 _STRATEGY_REGISTRY: dict[str, type] = {
@@ -79,12 +81,14 @@ class SelfHealOrchestrator:
         original_selector: str,
         description: str | None = None,
         failure: FailureContext | None = None,
+        use_knowledge: bool = True,
     ) -> HealOutcome:
         scene = self._collector.capture()
         fingerprint = dom_fingerprint(scene.dom_snapshot)
 
-        # 1) 知识库优先：命中已有修复案例则直接复用（降本增效）
-        if self._settings.healing.knowledge_first and (
+        # 1) 知识库优先：命中已有修复案例则直接复用（降本增效）。
+        #    use_knowledge=False 用于二次自愈（跳过缓存，防重复命中同一失效项）。
+        if use_knowledge and self._settings.healing.knowledge_first and (
             cached := self._lookup_knowledge(scene, original_selector, fingerprint)
         ):
             self._record(original_selector, cached)  # 知识复用也记录（供审计/指标）
@@ -115,15 +119,27 @@ class SelfHealOrchestrator:
         self, scene: Scene, selector: str, dom_fingerprint: str | None = None
     ) -> HealOutcome | None:
         case = self._knowledge.find_repair(selector, dom_fingerprint)
-        if case and case.confidence >= self._settings.healing.confidence_threshold:
-            return HealOutcome(
-                success=True,
-                new_selector=case.new_selector,
-                confidence=case.confidence,
-                strategy="knowledge",
-                root_cause="cached",
-            )
-        return None
+        if not case or case.confidence < self._settings.healing.confidence_threshold:
+            return None
+        # 缓存验证（T4）：缓存的新选择器须仍可在当前页面定位，否则视为失效、转策略重修
+        if not self._selector_exists(case.new_selector):
+            return None
+        return HealOutcome(
+            success=True,
+            new_selector=case.new_selector,
+            confidence=case.confidence,
+            strategy="knowledge",
+            root_cause="cached",
+        )
+
+    def _selector_exists(self, selector: str) -> bool:
+        """校验选择器能否在当前页面定位到元素（缓存验证）。无 page 时视为存在（纯逻辑场景不校验）。"""
+        if self._page is None:
+            return True
+        try:
+            return self._page.locator(selector).count() > 0
+        except Exception:  # noqa: BLE001 - 读取失败按"不存在"处理
+            return False
 
     def _best_candidate(
         self, scene: Scene, selector: str, description: str | None
@@ -161,8 +177,8 @@ class SelfHealOrchestrator:
         dom_fingerprint: str | None = None,
     ) -> None:
         """修复成功后：写入知识库（供后续命中复用）+ 记录审计（供报告展示）。"""
-        # 沉淀失败不应影响已成功的自愈结果
-        with contextlib.suppress(Exception):
+        # 沉淀失败不应影响已成功的自愈结果；但按 R4 不能静默吞错，记 warning。
+        try:
             self._knowledge.add_repair(
                 RepairCase(
                     original_selector=original_selector,
@@ -173,17 +189,22 @@ class SelfHealOrchestrator:
                     dom_fingerprint=dom_fingerprint,
                 )
             )
+        except Exception:  # noqa: BLE001 - 沉淀失败不影响已成功的自愈
+            logger.warning("知识沉淀失败（自愈本身已成功）", exc_info=True)
         self._record(original_selector, outcome)
 
     def _record(self, original_selector: str, outcome: HealOutcome) -> None:
-        """记录一次成功自愈（含知识复用），供审计与指标统计（T3）。"""
-        self._reporter.record(
-            HealingRecord(
-                original_selector=original_selector,
-                new_selector=outcome.new_selector,
-                strategy=outcome.strategy,
-                confidence=outcome.confidence,
-                root_cause=outcome.root_cause,
-                success=True,
+        """记录一次成功自愈（含知识复用），供审计与指标统计（T3）。审计失败不影响主流程。"""
+        try:
+            self._reporter.record(
+                HealingRecord(
+                    original_selector=original_selector,
+                    new_selector=outcome.new_selector,
+                    strategy=outcome.strategy,
+                    confidence=outcome.confidence,
+                    root_cause=outcome.root_cause,
+                    success=True,
+                )
             )
-        )
+        except Exception:  # noqa: BLE001 - 审计失败不影响已成功的自愈
+            logger.warning("自愈审计记录失败", exc_info=True)

@@ -20,10 +20,11 @@
   - `dashboard.py` 增指标摘要（成功率卡片 + 策略/根因分布）；`HealingReporter.metrics()`
   - 验收：`test_metrics.py` + `test_dashboard.py` 8 项单测；已用真实数据生成看板（100% 成功）
   - 遗留：通过率前后 A/B 对比（T3b）需专用演示套件
-- [ ] **T4 · 修复失败二次自愈 / 缓存验证**（P2）
-  - 重试仍失败 → 标记缓存失效并重新走完整自愈；知识缓存"验证后再用"
-  - 位置：`src/selfheal/engine/healing_locator.py`、`agent/orchestrator.py::_lookup_knowledge`
-  - 验收：缓存选择器失效时能再次自愈而非硬失败；补单测/e2e
+- [x] **T4 · 修复失败二次自愈 / 缓存验证**（P2）✅ 2026-08-04
+  - `_lookup_knowledge` 增缓存验证（`_selector_exists`）：缓存的新选择器失效则不用、转策略重修
+  - `_healing_action` 重试仍失败 → 二次自愈（`use_knowledge=False` 跳过缓存，有界一次防循环）
+  - 位置：`engine/healing_locator.py`、`agent/orchestrator.py`
+  - 验收：`test_secondary_healing.py` 5 项单测 + 核心 e2e 回归通过
 
 ## 🟡 中优先级
 

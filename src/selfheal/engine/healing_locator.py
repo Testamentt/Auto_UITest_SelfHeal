@@ -12,6 +12,7 @@ Playwright 为运行期可选依赖：TimeoutError 导入做了降级，保证�
 
 from __future__ import annotations
 
+import logging
 import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -27,6 +28,8 @@ from selfheal.reporting.hooks import HealingReporter
 
 if TYPE_CHECKING:  # 仅类型检查时导入
     from playwright.sync_api import Locator, Page
+
+logger = logging.getLogger(__name__)
 
 # 运行期可选依赖 playwright：未安装时降级，使纯逻辑单测可导入本模块
 try:  # pragma: no cover - 取决于运行环境是否安装 playwright
@@ -121,18 +124,34 @@ class HealingLocator:
                     except Exception:  # noqa: BLE001 - 弹窗非根因，继续走自愈闭环
                         pass
                 relocated = self._heal_and_resolve(exc)
-                return getattr(relocated, name)(*args, **kwargs)
+                try:
+                    return getattr(relocated, name)(*args, **kwargs)
+                except Exception as retry_exc:  # noqa: BLE001 - 自愈后的选择器仍失败
+                    if not _is_timeout_error(retry_exc):
+                        raise
+                    # 二次自愈（T4）：跳过知识缓存，防重复命中同一失效项；
+                    # 上限一次、其结果为裸调用不再包裹，故不会死循环。
+                    relocated2 = self._heal_and_resolve(retry_exc, use_knowledge=False)
+                    return getattr(relocated2, name)(*args, **kwargs)
 
         wrapped.__name__ = name
         return wrapped
 
-    def _heal_and_resolve(self, exc: BaseException | None = None) -> Locator:
-        """运行闭环，并决定用哪个定位器重试（含 D6 兜底）。失败异常供诊断参考。"""
+    def _heal_and_resolve(self, exc: BaseException | None = None, use_knowledge: bool = True) -> Locator:
+        """运行闭环并决定用哪个定位器重试（含 D6 兜底）。use_knowledge=False 用于二次自愈（跳过缓存）。
+
+        顶层兜底（H1）：闭环内部异常（采集/知识读取/策略等）不替换原始定位失败异常，
+        而是转为"自愈内部失败"outcome 走 D6 兜底（fallback/pause/fail），保留触发自愈的语义。
+        """
         failure = FailureContext(
             failure_type=type(exc).__name__ if exc is not None else None,
             message=str(exc) if exc is not None else None,
         )
-        outcome = self._orch.run(self._selector, self._description, failure=failure)
+        try:
+            outcome = self._orch.run(self._selector, self._description, failure=failure, use_knowledge=use_knowledge)
+        except Exception as run_exc:  # noqa: BLE001 - 闭环内部异常兜底，不替换原始异常
+            logger.warning("自愈闭环内部异常，按不确定兜底处理", exc_info=True)
+            outcome = HealOutcome(success=False, root_cause=f"heal_internal:{type(run_exc).__name__}")
         if outcome.success and outcome.new_selector:
             return self._page.locator(outcome.new_selector)
         return self._resolve_uncertain(outcome)

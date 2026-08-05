@@ -47,7 +47,7 @@ class LLMConfig(BaseModel):
 
     enabled: bool = True
     provider: str = "openai"
-    model: str = "deepseek-chat"
+    model: str = "deepseek-v4-flash"
     api_key_env: str = "OPENAI_API_KEY"
     base_url: str | None = "https://api.deepseek.com"
     temperature: float = 0.0
