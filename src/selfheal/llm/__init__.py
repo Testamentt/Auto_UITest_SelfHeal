@@ -7,6 +7,7 @@ openai_client 在顶层被导入以完成 @register_llm 注册（其内部对 op
 
 from selfheal.llm._exceptions import UnavailableError
 from selfheal.llm.base import ChatMessage, LLMClient, VisionClient
+from selfheal.llm.embedding import EmbeddingClient, NgramEmbedding, get_embedding_for_settings
 from selfheal.llm.factory import get_llm_for_settings, get_vision_for_settings
 from selfheal.llm.openai_client import OpenAICompatibleLLM
 from selfheal.llm.openai_vision import OpenAICompatibleVLM
@@ -18,11 +19,14 @@ __all__ = [
     "VisionClient",
     "OpenAICompatibleLLM",
     "OpenAICompatibleVLM",
+    "EmbeddingClient",
+    "NgramEmbedding",
     "UnavailableError",
     "get_llm",
     "get_vision",
     "get_llm_for_settings",
     "get_vision_for_settings",
+    "get_embedding_for_settings",
     "register_llm",
     "register_vision",
 ]

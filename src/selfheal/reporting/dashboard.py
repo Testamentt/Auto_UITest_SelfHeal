@@ -15,7 +15,7 @@ from selfheal.reporting.metrics import compute_metrics
 
 
 def _render_metrics(metrics: dict) -> str:
-    """渲染指标摘要区（成功率卡片 + 策略分布 + 根因分布）。"""
+    """渲染指标摘要区（成功率卡片 + 真自愈/flaky + 策略分布 + 根因分布）。"""
     rate = metrics["success_rate"]
     strategy_items = "".join(
         f"<li>{html.escape(k)}：{v} 次</li>" for k, v in sorted(metrics["strategy_distribution"].items())
@@ -27,6 +27,8 @@ def _render_metrics(metrics: dict) -> str:
   <div class="card"><div class="num">{metrics['total']}</div><div class="label">自愈总数</div></div>
   <div class="card"><div class="num">{metrics['success']}</div><div class="label">成功次数</div></div>
   <div class="card"><div class="num">{rate:.0%}</div><div class="label">自愈成功率</div></div>
+  <div class="card"><div class="num">{metrics['verified']}</div><div class="label">真自愈 (verified)</div></div>
+  <div class="card"><div class="num">{metrics['flaky']}</div><div class="label">flaky 侥幸通过</div></div>
 </div>
 <div class="dist">
   <div><h3>策略命中分布</h3><ul>{strategy_items}</ul></div>
@@ -34,11 +36,24 @@ def _render_metrics(metrics: dict) -> str:
 </div>"""
 
 
-def render_dashboard(records: list[HealingRecord]) -> str:
-    """把自愈记录渲染为一张完整 HTML 页面（内嵌样式，零依赖）。"""
+def _render_cost(cost: dict) -> str:
+    """T17：多模态成本卡片（LLM/VLM 调用次数 + 估算费用）。"""
+    return f"""<div class="metrics">
+  <div class="card"><div class="num">{cost['llm_calls']}</div><div class="label">LLM 调用次数</div></div>
+  <div class="card"><div class="num">{cost['vlm_calls']}</div><div class="label">VLM 调用次数</div></div>
+  <div class="card"><div class="num">¥{cost['total_cost']:.4f}</div><div class="label">估算费用</div></div>
+</div>"""
+
+
+def render_dashboard(records: list[HealingRecord], cost: dict | None = None) -> str:
+    """把自愈记录渲染为一张完整 HTML 页面（内嵌样式，零依赖）。
+
+    cost（T17）为可选成本统计（HealingReporter.cost_summary() 产出），提供时渲染成本卡片。
+    """
     metrics = compute_metrics(records)
     rows: list[str] = []
     for rec in records:
+        kind = "✅ 真自愈" if rec.verified else "⚠️ flaky"
         rows.append(
             "<tr>"
             f"<td>{html.escape(rec.original_selector)}</td>"
@@ -46,10 +61,12 @@ def render_dashboard(records: list[HealingRecord]) -> str:
             f"<td>{html.escape(rec.strategy or '')}</td>"
             f"<td>{rec.confidence:.2f}</td>"
             f"<td>{html.escape(rec.root_cause or '')}</td>"
+            f"<td>{kind}</td>"
             f"<td>{'✅' if rec.success else '❌'}</td>"
             "</tr>"
         )
-    body = "\n".join(rows) or "<tr><td colspan='6'>(暂无自愈记录)</td></tr>"
+    body = "\n".join(rows) or "<tr><td colspan='7'>(暂无自愈记录)</td></tr>"
+    cost_html = _render_cost(cost) if cost else ""
     return f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>自愈看板</title>
 <style>
@@ -68,9 +85,10 @@ def render_dashboard(records: list[HealingRecord]) -> str:
 <body>
 <h2>AI 自愈看板（指标 + 审计）</h2>
 {_render_metrics(metrics)}
+{cost_html}
 <h3>自愈审计明细</h3>
 <table>
-<thead><tr><th>原定位器</th><th>新定位器</th><th>策略</th><th>置信度</th><th>根因</th><th>结果</th></tr></thead>
+<thead><tr><th>原定位器</th><th>新定位器</th><th>策略</th><th>置信度</th><th>根因</th><th>类型</th><th>结果</th></tr></thead>
 <tbody>
 {body}
 </tbody></table>
@@ -78,9 +96,9 @@ def render_dashboard(records: list[HealingRecord]) -> str:
 """
 
 
-def write_dashboard(records: list[HealingRecord], out_path: str | Path) -> Path:
+def write_dashboard(records: list[HealingRecord], out_path: str | Path, cost: dict | None = None) -> Path:
     """把看板写入文件并返回路径。"""
     path = Path(out_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_dashboard(records), encoding="utf-8")
+    path.write_text(render_dashboard(records, cost), encoding="utf-8")
     return path

@@ -65,6 +65,12 @@ class HealingConfig(BaseModel):
       use_fallback=用人工备用定位器（默认，CI 友好）；pause=交互模式下暂停等人工；fail=快速失败。
     - early_accept_threshold: "早接受"阈值（T1 策略短路）。某策略置信度达到该值即立即采纳，
       不再尝试后续（更贵的）策略，省 LLM/VLM 调用。应 > confidence_threshold。
+    - exclude_url_patterns（T13）: 高风险页豁免——URL 匹配任意 glob 模式则不触发自愈
+      （支付 / 强授权 / 审计类页面误改代价高，通常不自愈）。如 ["*://*/pay*", "*://*/admin*"]。
+    - dry_run（T14）: 仅报告不执行——只生成修复建议（写 fix-proposals），不实际换定位器重试、
+      不持久化知识，供人审后手动采纳。
+    - fix_proposals（T15）: 修复成功后输出「原→新」PR 化建议清单（Markdown/JSON，不自动改库），
+      人确认后才合入代码。默认关闭；开启后每次成功自愈追加一条建议。
     """
 
     enabled: bool = True
@@ -73,6 +79,9 @@ class HealingConfig(BaseModel):
     confidence_threshold: float = 0.6
     early_accept_threshold: float = 0.85
     on_uncertain: Literal["use_fallback", "pause", "fail"] = "use_fallback"
+    exclude_url_patterns: list[str] = []
+    dry_run: bool = False
+    fix_proposals: bool = False
 
 
 class KnowledgeConfig(BaseModel):
@@ -100,6 +109,18 @@ class VisionConfig(BaseModel):
     base_url: str | None = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
+class EmbeddingConfig(BaseModel):
+    """Embedding 配置（知识库语义化 A）。
+
+    - method: ngram=本地确定性向量（v1，零网络/零费用/<10ms）；fastembed=本地模型（v2，见文档）。
+    - 绝不在热路径调用 API text-embedding（延迟 + 成本）。
+    """
+
+    enabled: bool = True
+    method: str = "ngram"
+    dim: int = 512
+
+
 class Settings(BaseModel):
     """顶层配置模型。TODO: 补全 execution / reporting 子模型。
 
@@ -114,6 +135,7 @@ class Settings(BaseModel):
     healing: HealingConfig = HealingConfig()
     knowledge: KnowledgeConfig = KnowledgeConfig()
     vision: VisionConfig = VisionConfig()
+    embedding: EmbeddingConfig = EmbeddingConfig()
 
 
 def load_settings(path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:

@@ -1,14 +1,15 @@
 # 项目路线图（Roadmap）
 
 > **活文档**：随进展同步更新，不是快照（见 `RULE.md` R5）。
-> 最后更新：2026-08-05 · 当前阶段：**Phase 4 展示包装已完成，剩风险控制（T13–T17）**
+> 最后更新：2026-08-05 · 当前阶段：**Phase 5 知识库语义化 + 风险控制（T13–T17）已完成**
 > 关联文档：评审 `docs/reviews/2026-08-04-architecture-review.md` · 优化 TODO `docs/TODO.md`
 
 ## 当前目标
 
-**Phase 4 收尾 —— 展示包装与风险控制**：视频回放 / CI 产物上传 / README 打磨（⬜）；风险控制 T13–T17（⬜）。
-T1 策略短路、T2 真实模型+证据、T3 指标看板、T4 二次自愈/缓存验证均已完成。
-Phase 1（最小闭环）、Phase 2（AI 大脑）、Phase 3（沉淀与进阶）均已完成并通过全量测试。
+**Phase 5 —— 知识库语义化（A）+ 风险控制（D）**：均已达成（2026-08-05）。
+- **A 语义化**：本地确定性 n-gram 向量（A1）→ 存储/检索（A2）→ orchestrator 接线 L1/L3（A3）。
+- **D 风险控制**：T13 高风险页豁免 / T14 dry-run / T15 修复写回人审 / T16 flaky 区分 / T17 成本看板。
+Phase 4 展示包装（视频回放 / CI 产物 / README）、Phase 1–3 均已完成并通过全量测试。
 
 ## 关键约束
 
@@ -36,7 +37,8 @@ Phase 1（最小闭环）、Phase 2（AI 大脑）、Phase 3（沉淀与进阶�
 | **Phase 1 · 最小闭环** | 端到端自愈跑通（启发式）+ 插件化骨架 | ✅ 完成 |
 | **Phase 2 · AI 大脑** | LLM 智能诊断 + 语义定位 + 自愈看板 v0 | ✅ 完成 |
 | **Phase 3 · 沉淀与进阶** | 知识库持久化 + 弹窗 + 视觉 + 智能等待 | ✅ 完成 |
-| **Phase 4 · 证据与指标** | 真实模型验证 + 自愈指标看板 + 加固（短路/二次自愈）+ 展示包装 | ⏳ 下一步 |
+| **Phase 4 · 证据与指标** | 真实模型验证 + 自愈指标看板 + 加固（短路/二次自愈）+ 展示包装 | ✅ 完成 |
+| **Phase 5 · 语义化与风险控制** | 知识库向量检索（越用越聪明）+ 风险控制（豁免/dry-run/人审/flaky/成本） | ✅ 完成 |
 
 ## 已达成结论（决策记录）
 
@@ -55,20 +57,25 @@ Phase 1（最小闭环）、Phase 2（AI 大脑）、Phase 3（沉淀与进阶�
 | D11 | 弹窗处理 | PopupGuard 知识优先（弹窗特征库）+ 关闭按钮启发式识别，成功后沉淀特征；动作超时先清弹窗再走自愈 | 直击"被遮挡"类失败，通过率卖点 |
 | D12 | 智能等待 | wait_until_stable 先可见后要求 bounding_box 连续 stable_ms 不变；POM 显式调用（可选增强） | 减少加载抖动误判，不改变默认行为 |
 | D13 | 视觉定位 | OpenAICompatibleVLM 走 DashScope 兼容端点（qwen3-vl-flash）；候选集护栏（VLM 只能从真实候选中选）；key 走 `DASHSCOPE_API_KEY` 环境变量 | 复用 OpenAI 兼容机制；防幻觉；密钥参数化不入库 |
+| D14 | 知识库语义化 | 本地确定性 n-gram 哈希 TF 向量（v1，零 API 费用）+ numpy 余弦；L1 `repair_key` 精确命中硬短路 → L2 启发式 → L3 语义向量检索 → L4 VLM；存储 BLOB；按 page_fingerprint 分桶防跨页误配；采纳规则（sim>0.92 且 verified / 7 天新鲜 sim>0.80 自动，其余写人审清单）；v2 可升级 fastembed 本地模型 | 热路径不调 API embedding（延迟+成本失控）；ID 变化但文本/结构不变仍可命中；防污染 + 冷启动免人审 |
 
 ## 待解决问题
 
 - **真实 VLM 校准**：视觉冒烟（`-k visual`）需 `pip install openai` + 设置 `DASHSCOPE_API_KEY` 环境变量后运行，校准 qwen3-vl-flash 的识别准确率与置信度。
 - **真实 LLM 校准**：语义/诊断冒烟（`-k llm_smoke`）需 `OPENAI_API_KEY`（或改为 DashScope 文本模型）后运行。
-- 知识库相似度检索目前为"精确 selector + 指纹择优"，向量/模糊检索可视需要增强。
+- 语义向量 v1 为本地 n-gram（跨语言含中文较弱）；语义更强可升级 fastembed 本地模型（v2），向量列带 `embedding_version` 平滑迁移。
 - 弹窗特征签名基于文本归一化，结构指纹（DOM 结构哈希）可视需要增强。
 - 智能等待目前 POM 显式调用；是否默认融入动作前置等待可视实测决定。
 
-## 下一步计划（Phase 4 拆解，按 `docs/TODO.md` 优先级）
+## 下一步计划
 
-1. ✅ **T1 策略短路**（已完成）：达早接受阈值即停，省 LLM/VLM 调用。
-2. ✅ **T2 真实模型验证 + 证据留存**（已完成）：DeepSeek/qwen3-vl-flash 真实验证，证据存 `reports/evidence/`。
-3. ✅ **T3 自愈指标看板**（已完成）：`compute_metrics` + 看板指标摘要（成功率/策略分布/根因分布）。
-4. ✅ **T4 二次自愈 / 缓存验证**（已完成）：缓存选择器失效转策略重修；重试失败有界二次自愈（跳过缓存）。
-5. ✅ **展示包装**（已完成 2026-08-05）：视频回放（Playwright Trace 录制 + `show-trace` 交互式回放）、CI 上传 traces 产物、README 打磨（含「写你的第一个 POM + 用例」）。
-6. ⬜ 风险控制（T13–T17，见 TODO）：高风险页豁免、dry-run、修复写回人审、flaky 区分、多模态成本。
+**Phase 4（已完成存档）**：T1 策略短路 / T2 真实模型验证+证据 / T3 指标看板 / T4 二次自愈与缓存验证 / 展示包装（trace 回放 + CI 产物 + README）。
+
+**Phase 5（已完成 2026-08-05）**：
+1. ✅ **A 知识库语义化**（A1 本地 n-gram 向量 → A2 存储/检索 → A3 orchestrator 接线）：
+   L1 `repair_key` 硬短路 + L3 语义向量检索进策略链，失败上下文三级回退提取，persist 富化指纹/向量。
+2. ✅ **D 风险控制（T13–T17）**：高风险页豁免 / dry-run / 修复写回人审清单 / flaky 区分 / 多模态成本看板。
+
+**后续可选（按 `docs/TODO.md`）**：
+- T5 置信度归一化、T6 智能等待默认融入、T7 知识二次命中 e2e、T8 Playwright 原生定位替代 HTMLParser；
+- 语义化 v2：fastembed 本地模型（如 bge-small-zh）替换 n-gram，语义更强仍本地推理；规模大时可迁 sqlite-vec / Chroma。

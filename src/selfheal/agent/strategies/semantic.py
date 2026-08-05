@@ -1,20 +1,40 @@
-"""语义定位策略（Phase 2，注入可选 LLMClient）。
+"""语义定位策略（Phase 2 → Phase 5 A 升级）。
 
-把元素的自然语言描述 + 精简 DOM 交给 LLM，让其输出稳定定位器与置信度。
+Phase 5 A 语义化后，本策略成为调度链的 **L3 语义向量检索**：
+优先从知识库按 `find_semantic`（page 分桶 + numpy 余弦）命中语义相似的修复案例；
+未命中（或上下文为空）时，**退回 Phase 2 的 LLM 语义定位**（自然语言描述 + 防幻觉护栏）。
 
-**防幻觉护栏**：LLM 返回的 selector 必须能在精简 DOM 索引中真实存在
-（基于 dom.build_stable_selector 产出的稳定定位器判定），否则拒绝 ——
-模型编造的定位器直接返回 None，不参与编排。
+**L3 采纳规则（防污染，见计划 v5）**：
+- sim > 0.92 且 `is_verified`（人审过）→ 自动采纳；
+- sim > 0.80 且 `created_at` 在 7 天新鲜窗口内 → 自动采纳（免人审，冷启动）；
+- 其余 0.75 < sim ≤ 0.92 → 仅写 `reports/review-queue.md` 人审清单，返回 None 降级 L4（不阻塞流水线）。
+
 不可用（无 client / 无 description / 调用异常 / 解析失败）一律返回 None。
 """
 
 from __future__ import annotations
 
-from selfheal.agent.dom import build_stable_selector, parse_interactive_elements
+import contextlib
+from datetime import datetime, timezone
+
+from selfheal.agent.dom import (
+    ElementContext,
+    build_stable_selector,
+    parse_interactive_elements,
+)
 from selfheal.agent.llm_io import build_compact_dom, extract_json, safe_float, safe_str
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
 from selfheal.collect.collector import Scene
+from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.llm.base import ChatMessage, LLMClient
+from selfheal.llm.embedding import EmbeddingClient
+from selfheal.reporting.fix_proposals import append_review_proposal
+
+# L3 语义检索：最低相似度 / 自动采纳阈值 / 新鲜窗口
+L3_MIN_SIM = 0.75
+L3_VERIFIED_SIM = 0.92
+L3_FRESH_SIM = 0.80
+L3_FRESH_DAYS = 7
 
 _PROMPT_TEMPLATE = """你是 Web UI 自动化测试专家。原定位器已失效，请根据描述在页面中重新定位目标元素。
 已失效的原始选择器: {selector}
@@ -25,13 +45,94 @@ _PROMPT_TEMPLATE = """你是 Web UI 自动化测试专家。原定位器已失�
 {{"selector": "上面索引中存在的稳定 selector，找不到则留空字符串", "confidence": 0.0~1.0}}"""
 
 
+def _is_fresh(created_at: str | None, days: int = L3_FRESH_DAYS) -> bool:
+    """created_at 是否在新鲜窗口内（容错解析：ISO 'T' 或 SQLite ' ' 分隔）。"""
+    if not created_at:
+        return False
+    try:
+        dt = datetime.fromisoformat(created_at.replace(" ", "T"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - dt
+        return age.total_seconds() <= days * 86400
+    except ValueError:
+        return False
+
+
 class SemanticStrategy(RepairStrategy):
     name = "semantic"
 
-    def __init__(self, client: LLMClient | None = None):
+    def __init__(
+        self,
+        client: LLMClient | None = None,
+        *,
+        knowledge: KnowledgeBackend | None = None,
+        embedding: EmbeddingClient | None = None,
+        page_fingerprint: str | None = None,
+        element_context: ElementContext | None = None,
+    ):
         self._client = client
+        self._knowledge = knowledge
+        self._embedding = embedding
+        self._page_fingerprint = page_fingerprint or ""
+        self._element_context = element_context
 
     def repair(self, scene: Scene, original_selector: str, description: str | None = None):
+        # L3 知识语义向量检索（Phase 5 A）—— 优先；未命中再退回 LLM 语义定位
+        if (
+            self._knowledge is not None
+            and self._embedding is not None
+            and self._element_context is not None
+            and not self._element_context.is_empty
+            and (candidate := self._knowledge_semantic(original_selector)) is not None
+        ):
+            return candidate
+        # 原 LLM 语义定位（Phase 2，防幻觉护栏保留）
+        return self._llm_semantic(scene, original_selector, description)
+
+    def _knowledge_semantic(self, original_selector: str) -> RepairCandidate | None:
+        """L3：知识库向量检索 → 采纳或建议（不采纳返回 None，由编排继续 L4）。"""
+        query_vec = self._embedding.embed(self._element_context.query_text)
+        hits = self._knowledge.find_semantic(
+            query_vec,
+            self._page_fingerprint,
+            self._embedding.embedding_version,
+            k=1,
+            threshold=L3_MIN_SIM,
+        )
+        if not hits:
+            return None
+        case, sim = hits[0]
+        if self._accept(case, sim):
+            self._bump(case)
+            return RepairCandidate(
+                selector=case.new_selector, confidence=round(sim, 3), strategy=self.name
+            )
+        # 未达自动采纳：写人审清单，不采纳（继续 L4），不阻塞流水线
+        append_review_proposal(
+            original_selector=original_selector,
+            new_selector=case.new_selector,
+            confidence=sim,
+            page_url=case.page_url,
+            strategy=self.name,
+            reason="sim_not_auto_accept",
+        )
+        return None
+
+    def _accept(self, case, sim: float) -> bool:
+        """L3 采纳规则：已 verified 高相似 / 新鲜窗口内高相似 → 自动采纳。"""
+        return (sim > L3_VERIFIED_SIM and case.is_verified) or (
+            sim > L3_FRESH_SIM and _is_fresh(case.created_at, L3_FRESH_DAYS)
+        )
+
+    def _bump(self, case) -> None:
+        """命中递增（热度 / 衰减用）；失败不阻塞采纳。"""
+        with contextlib.suppress(Exception):
+            self._knowledge.bump_hit(case.repair_key)
+
+    def _llm_semantic(
+        self, scene: Scene, original_selector: str, description: str | None = None
+    ) -> RepairCandidate | None:
         if self._client is None or not description or not scene.dom_snapshot:
             return None
         # 护栏白名单：页面中真实存在、可由 build_stable_selector 生成的稳定定位器

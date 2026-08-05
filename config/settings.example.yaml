@@ -32,10 +32,22 @@ healing:
   confidence_threshold: 0.6
   early_accept_threshold: 0.85   # T1 策略短路：达此置信度即采纳，不再试更贵策略（应 > confidence_threshold）
   on_uncertain: use_fallback   # use_fallback | pause | fail（见 RULE.md 决策 D6）
+  # T13 高风险页豁免：URL 匹配任一 glob 则不触发自愈（支付/强授权/审计类页面误改代价高）
+  exclude_url_patterns: []   # 例: ["*://*/pay*", "*://*/admin/*"]
+  # T14 dry-run：仅报告不执行——只生成修复建议，不换定位器重试、不持久化知识
+  dry_run: false
+  # T15 修复写回人审清单：成功后输出「原→新」PR 化建议（不自动改库），人确认后合入
+  fix_proposals: false
 
 knowledge:
   backend: sqlite          # sqlite=持久化（默认）/ memory=进程内
   path: .cache/knowledge.db
+
+# 本地确定性 Embedding（知识库语义化 A）：n-gram，零网络/零费用/<10ms；v2 fastembed 见文档
+embedding:
+  enabled: true
+  method: ngram
+  dim: 512
 
 # execution / reporting 段：规划中（见 docs/TODO.md T9），Settings 尚未建模，
 # 请勿在此添加相关键（Settings 已设 extra='forbid'，未建模字段会导致加载报错）。

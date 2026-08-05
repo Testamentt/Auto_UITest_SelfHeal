@@ -167,10 +167,13 @@ class HealingLocator:
         raise HealingFailedError(self._failure_report(outcome))
 
     def _failure_report(self, outcome: HealOutcome) -> str:
+        proposed = (
+            f", 建议定位器(dry-run)={outcome.proposed_selector!r}" if outcome.proposed_selector else ""
+        )
         return (
             f"自愈失败：原定位器={self._selector!r}, 描述={self._description!r}, "
             f"根因={outcome.root_cause!r}, 最高置信度={outcome.confidence}, "
-            f"备用定位器={self._fallback!r}, on_uncertain={self._cfg.on_uncertain!r}"
+            f"备用定位器={self._fallback!r}, on_uncertain={self._cfg.on_uncertain!r}{proposed}"
         )
 
     def wait_until_stable(

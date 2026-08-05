@@ -55,13 +55,19 @@
   - 若继续膨胀，拆分策略调度 / 持久化 / 诊断为独立协作者（DI）
   - 位置：`src/selfheal/agent/orchestrator.py`
 
-## 🛡️ 风险控制（对应 `docs/architecture.md`「预期与风险」，均为规划）
+## 🛡️ 风险控制（对应 `docs/architecture.md`「预期与风险」，Phase 5 D 已完成 2026-08-05）
 
-- [ ] **T13 · 高风险页豁免配置**：按 URL / 页面标记排除自愈（支付 / 强授权 / 审计类页面误改代价高，通常不自愈或仅报告）。
-- [ ] **T14 · dry-run"仅报告不执行"模式**：只输出修复建议、不动作，供人审。
-- [ ] **T15 · 修复写回代码的人审清单**：把"原定位器→新定位器"生成 PR 化建议，人确认后才合入，**不自动改库**。
-- [ ] **T16 · 看板区分"真自愈 vs flaky 侥幸通过"**：结合重试稳定性判断，勿把偶发绿计为修复成功。
-- [ ] **T17 · 多模态成本看板化**：统计 VLM 调用次数 / 估算费用，配合策略短路控成本。
+- [x] **T13 · 高风险页豁免配置**：`healing.exclude_url_patterns`（glob），orchestrator 开头按 URL 匹配命中即不触发自愈（支付 / 强授权 / 审计类页面）。位置：`config.py`、`agent/orchestrator.py`。验收：`test_risk_control.py` 4 项。
+- [x] **T14 · dry-run"仅报告不执行"模式**：`healing.dry_run`，只生成修复建议（写 fix-proposals）、不换定位器重试、不持久化知识；返回 `proposed_selector` 供人审。验收：`test_risk_control.py` 3 项。
+- [x] **T15 · 修复写回代码的人审清单**：`reporting/fix_proposals.py::write_fix_proposal` 输出「原→新」PR 化建议（Markdown + JSON，`applied=false` 不自动改库）；`healing.fix_proposals` 开启。验收：`test_risk_metrics.py`。
+- [x] **T16 · 看板区分"真自愈 vs flaky 侥幸通过"**：`HealingRecord.verified`（修复后原定位器仍失效=真修复，已恢复=flaky）；metrics 增 verified/flaky/verified_rate，dashboard 增卡片与审计列。验收：`test_risk_metrics.py`。
+- [x] **T17 · 多模态成本看板化**：orchestrator 计数代理统计 LLM/VLM 真实调用 → `HealingReporter.stats`/`cost_summary()`，dashboard 渲染成本卡片；`estimate_cost` 可单测。验收：`test_risk_metrics.py`。
+
+## ✅ Phase 5 A · 知识库语义化（已完成 2026-08-05）
+
+- [x] **A1 Embedding 抽象**：`llm/embedding.py::NgramEmbedding`（md5 确定性 n-gram 向量，零网络/零费用/<10ms）+ `EmbeddingConfig`。验收：`test_embedding.py` 6 项。
+- [x] **A2 存储/检索**：`RepairCase` 扩展（page_fingerprint/repair_key/embedding/embedding_version/hit_count/is_verified/created_at）；SQLite/内存 `find_by_repair_key`（L1）+ `find_semantic`（L3，page 分桶+numpy 余弦）+ `bump_hit`/`set_verified`。验收：`test_knowledge_semantic.py` 10 项。
+- [x] **A3 orchestrator 接线**：L1 硬短路 + L3 进策略链（`semantic` 升级为向量检索，LLM 兜底）+ 失败上下文三级回退提取（live→快照→静态，带缓存）+ persist 富化 + review-queue 人审清单。验收：`test_orchestrator_semantic.py` 14 项。
 
 ## 已完成（存档）
 
