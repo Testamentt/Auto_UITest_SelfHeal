@@ -26,21 +26,28 @@ def _case(*, original="#a", new="#a-new", page_fp="pg1", text="确定", path="ht
         confidence=0.9,
         page_url="https://x/pg1",
         page_fingerprint=page_fp,
-        repair_key=compute_repair_key(page_fp, text, path),
+        repair_key=compute_repair_key(page_fp, path),
         embedding=embedding or _vec(text),
         embedding_version=VER,
     )
 
 
-# --- repair_key 确定性 ---
+# --- repair_key 确定性（v2：不含文本，含 nth-of-type 索引）---
 
 
 def test_repair_key_deterministic():
-    a = compute_repair_key("pg1", "确定", "html>body>button")
-    b = compute_repair_key("pg1", "确定", "html>body>button")
+    a = compute_repair_key("pg1", "html>body>button")
+    b = compute_repair_key("pg1", "html>body>button")
     assert a == b
-    assert a != compute_repair_key("pg2", "确定", "html>body>button")  # 跨页不同
-    assert a != compute_repair_key("pg1", "取消", "html>body>button")  # 文本不同
+    assert a != compute_repair_key("pg2", "html>body>button")  # 跨页不同
+    assert a.startswith("v2:")  # 版本前缀，防旧库（v1 含 text 键）残留误命中
+
+
+def test_repair_key_sibling_index_distinguishes():
+    """v2：tag_path 含 nth-of-type 索引，同路径兄弟键不同（防 L1 碰撞）。"""
+    a = compute_repair_key("pg1", "html>body>div>button:nth-of-type(1)")
+    b = compute_repair_key("pg1", "html>body>div>button:nth-of-type(2)")
+    assert a != b
 
 
 def test_page_fingerprint_distinct():
@@ -55,7 +62,7 @@ def test_page_fingerprint_distinct():
 def test_find_by_key_sqlite(tmp_path):
     store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
     store.add_repair(_case())
-    key = compute_repair_key("pg1", "确定", "html>body>button")
+    key = compute_repair_key("pg1", "html>body>button")
     found = store.find_by_repair_key(key)
     assert found is not None and found.new_selector == "#a-new"
 
@@ -63,8 +70,8 @@ def test_find_by_key_sqlite(tmp_path):
 def test_find_by_key_memory():
     store = KnowledgeStore()
     store.add_repair(_case())
-    assert store.find_by_repair_key(compute_repair_key("pg1", "确定", "html>body>button")) is not None
-    assert store.find_by_repair_key(compute_repair_key("pg9", "x", "y")) is None
+    assert store.find_by_repair_key(compute_repair_key("pg1", "html>body>button")) is not None
+    assert store.find_by_repair_key(compute_repair_key("pg9", "y")) is None
 
 
 # --- find_semantic（L3）：page 分桶 / 版本 / 阈值 ---
@@ -104,7 +111,7 @@ def test_semantic_threshold(tmp_path):
 
 def test_bump_hit_and_verified_sqlite(tmp_path):
     store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
-    key = compute_repair_key("pg1", "确定", "html>body>button")
+    key = compute_repair_key("pg1", "html>body>button")
     store.add_repair(_case())
     store.bump_hit(key)
     store.set_verified(key, True)
@@ -115,6 +122,6 @@ def test_bump_hit_and_verified_sqlite(tmp_path):
 def test_bump_hit_memory():
     store = KnowledgeStore()
     store.add_repair(_case())
-    key = compute_repair_key("pg1", "确定", "html>body>button")
+    key = compute_repair_key("pg1", "html>body>button")
     store.bump_hit(key)
     assert store.find_by_repair_key(key).hit_count == 1

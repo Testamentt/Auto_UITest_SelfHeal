@@ -148,6 +148,7 @@ def test_fix_proposal_written_on_heal(monkeypatch, tmp_path):
     orch._collector = _FakeCollector("https://x/login", LOGIN_DOM)
     out = orch.run("#old", description="登录")
     assert out.success
+    orch.commit_pending(out.attempt_id)  # B1：引擎层重试成功后提交
     assert store.count_repairs() == 1
     assert (tmp_path / "fix-proposals.md").exists()
     assert len(list((tmp_path / "fp").glob("*.json"))) == 1
@@ -164,4 +165,5 @@ def test_fix_proposal_disabled_by_default():
     orch._collector = _FakeCollector("https://x/login", LOGIN_DOM)
     out = orch.run("#old", description="登录")
     assert out.success
+    orch.commit_pending(out.attempt_id)  # B1：引擎层重试成功后提交
     assert store.count_repairs() == 1

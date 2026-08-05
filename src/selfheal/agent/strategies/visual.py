@@ -13,6 +13,7 @@ from __future__ import annotations
 from selfheal.agent.dom import build_stable_selector, parse_interactive_elements
 from selfheal.agent.llm_io import extract_json, safe_float, safe_str
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
+from selfheal.agent.strategies.heuristic import score_selector
 from selfheal.collect.collector import Scene
 from selfheal.llm.base import VisionClient
 
@@ -58,6 +59,11 @@ class VisualStrategy(RepairStrategy):
         # 护栏：selector 必须是真实候选之一；置信度越界 → 拒绝
         if selector not in candidates or not (0.0 <= confidence <= 1.0):
             return None
+        # C4 跨策略一致性校验：VLM 的挑选与「原选择器 + 描述」的 L2 意图做交叉验证。
+        # VLM 置信度是自报值（可能虚高）——若 L2 分数也低，说明大概率"找错区域"，
+        # 按线性融合降权；l2=1.0 时不变、l2=0 时压到 0.4×conf（通常低于接受阈值 → 转人审/失败）。
+        l2_score = score_selector(scene.dom_snapshot, selector, original_selector, description)
+        final_conf = round(confidence * (0.4 + 0.6 * l2_score), 3)
         return RepairCandidate(
-            selector=selector, confidence=round(confidence, 3), strategy=self.name
+            selector=selector, confidence=final_conf, strategy=self.name
         )
