@@ -43,7 +43,7 @@ def _store_case(
         confidence=0.9,
         page_url=f"https://x/{page_fp}",
         page_fingerprint=page_fp,
-        repair_key=compute_repair_key(page_fp, text, path),
+        repair_key=compute_repair_key(page_fp, path),
         embedding=EMB.embed(ctx.query_text),
         embedding_version=EMB.embedding_version,
         is_verified=verified,
@@ -76,8 +76,8 @@ def test_lookup_l1_miss_falls_back_to_find_repair():
     _store_case(store, text="确定", new="#a-new")
     orch = SelfHealOrchestrator(page=None, settings=Settings(), knowledge=store)
     scene = Scene(url="https://x/pg1")
-    # 元素文本不同 → repair_key 不同 → L1 不命中 → 旧式 find_repair（original_selector=#old）命中
-    outcome = orch._lookup_knowledge(scene, "#old", "fp", "pg1", _ctx("取消"))
+    # v2：repair_key 不含文本；用不同 tag_path 使 L1 不命中 → 回退旧式 find_repair(#old) 命中
+    outcome = orch._lookup_knowledge(scene, "#old", "fp", "pg1", _ctx("取消", path="html>body>a"))
     assert outcome is not None and outcome.success
     assert outcome.root_cause == "cached"
 
@@ -176,7 +176,7 @@ def test_extract_snapshot_css():
     ctx = extract_element_context(None, dom, "#login")
     assert ctx.source == "snapshot"
     assert ctx.text == "登录"
-    assert ctx.tag_path == "html>body>button"
+    assert ctx.tag_path == "html:nth-of-type(1)>body:nth-of-type(1)>button:nth-of-type(1)"
 
 
 def test_extract_snapshot_text_selector():
@@ -204,7 +204,7 @@ def test_persist_enriches_semantic_fields():
     orch._persist(scene, "#old", outcome, "fp", "pg1", ctx)
     case = store._repairs[0]
     assert case.page_fingerprint == "pg1"
-    assert case.repair_key == compute_repair_key("pg1", "确定", "html>body>button")
+    assert case.repair_key == compute_repair_key("pg1", "html>body>button")
     assert case.embedding is not None
     assert case.embedding_version == EMB.embedding_version
     assert case.created_at is not None

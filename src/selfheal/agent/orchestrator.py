@@ -50,6 +50,7 @@ class HealOutcome:
     """一次自愈的最终结果。
 
     - proposed_selector（T14 dry_run）: 仅报告模式下建议采用的定位器（不实际应用）。
+    - attempt_id（B1）: 策略修复成功后生成的暂存标识；引擎层重试成功后以此 commit_pending。
     """
 
     success: bool
@@ -58,6 +59,7 @@ class HealOutcome:
     strategy: str | None = None
     root_cause: str | None = None
     proposed_selector: str | None = None
+    attempt_id: str | None = None
 
 
 class SelfHealOrchestrator:
@@ -82,7 +84,12 @@ class SelfHealOrchestrator:
         self._reporter = reporter or HealingReporter()
         # LLM 可用才构建；缺省时按配置判定，不可用则 None（降级回规则式 / 跳过语义策略）
         self._llm_client = llm_client if llm_client is not None else get_llm_for_settings(settings)
-        self._diagnoser = LLMDiagnoser(self._llm_client) if self._llm_client else Diagnoser()
+        # 规则式诊断：零成本恒跑，为成功路径提供根因归因（不触发 LLM，省 Token）
+        self._rule_diagnoser = Diagnoser()
+        # LLM 诊断：仅失败/低置信路径触发；client 包计数代理（B2：诊断调用计入成本统计）
+        self._llm_diagnoser = (
+            LLMDiagnoser(self._counting_client(self._llm_client, "llm_calls")) if self._llm_client else None
+        )
         # VLM 可用才构建；不可用则 None（视觉策略返回 None 被跳过）
         self._vision_client = (
             vision_client if vision_client is not None else get_vision_for_settings(settings)
@@ -94,6 +101,10 @@ class SelfHealOrchestrator:
         # 单次 run() 的页面指纹与元素上下文（策略构建 / 沉淀复用）
         self._page_fingerprint = ""
         self._current_ctx: ElementContext | None = None
+        # B1：验证后沉淀——成功修复先暂存，由引擎层重试成功后 commit_pending（幂等防重复提交）
+        self._pending: dict[str, tuple] = {}
+        self._committed: set[str] = set()
+        self._attempt_counter = 0
 
     def run(
         self,
@@ -131,8 +142,8 @@ class SelfHealOrchestrator:
             self._record(original_selector, cached)  # 知识复用也记录（供审计/指标）
             return cached
 
-        # 2) 智能诊断根因（透传失败上下文，供 LLM 诊断参考）
-        root_cause = self._diagnoser.diagnose(scene, original_selector, failure)
+        # 2) 规则式诊断（零成本恒跑）：为成功路径提供根因归因，不触发 LLM
+        root_cause = self._rule_diagnoser.diagnose(scene, original_selector, failure)
 
         # 3) 按配置顺序尝试多策略，取置信度最高者
         best = self._best_candidate(scene, original_selector, description)
@@ -148,6 +159,14 @@ class SelfHealOrchestrator:
                     root_cause="dry_run",
                     proposed_selector=best.selector,
                 )
+            # C7：低置信度成功（[threshold, llm_diagnose_threshold)）也补 LLM 归因，
+            # 丰富审计与人审清单；高置信成功直接采用规则归因，省一次 LLM 调用。
+            if (
+                self._llm_diagnoser is not None
+                and best.confidence < self._settings.healing.llm_diagnose_threshold
+            ):
+                root_cause = self._llm_diagnoser.diagnose(scene, original_selector, failure)
+                self._bump_diag_count()
             outcome = HealOutcome(
                 success=True,
                 new_selector=best.selector,
@@ -155,9 +174,24 @@ class SelfHealOrchestrator:
                 strategy=best.strategy,
                 root_cause=root_cause,
             )
-            self._persist(scene, original_selector, outcome, fingerprint, page_fingerprint, element_context)  # 4) 验证成功后沉淀
+            # B1：验证后沉淀——成功修复先暂存（不立即写库），由引擎层重试成功后 commit_pending。
+            # 未经验证（重试失败）的修复不得进入知识库，防后续 L1/L3 复用到"没生效"的修复。
+            self._attempt_counter += 1
+            outcome.attempt_id = f"heal-{self._attempt_counter}"
+            self._pending[outcome.attempt_id] = (
+                outcome, scene, original_selector, fingerprint, page_fingerprint, element_context,
+            )
+            if len(self._pending) >= 64:  # 上限防膨胀（引擎失败不 commit 时，丢弃最旧暂存）
+                self._pending.pop(next(iter(self._pending)))
             return outcome
 
+        # 策略链失败（无候选或置信度不足）：LLM 深挖归因，供人审清单/失败报告（诊断后置，C3）
+        if self._llm_diagnoser is not None:
+            root_cause = self._llm_diagnoser.diagnose(scene, original_selector, failure)
+            self._bump_diag_count()
+            if best is not None and best.confidence < threshold:
+                # 有候选但置信度不足 → 建议人审（写 fix-proposals）
+                self._emit_proposal(original_selector, best, scene, root_cause)
         return HealOutcome(success=False, root_cause=root_cause)
 
     # --- 内部步骤 ---
@@ -203,6 +237,11 @@ class SelfHealOrchestrator:
         except Exception:  # noqa: BLE001 - 命中计数失败不阻塞
             logger.warning("知识命中计数失败", exc_info=True)
 
+    def _bump_diag_count(self) -> None:
+        """C7 验证计数器：记录 LLM 诊断触发次数（事后核对触发频率与降频效果）。"""
+        stats = self._reporter.stats
+        stats["llm_diagnoses"] = stats.get("llm_diagnoses", 0) + 1
+
     def _lookup_knowledge(
         self,
         scene: Scene,
@@ -212,8 +251,15 @@ class SelfHealOrchestrator:
         element_context: ElementContext | None = None,
     ) -> HealOutcome | None:
         # L1（Phase 5 A）：确定性 repair_key 精确命中 → 硬短路直接返回
-        if element_context is not None and not element_context.is_empty:
-            repair_key = compute_repair_key(page_fingerprint, element_context.text, element_context.tag_path)
+        # v2：repair_key = md5(page_fingerprint|tag_path)，不含文本。
+        # 仅当有结构上下文（tag_path 非空）才计算：静态兜底上下文 tag_path 为空，
+        # 若照常计算会使同页所有静态失败折叠成同一键（碰撞、跨用例误命中）→ 改走旧式检索。
+        if (
+            element_context is not None
+            and not element_context.is_empty
+            and element_context.tag_path
+        ):
+            repair_key = compute_repair_key(page_fingerprint, element_context.tag_path)
             case = self._knowledge.find_by_repair_key(repair_key)
             # #10：读取时校验置信度边界（None/越界按未命中），防脏数据进入复用；再验证缓存选择器可用
             if (
@@ -324,6 +370,22 @@ class SelfHealOrchestrator:
 
         return _CountingProxy()
 
+    def commit_pending(self, attempt_id: str) -> None:
+        """验证成功后沉淀知识 + 审计（B1）。
+
+        由引擎层在"用新定位器重试成功"后调用；按 attempt_id 幂等：
+        已提交 / 未知 id → no-op，防止引擎异常导致重复提交。
+        """
+        if attempt_id in self._committed:
+            return
+        payload = self._pending.get(attempt_id)
+        if payload is None:
+            return
+        outcome, scene, selector, fingerprint, page_fp, ctx = payload
+        self._persist(scene, selector, outcome, fingerprint, page_fp, ctx)  # 内部不抛异常（R4 记日志）
+        self._committed.add(attempt_id)
+        self._pending.pop(attempt_id, None)
+
     def _persist(
         self,
         scene: Scene,
@@ -343,12 +405,14 @@ class SelfHealOrchestrator:
             repair_key: str | None = None
             embedding: bytes | None = None
             embedding_version: str | None = None
-            if element_context is not None and not element_context.is_empty and self._embedding is not None:
-                repair_key = compute_repair_key(
-                    page_fingerprint, element_context.text, element_context.tag_path
-                )
-                embedding = self._embedding.embed(element_context.query_text)
-                embedding_version = self._embedding.embedding_version
+            if element_context is not None and not element_context.is_empty:
+                # B4：L1 键写入不依赖 embedding；仅当有结构上下文（tag_path）时写键，
+                # 静态上下文（tag_path 为空）不产生键，防同页碰撞（与查询侧门控对称）。
+                if element_context.tag_path:
+                    repair_key = compute_repair_key(page_fingerprint, element_context.tag_path)
+                if self._embedding is not None:
+                    embedding = self._embedding.embed(element_context.query_text)
+                    embedding_version = self._embedding.embedding_version
             self._knowledge.add_repair(
                 RepairCase(
                     original_selector=original_selector,

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "settings.yaml"
 
@@ -71,6 +71,9 @@ class HealingConfig(BaseModel):
       不持久化知识，供人审后手动采纳。
     - fix_proposals（T15）: 修复成功后输出「原→新」PR 化建议清单（Markdown/JSON，不自动改库），
       人确认后才合入代码。默认关闭；开启后每次成功自愈追加一条建议。
+    - llm_diagnose_threshold（C7）: LLM 归因触发阈值。低于该值的"成功"修复（置信度落在
+      [confidence_threshold, llm_diagnose_threshold) 区间）也补一次 LLM 诊断，丰富审计与人审清单；
+      应 > confidence_threshold。策略链全失败时无条件触发 LLM 归因（不依赖本阈值）。
     """
 
     enabled: bool = True
@@ -78,10 +81,20 @@ class HealingConfig(BaseModel):
     knowledge_first: bool = True
     confidence_threshold: float = 0.6
     early_accept_threshold: float = 0.85
+    llm_diagnose_threshold: float = 0.75
     on_uncertain: Literal["use_fallback", "pause", "fail"] = "use_fallback"
     exclude_url_patterns: list[str] = []
     dry_run: bool = False
     fix_proposals: bool = False
+
+    @model_validator(mode="after")
+    def _validate_thresholds(self) -> HealingConfig:
+        """阈值层级约束：early_accept > confidence、llm_diagnose > confidence（防配置倒挂）。"""
+        if self.early_accept_threshold <= self.confidence_threshold:
+            raise ValueError("early_accept_threshold 应 > confidence_threshold")
+        if self.llm_diagnose_threshold <= self.confidence_threshold:
+            raise ValueError("llm_diagnose_threshold 应 > confidence_threshold")
+        return self
 
 
 class KnowledgeConfig(BaseModel):
