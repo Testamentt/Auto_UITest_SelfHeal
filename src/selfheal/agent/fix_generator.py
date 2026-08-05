@@ -14,6 +14,7 @@ from selfheal.agent.strategies import SemanticStrategy, VisualStrategy
 from selfheal.agent.strategies.base import RepairCandidate
 from selfheal.config import Settings
 from selfheal.knowledge.base import KnowledgeBackend
+from selfheal.knowledge.schema import RepairQuery
 
 logger = logging.getLogger(__name__)
 
@@ -109,47 +110,44 @@ class FixGenerator:
         return FixProposal(best=best, root_cause=root_cause)
 
     def lookup_knowledge(self, context: HealingContext) -> HealOutcome | None:
-        """知识库优先查询：L1 repair_key 精确命中硬短路；未中回退旧式 selector+指纹检索。"""
-        # L1（Phase 5 A）：确定性 repair_key 精确命中 → 硬短路直接返回
-        # v2：repair_key = md5(page_fingerprint|tag_path)，不含文本。
-        # 仅当有结构上下文（tag_path 非空）才计算：静态兜底上下文 tag_path 为空，
-        # 若照常计算会使同页所有静态失败折叠成同一键（碰撞、跨用例误命中）→ 改走旧式检索。
+        """知识库优先查询：L1 repair_key 精确命中硬短路；未中回退旧式 selector+指纹检索。
+
+        经 A3 门面 query() 按优先级取候选（L1 → legacy），此处只做置信度边界 + 缓存验证
+        （编排决策保留在调用方）；对 L1 候选命中递增热度并标注 root_cause=cached_l1。
+        """
+        repair_key: str | None = None
         element_context = context.element_context
+        # v2：repair_key = md5(page_fingerprint|tag_path)，不含文本。
+        # 仅当有结构上下文（tag_path 非空）才提供 key：静态兜底上下文 tag_path 为空，
+        # 若照常计算会使同页所有静态失败折叠成同一键（碰撞、跨用例误命中）→ 只走旧式检索。
         if element_context is not None and not element_context.is_empty and element_context.tag_path:
             repair_key = compute_repair_key(context.page_fingerprint, element_context.tag_path)
-            case = self._knowledge.find_by_repair_key(repair_key)
+        for case, source in self._knowledge.query(
+            RepairQuery(
+                original_selector=context.original_selector,
+                dom_fingerprint=context.dom_fingerprint,
+                repair_key=repair_key,
+            )
+        ):
             # #10：读取时校验置信度边界（None/越界按未命中），防脏数据进入复用；再验证缓存选择器可用
-            if (
-                case is not None
-                and case.confidence is not None
-                and 0.0 <= case.confidence <= 1.0
-                and case.confidence >= self._settings.healing.confidence_threshold
-                and selector_exists(self._page, case.new_selector)
-            ):
+            conf = case.confidence
+            if conf is None or not (0.0 <= conf <= 1.0) or conf < self._settings.healing.confidence_threshold:
+                continue
+            if not selector_exists(self._page, case.new_selector):
+                continue
+            if source == "l1":
                 self._bump_hit(case)
-                return HealOutcome(
-                    success=True,
-                    new_selector=case.new_selector,
-                    confidence=case.confidence,
-                    strategy="knowledge",
-                    root_cause="cached_l1",
-                )
-        # 旧式精确 selector + 指纹检索（向后兼容）
-        case = self._knowledge.find_repair(context.original_selector, context.dom_fingerprint)
-        conf = case.confidence if case else None
-        # #10：读取时校验置信度边界（None/越界按未命中），防脏数据进入复用
-        if conf is None or not (0.0 <= conf <= 1.0) or conf < self._settings.healing.confidence_threshold:
-            return None
-        # 缓存验证（T4）：缓存的新选择器须仍可在当前页面定位，否则视为失效、转策略重修
-        if not selector_exists(self._page, case.new_selector):
-            return None
-        return HealOutcome(
-            success=True,
-            new_selector=case.new_selector,
-            confidence=case.confidence,
-            strategy="knowledge",
-            root_cause="cached",
-        )
+                root_cause = "cached_l1"
+            else:
+                root_cause = "cached"
+            return HealOutcome(
+                success=True,
+                new_selector=case.new_selector,
+                confidence=case.confidence,
+                strategy="knowledge",
+                root_cause=root_cause,
+            )
+        return None
 
     def best_candidate(self, context: HealingContext) -> RepairCandidate | None:
         """按 strategy_order 逐个尝试策略取最优；置信度达"早接受"阈值即短路（T1，省 LLM/VLM）。"""

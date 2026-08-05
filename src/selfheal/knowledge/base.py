@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from selfheal.knowledge.schema import PopupFeature, RepairCase
+from selfheal.knowledge.schema import PopupFeature, RepairCase, RepairQuery
 
 
 class KnowledgeBackend(Protocol):
@@ -19,6 +19,7 @@ class KnowledgeBackend(Protocol):
     - find_by_repair_key：L1 精确命中（确定性 repair_key）。
     - find_semantic：L3 按 page_fingerprint 分桶 → numpy 余弦相似度。
     - bump_hit / set_verified：防污染衰减与人工审核（命中递增、verified 标记）。
+    A3 门面：query(RepairQuery) 收敛「L1 精确 → 旧式检索」的择优（置信度/缓存验证留调用方）。
     """
 
     def add_repair(self, case: RepairCase) -> None:
@@ -37,6 +38,13 @@ class KnowledgeBackend(Protocol):
 
     def find_by_repair_key(self, repair_key: str) -> RepairCase | None:
         """L1：按确定性 repair_key 精确命中（页面指纹 + 元素文本 + 标签路径）。"""
+        ...
+
+    def query(self, q: RepairQuery) -> list[tuple[RepairCase, str]]:
+        """按优先级返回候选（L1 精确命中优先，其次旧式 selector+指纹）；可能为空列表。
+
+        返回 [(case, source)]，source ∈ {"l1", "legacy"}；供调用方按序做置信度/缓存验证。
+        """
         ...
 
     def find_semantic(
