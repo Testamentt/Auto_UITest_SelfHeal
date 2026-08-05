@@ -7,23 +7,35 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from selfheal.reporting.hooks import HealingRecord
 
 
-def compute_metrics(records: list[HealingRecord]) -> dict:
-    """聚合自愈记录为指标字典。
+@dataclass(frozen=True)
+class MetricsSnapshot:
+    """自愈指标快照（A6）：类型化字段替代魔法字符串字典。
 
-    Returns:
-        {
-            "total": int,                     # 自愈总次数
-            "success": int,                   # 成功次数
-            "success_rate": float,            # 成功率 [0,1]（total=0 时为 0.0）
-            "strategy_distribution": dict,    # 策略 -> 次数
-            "root_cause_distribution": dict,  # 根因 -> 次数
-            "verified": int,                  # T16 真自愈数（原定位器确已失效）
-            "flaky": int,                     # T16 flaky 侥幸通过数（失败瞬时）
-            "verified_rate": float,           # T16 真自愈率 [0,1]（成功中真修复占比）
-        }
+    看板/审计以点属性访问（metrics.total），pydantic/dataclass 提供智能提示，
+    杜绝 `metrics["total"]` 拼写错误导致看板空白。除零防护在 compute_metrics 内收敛。
+    """
+
+    total: int
+    success: int
+    success_rate: float
+    strategy_distribution: dict[str, int] = field(default_factory=dict)
+    root_cause_distribution: dict[str, int] = field(default_factory=dict)
+    verified: int = 0
+    flaky: int = 0
+    verified_rate: float = 0.0
+
+
+def compute_metrics(records: list[HealingRecord]) -> MetricsSnapshot:
+    """聚合自愈记录为指标快照。
+
+    - total / success / success_rate: 自愈总数 / 成功数 / 成功率 [0,1]（total=0 时为 0.0）
+    - strategy_distribution / root_cause_distribution: 策略 / 根因 → 次数
+    - verified / flaky / verified_rate: T16 真自愈数 / flaky 侥幸通过数 / 真自愈率
     """
     total = len(records)
     success = sum(1 for r in records if r.success)
@@ -36,13 +48,13 @@ def compute_metrics(records: list[HealingRecord]) -> dict:
             strategy_dist[r.strategy] = strategy_dist.get(r.strategy, 0) + 1
         if r.root_cause:
             rootcause_dist[r.root_cause] = rootcause_dist.get(r.root_cause, 0) + 1
-    return {
-        "total": total,
-        "success": success,
-        "success_rate": (success / total) if total else 0.0,
-        "strategy_distribution": strategy_dist,
-        "root_cause_distribution": rootcause_dist,
-        "verified": verified,
-        "flaky": flaky,
-        "verified_rate": (verified / success) if success else 0.0,
-    }
+    return MetricsSnapshot(
+        total=total,
+        success=success,
+        success_rate=(success / total) if total else 0.0,
+        strategy_distribution=strategy_dist,
+        root_cause_distribution=rootcause_dist,
+        verified=verified,
+        flaky=flaky,
+        verified_rate=(verified / success) if success else 0.0,
+    )

@@ -88,7 +88,7 @@ def _use_fixed_strategy(monkeypatch, selector, confidence=0.9):
 def _orch(page=None, store=None, settings=None):
     settings = settings or Settings()
     orch = SelfHealOrchestrator(page=page, settings=settings, knowledge=store or KnowledgeStore())
-    orch._collector = _FakeCollector("https://x/login", LOGIN_DOM)
+    orch._assembler._collector = _FakeCollector("https://x/login", LOGIN_DOM)
     return orch
 
 
@@ -105,7 +105,7 @@ def test_run_stages_then_commit_persists():
     orch.commit_pending(out.attempt_id)
     orch.commit_pending(out.attempt_id)  # 重复提交 → no-op
     assert store.count_repairs() == 1
-    assert orch._pending == {}
+    assert orch._persister._pending == {}
     assert len(orch._reporter.records) == 1  # 审计随沉淀落一次
 
 
@@ -132,7 +132,7 @@ def test_l1_cached_path_not_staged():
     out = orch.run("#old", description="登录")
     assert out.success and out.root_cause == "cached"
     assert out.attempt_id is None  # 知识复用不产生暂存
-    assert orch._pending == {}
+    assert orch._persister._pending == {}
     assert len(orch._reporter.records) == 1  # 复用仍记录审计（供指标统计）
 
 
@@ -151,7 +151,7 @@ def test_engine_retry_success_commits(monkeypatch):
     assert hl.click() == "ok"
     assert store.count_repairs() == 1  # 重试验证成功后沉淀
     assert len(orch._reporter.records) == 1
-    assert orch._pending == {}  # 已提交清空
+    assert orch._persister._pending == {}  # 已提交清空
 
 
 def test_engine_all_retries_fail_no_commit(monkeypatch):

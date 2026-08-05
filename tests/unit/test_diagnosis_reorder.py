@@ -57,7 +57,7 @@ def _orch(settings, llm=None, store=None, url="https://x/login", dom=LOGIN_DOM):
     orch = SelfHealOrchestrator(
         page=None, settings=settings, knowledge=store or KnowledgeStore(), llm_client=llm
     )
-    orch._collector = _FakeCollector(url, dom)
+    orch._assembler._collector = _FakeCollector(url, dom)
     return orch
 
 
@@ -119,7 +119,7 @@ def test_below_threshold_candidate_emits_human_review_proposal(monkeypatch):
     _use_fixed_strategy(monkeypatch, RepairCandidate(selector="#maybe", confidence=0.3, strategy="heuristic"))
     orch = _orch(settings, llm=llm)
     emitted = []
-    orch._emit_proposal = lambda *a, **k: emitted.append(a)  # 拦截写文件副作用
+    orch._persister._emit_proposal = lambda *a, **k: emitted.append(a)  # 拦截写文件副作用
     outcome = orch.run("#submit-btn", description="登录")
     assert outcome.success is False
     assert llm.chat_calls == 1
