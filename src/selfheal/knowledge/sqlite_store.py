@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS repairs (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_repairs_selector ON repairs(original_selector);
+-- #10：同 (原选择器, 新选择器, 指纹) 去重，避免记录无界增长
+CREATE UNIQUE INDEX IF NOT EXISTS idx_repairs_unique
+    ON repairs(original_selector, new_selector, dom_fingerprint);
 CREATE TABLE IF NOT EXISTS popups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     signature TEXT NOT NULL,
@@ -46,10 +49,14 @@ class SqliteKnowledgeStore:
         self._conn.commit()
 
     def add_repair(self, case: RepairCase) -> None:
+        # #10 upsert：同 (原,新,指纹) 已存在则更新策略/置信度/url，不重复插入
         self._conn.execute(
             "INSERT INTO repairs"
             " (original_selector, new_selector, strategy, confidence, page_url, dom_fingerprint)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            " VALUES (?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(original_selector, new_selector, dom_fingerprint)"
+            " DO UPDATE SET strategy=excluded.strategy, confidence=excluded.confidence,"
+            "               page_url=excluded.page_url",
             (
                 case.original_selector,
                 case.new_selector,
@@ -101,6 +108,9 @@ class SqliteKnowledgeStore:
 
     def count_popups(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM popups").fetchone()[0]
+
+    def count_repairs(self) -> int:
+        return self._conn.execute("SELECT COUNT(*) FROM repairs").fetchone()[0]
 
     @staticmethod
     def _row_to_repair(row: sqlite3.Row) -> RepairCase:

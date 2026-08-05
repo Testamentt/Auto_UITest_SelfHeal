@@ -60,14 +60,25 @@ class OpenAICompatibleLLM(LLMClient):
         return self._client
 
     def chat(self, messages: list[ChatMessage], **kwargs: Any) -> str:
-        """发送对话请求并返回文本回复。SDK 缺失 / 网络失败时抛 UnavailableError。"""
+        """发送对话请求并返回文本回复。
+
+        #11 降级契约收敛：SDK 调用统一捕获并转抛 UnavailableError（from exc 保留原因），
+        调用方只需捕获 UnavailableError 即可完成降级，不依赖裸 except Exception。
+        """
         client = self._ensure_client()
-        resp = client.chat.completions.create(
-            model=self._model,
-            messages=[{"role": m.role, "content": m.content} for m in messages],
-            temperature=self._temperature,
-            max_tokens=self._max_tokens,
-        )
+        try:
+            resp = client.chat.completions.create(
+                model=self._model,
+                messages=[{"role": m.role, "content": m.content} for m in messages],
+                temperature=self._temperature,
+                max_tokens=self._max_tokens,
+            )
+        except UnavailableError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - SDK 网络/鉴权/限流异常归一化
+            raise UnavailableError(f"模型调用失败: {type(exc).__name__}") from exc
+        if not resp.choices:
+            raise UnavailableError("模型返回了空 choices")
         content = resp.choices[0].message.content
         if content is None:
             raise UnavailableError("模型返回了空内容")

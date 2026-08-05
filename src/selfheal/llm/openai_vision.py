@@ -48,22 +48,32 @@ class OpenAICompatibleVLM(VisionClient):
         return self._client
 
     def analyze_image(self, image: bytes, prompt: str, **kwargs: Any) -> str:
-        """发送截图 + 提示词，返回模型文本分析。"""
+        """发送截图 + 提示词，返回模型文本分析。
+
+        #11 降级契约收敛：SDK 异常统一转抛 UnavailableError（from exc），调用方捕获即可降级。
+        """
         client = self._ensure_client()
         b64 = base64.b64encode(image).decode("utf-8")
-        resp = client.chat.completions.create(
-            model=self._model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-                    ],
-                }
-            ],
-            max_tokens=self._max_tokens,
-        )
+        try:
+            resp = client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                        ],
+                    }
+                ],
+                max_tokens=self._max_tokens,
+            )
+        except UnavailableError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - SDK 网络/鉴权/限流异常归一化
+            raise UnavailableError(f"视觉模型调用失败: {type(exc).__name__}") from exc
+        if not resp.choices:
+            raise UnavailableError("模型返回了空 choices")
         content = resp.choices[0].message.content
         if content is None:
             raise UnavailableError("模型返回了空内容")

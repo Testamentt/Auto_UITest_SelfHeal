@@ -14,7 +14,7 @@
 四层结构（详见 [CLAUDE.md](CLAUDE.md) 与 [docs/architecture.md](docs/architecture.md)）：
 
 ```
-展示层        reporting/   Allure + 自研 HTML 看板、视频回放
+展示层        reporting/   Allure + 自研 HTML 看板（视频回放：规划中）
 AI 自愈 Agent agent/       大脑：编排闭环 / 诊断 / 多策略修复（llm 抽象 + knowledge 知识库）
 数据采集层    collect/     截图 / DOM 快照 / 网络日志 / 执行轨迹
 能力建设层    engine/      Playwright 封装 / 自愈定位器 / 智能等待 / 弹窗处理

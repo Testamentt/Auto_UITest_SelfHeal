@@ -7,14 +7,14 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  展示层 reporting/                                            │
-│  Allure 报告 · 自愈看板 · 视频回放 · 修复审计                  │
+│  Allure 报告 · 自愈看板 · 修复审计（视频回放：规划中）          │
 ├─────────────────────────────────────────────────────────────┤
 │  AI 自愈 Agent 层（大脑）agent/                                │
 │  orchestrator 编排闭环 │ diagnose 诊断 │ strategies/ 多策略修复 │
 │  支撑：llm/ 模型抽象（provider 无关） · knowledge/ 知识库       │
 ├─────────────────────────────────────────────────────────────┤
 │  数据采集层 collect/                                          │
-│  页面截图 │ DOM 快照 │ 网络日志 │ 执行轨迹(trace)              │
+│  页面截图 │ DOM 快照（网络日志 / trace：规划中）                │
 ├─────────────────────────────────────────────────────────────┤
 │  能力建设层（执行引擎）engine/                                 │
 │  Playwright 封装 │ 自愈定位器 │ 智能等待 │ 弹窗处理            │
@@ -65,11 +65,13 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 - "仅报告不执行"的 dry-run 模式。
 - 修复写回代码的人审清单（PR 化建议）。
 - 看板区分"真自愈 vs flaky 侥幸通过"。
+- **网络日志 / trace 采集**（见 TODO T11）：当前 `collector` 只采集截图 + DOM，`Scene.network_logs`/`trace_path` 为占位。
+- **视频回放**（见 roadmap Phase 4-5）：当前无录制实现，为规划能力。
 
 ## 已定选型与遗留 TBD
 
 **已定**（Phase 2/3 落地）：
-- LLM：DeepSeek（OpenAI 兼容端点，`deepseek-chat`），key 走 `OPENAI_API_KEY`。
+- LLM：DeepSeek（OpenAI 兼容端点，`deepseek-v4-flash`），key 走 `OPENAI_API_KEY`。
 - VLM：通义 `qwen3-vl-flash`（DashScope 兼容端点），key 走 `DASHSCOPE_API_KEY`；候选护栏防幻觉。
 - 知识库后端：SQLite（`knowledge/sqlite_store.py`），DOM 指纹参与检索择优。
 

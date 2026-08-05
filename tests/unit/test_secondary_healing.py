@@ -67,6 +67,14 @@ def test_cache_validation_valid_reused():
     assert out.strategy == "knowledge"
 
 
+def test_lookup_rejects_out_of_range_confidence():
+    """#10：读出的置信度越界（>1）按未命中处理，防脏数据进入复用。"""
+    store = KnowledgeStore()
+    store.add_repair(RepairCase("#old", "#present", "heuristic", 1.5, "url"))
+    orch = SelfHealOrchestrator(_FakePage(present={"#present"}), Settings(), knowledge=store)
+    assert orch._lookup_knowledge(Scene(url="x", dom_snapshot=""), "#old") is None
+
+
 def test_run_uses_knowledge_by_default():
     orch = _orch_with_case("#present", present={"#present"})
     out = orch.run("#old")

@@ -3,7 +3,7 @@
 > 日期：2026-08-04 · 方法：5 维度并行评审 + 逐条对抗性核实（33 个评审代理，28 条发现全部确认为真）
 > 维度：耦合与内聚 · 可扩展性 · 健壮性与降级 · 测试充分性 · 一致性与文档对齐
 > 基线：`feat/t4-secondary-healing`（含 Phase 1–4 高优先级 T1–T4）
-> 状态：**H1/H2/H3 已修复（2026-08-05）**——见「高危修复记录」
+> 状态：**H1/H2/H3 已修复（2026-08-05）**；**中危 #8/#10/#11/#15/#16/#17 已修复（2026-08-05）**
 
 ## 总体结论
 
@@ -129,3 +129,17 @@
 - 新增 `tests/unit/test_collector.py`：capture 尽力而为四场景。
 
 **验证**：ruff 全过；unit 84 + 核心 e2e 5 + 真实模型冒烟 2 全绿。
+
+---
+
+## 中危修复记录（2026-08-05）
+
+- **#8 未知策略名静默跳过** ✅：`_best_candidate` 遇未注册策略名记 `logger.warning`（不再静默）；补单测 `test_unknown_strategy_logs_warning`。
+- **#9 PopupGuard 知识隔离** ✅（随 H1 完成）：`_safe_find_popup`/`_safe_add_popup`。
+- **#10 知识库去重 + 置信度校验** ✅：`sqlite_store` 加 `UNIQUE(original_selector,new_selector,dom_fingerprint)` + `add_repair` 改 upsert；`_lookup_knowledge` 校验 `confidence ∈ [0,1]`（None/越界按未命中）；补单测 `test_add_repair_upsert_dedup`/`test_lookup_rejects_out_of_range_confidence`。
+- **#11 LLM/VLM 降级契约收敛** ✅：`openai_client.chat`/`openai_vision.analyze_image` 统一捕获 SDK 异常与空 choices → 转抛 `UnavailableError(from exc)`；`safe_float` 先排除 bool（模型返回 true 不再穿透护栏）；补单测。
+- **#15 LLM 选型一致** ✅：config.py（deepseek-v4-flash）、settings.example.yaml、architecture.md 已定选型、CLAUDE.md 技术选型表、pyproject 注释五处对齐，删"待定"。
+- **#16 死配置** ✅：移除 settings.example.yaml 的 execution/reporting 段（标注规划中）；`Settings` 加 `model_config = ConfigDict(extra="forbid")`，让未来配置漂移在加载期报错；修正 channel 注释。
+- **#17 文档能力对齐** ✅：architecture.md 未实现项补"网络日志/trace 采集（T11）"与"视频回放（Phase 4-5）"；分层图标注规划中；README 视频回放→"规划中"。
+
+**验证**：ruff 全过；unit 90 + e2e 7（含真实模型冒烟）全绿。

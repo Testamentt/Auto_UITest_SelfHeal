@@ -3,26 +3,22 @@
 
 browser:
   headless: true
-  channel: chrome          # chrome=系统已装 Chrome（免下载内核）/ chromium=Playwright 自带内核 / firefox / webkit
+  channel: chrome          # chrome=系统已装 Chrome（免下载内核）/ chromium=Playwright 自带内核
   slow_mo: 0               # 毫秒，演示时可适当调大
   viewport: { width: 1280, height: 800 }
 
-execution:
-  default_timeout_ms: 10000
-  retry_on_failure: 2      # 自愈成功后的重试次数
-  collect_on_failure: true # 失败时是否采集现场（截图/DOM/网络/trace）
-
-# LLM / VLM provider（待定）：通过 llm/ 抽象层接入，可切换
+# LLM（已定选型，见 docs/architecture.md「已定选型」）：DeepSeek OpenAI 兼容端点
 llm:
-  provider: openai         # 示例；后续可替换
-  model: gpt-4o-mini
+  provider: openai
+  model: deepseek-v4-flash
   api_key_env: OPENAI_API_KEY   # 从环境变量名读取密钥，勿写明文
-  base_url: null
+  base_url: https://api.deepseek.com
   temperature: 0.0
 
+# VLM（已定选型）：通义 qwen3-vl-flash，DashScope OpenAI 兼容端点
 vision:
-  provider: openai         # OpenAI 兼容端点（DashScope）
-  model: qwen3-vl-flash    # 通义千问多模态模型
+  provider: openai
+  model: qwen3-vl-flash
   api_key_env: DASHSCOPE_API_KEY   # 从环境变量名读取密钥，勿写明文
   base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
 
@@ -39,8 +35,5 @@ knowledge:
   backend: sqlite          # sqlite=持久化（默认）/ memory=进程内
   path: .cache/knowledge.db
 
-reporting:
-  allure_results: allure-results
-  html_dir: reports
-  attach_screenshot: true
-  attach_dom: true
+# execution / reporting 段：规划中（见 docs/TODO.md T9），Settings 尚未建模，
+# 请勿在此添加相关键（Settings 已设 extra='forbid'，未建模字段会导致加载报错）。

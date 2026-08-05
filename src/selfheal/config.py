@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "settings.yaml"
 
@@ -97,7 +97,13 @@ class VisionConfig(BaseModel):
 
 
 class Settings(BaseModel):
-    """顶层配置模型。TODO: 补全 execution / reporting 子模型。"""
+    """顶层配置模型。TODO: 补全 execution / reporting 子模型。
+
+    extra='forbid'（#16）：yaml 里有但 Settings 未建模的字段会在加载期报错，
+    而非被 pydantic 静默丢弃，杜绝"死配置"漂移。
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     browser: BrowserConfig = BrowserConfig()
     llm: LLMConfig = LLMConfig()

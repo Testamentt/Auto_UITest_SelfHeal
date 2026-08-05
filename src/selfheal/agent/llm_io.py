@@ -84,8 +84,13 @@ def safe_str(data: dict, key: str) -> str:
 
 
 def safe_float(data: dict, key: str, default: float = 0.0) -> float:
-    """从字典安全取数值字段（兼容 "0.5" 字符串）；无效返回 default。"""
+    """从字典安全取数值字段（兼容 "0.5" 字符串）；无效返回 default。
+
+    注意：bool 是 int 子类，#11 需先排除，避免模型返回 true 被当作 1.0 穿透护栏。
+    """
     value = data.get(key)
+    if isinstance(value, bool):
+        return default
     if isinstance(value, (int, float)):
         return float(value)
     if isinstance(value, str):

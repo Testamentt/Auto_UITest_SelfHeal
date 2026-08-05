@@ -56,3 +56,9 @@ def test_safe_fields():
     assert safe_float({"c": "0.5"}, "c") == 0.5
     assert safe_float({"c": 95}, "c") == 95.0
     assert safe_float({"c": "abc"}, "c", default=0.0) == 0.0
+
+
+def test_safe_float_rejects_bool():
+    """#11：bool 是 int 子类，模型返回 true 不应被当作 1.0 穿透护栏。"""
+    assert safe_float({"c": True}, "c", default=0.0) == 0.0
+    assert safe_float({"c": False}, "c", default=0.0) == 0.0

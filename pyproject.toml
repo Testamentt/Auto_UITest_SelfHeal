@@ -24,7 +24,7 @@ dev = [
     "pytest-html>=4.1",
     "ruff>=0.4",
 ]
-# LLM / VLM provider（待定）：先以 openai 兼容接口为示例，后续可替换或追加
+# LLM / VLM provider（已定，见 docs/architecture.md「已定选型」）：DeepSeek + 通义 qwen3-vl-flash，经 llm/ 抽象层接入
 llm = [
     "openai>=1.30",
 ]
