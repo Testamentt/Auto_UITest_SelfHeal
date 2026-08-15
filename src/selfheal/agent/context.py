@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -89,8 +90,11 @@ class ContextAssembler:
         self._page = page
         self._settings = settings
         self._collector = SceneCollector(page)
-        # 失败上下文缓存（一次提取，L1/L3/persist 复用，避免全量 DOM 解析多次）
-        self._failure_context_cache: dict[str, ElementContext] = {}
+        # 失败上下文缓存（一次提取，L1/L3/persist 复用，避免全量 DOM 解析多次）。
+        # 键 = (url, selector)：SPA 多页面流程同 selector 不同元素不误用（审查 M4）；
+        # OrderedDict 做 LRU 上限 _CONTEXT_CACHE_LIMIT，防长流程内存膨胀。
+        self._failure_context_cache: OrderedDict[tuple[str, str], ElementContext] = OrderedDict()
+        self._context_cache_limit = 256
 
     def assemble(self, selector: str, description: str | None = None) -> HealingContext:
         """采集当前现场并组装上下文；excluded 标记 T13 高风险页豁免命中。"""
@@ -115,9 +119,17 @@ class ContextAssembler:
         return any(fnmatch.fnmatch(url, p) for p in patterns)
 
     def _element_context(self, scene: Scene, selector: str, description: str | None) -> ElementContext:
-        """提取失败元素上下文；命中缓存直接复用（一次提取原则，避免重复 DOM 解析）。"""
-        if selector in self._failure_context_cache:
-            return self._failure_context_cache[selector]
+        """提取失败元素上下文；命中缓存直接复用（一次提取原则，避免重复 DOM 解析）。
+
+        键含 URL（审查 M4）：同 selector 在不同页面（SPA 多流程）不误用旧上下文。
+        """
+        key = (scene.url, selector)
+        cached = self._failure_context_cache.get(key)
+        if cached is not None:
+            return cached
         ctx = extract_element_context(self._page, scene.dom_snapshot if scene else None, selector, description)
-        self._failure_context_cache[selector] = ctx
+        self._failure_context_cache[key] = ctx
+        self._failure_context_cache.move_to_end(key)  # LRU：最近使用排到尾部
+        if len(self._failure_context_cache) > self._context_cache_limit:
+            self._failure_context_cache.popitem(last=False)  # 淘汰最久未用
         return ctx

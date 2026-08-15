@@ -8,6 +8,7 @@ import json
 
 import pytest
 
+import selfheal.agent.orchestrator as orch_mod
 from selfheal.agent.orchestrator import SelfHealOrchestrator
 from selfheal.collect.collector import Scene
 from selfheal.config import Settings
@@ -56,3 +57,37 @@ def test_no_short_circuit_when_below_threshold():
     assert fake_llm.calls  # semantic 被调用（未短路）
     assert best is not None
     assert best.strategy == "semantic"
+
+
+class _BoomStrategy:
+    """模拟内部异常的策略（如 embedding/数据崩溃），注册进策略注册表。"""
+
+    name = "boom"
+
+    def repair(self, scene, selector, description):
+        raise RuntimeError("策略内部故障")
+
+
+def test_strategy_exception_does_not_break_chain(monkeypatch):
+    """审查 C4 回归：首个策略抛异常 → 不中断策略链，后续策略继续执行并可用。"""
+    settings = Settings()
+    settings.healing.strategy_order = ["boom", "heuristic"]
+    monkeypatch.setitem(orch_mod._STRATEGY_REGISTRY, "boom", _BoomStrategy)
+    dom = '<html><body><button id="s" data-testid="submit-btn" aria-label="登录按钮">登录</button></body></html>'
+    scene = Scene(url="x", dom_snapshot=dom)
+
+    best = _orch()._best_candidate(scene, "#old-selector", "登录按钮")
+
+    # 故障策略被跳过，启发式正常产出候选（修复前整条链中断、best 为 None）
+    assert best is not None
+    assert best.strategy == "heuristic"
+    assert best.confidence >= 0.85
+
+
+def test_all_strategies_fail_returns_none(monkeypatch):
+    """全部策略异常 → best 为 None（不崩溃，走失败/人审路径）。"""
+    settings = Settings()
+    settings.healing.strategy_order = ["boom"]
+    monkeypatch.setitem(orch_mod._STRATEGY_REGISTRY, "boom", _BoomStrategy)
+    scene = Scene(url="x", dom_snapshot="<html><body></body></html>")
+    assert _orch(settings)._best_candidate(scene, "#x", "描述") is None

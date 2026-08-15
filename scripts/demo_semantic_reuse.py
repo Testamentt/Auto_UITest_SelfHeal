@@ -127,7 +127,7 @@ def _demo(db_path: str) -> None:
             page_fingerprint=page_fp,
             repair_key=compute_repair_key(page_fp, "html>body>div>button"),
             embedding=NgramEmbedding().embed(seed_ctx.query_text),
-            embedding_version="v1-ngram",
+            embedding_version=NgramEmbedding().embedding_version,  # 动态取版本（含 dim，见审查 C3）
             created_at=datetime.now(timezone.utc).isoformat(),  # 新鲜窗口 → sim>0.80 自动采纳
         )
     )

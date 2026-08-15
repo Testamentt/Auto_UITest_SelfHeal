@@ -20,7 +20,10 @@ from selfheal.agent.dom import Element, build_stable_selector, parse_interactive
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
 from selfheal.collect.collector import Scene
 
-# 词元：连续字母数字 或 连续中文（CJK）
+# 词元：连续字母数字 或 连续中文（CJK）。
+# 注意：与 llm/embedding.py 的 _TOKEN_RE（单中文字符）粒度不同是有意的——
+# 意图词元重叠用连续片段更语义化；embedding 的 n-gram 需单字形成中文二元组。
+# 调整任一处分词时需评估另一处（审查 m7：两处重复定义，勿漂移）。
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[一-鿿]+")
 # 参与打分的字段（仅用于可读性，实际计分见 _score）
 _FIELDS = ("data-testid", "id", "aria-label", "text", "name", "placeholder")

@@ -77,6 +77,28 @@ def test_add_repair_upsert_dedup(tmp_path):
     store.close()
 
 
+def test_add_repair_upsert_dedup_with_none_fingerprint(tmp_path):
+    """审查 C2 回归：dom_fingerprint=None 时同样去重（SQLite UNIQUE 对 NULL 不生效的坑）。"""
+    store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
+    case = _case(fingerprint=None)
+    store.add_repair(case)
+    store.add_repair(case)  # 重复写入（修复前会绕过冲突检测产生 2 行）
+    store.add_repair(case)
+    assert store.count_repairs() == 1  # 去重生效
+    # 读取侧语义不变：dom_fingerprint 还原为 None
+    found = store.find_repair("#old")
+    assert found is not None and found.dom_fingerprint is None
+    store.close()
+
+
+def test_close_idempotent(tmp_path):
+    """审查 M3：close 幂等（重复关闭安全，供生命周期收口复用）。"""
+    store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
+    store.add_repair(_case())
+    store.close()
+    store.close()  # 二次 close 不抛异常
+
+
 def test_factory_backend_selection(tmp_path):
     sqlite_settings = Settings()
     sqlite_settings.knowledge.backend = "sqlite"

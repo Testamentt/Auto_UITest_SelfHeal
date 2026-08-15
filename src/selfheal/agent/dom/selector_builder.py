@@ -5,7 +5,12 @@
 
 from __future__ import annotations
 
+import re
+
 from selfheal.agent.dom.parser import Element
+
+# 可安全用作 CSS id 选择器的字符集（其余走属性选择器，防特殊字符破坏 CSS，审查 nit）
+_SAFE_ID_RE = re.compile(r"[\w-]+")
 
 
 def build_stable_selector(el: Element) -> str | None:
@@ -13,7 +18,8 @@ def build_stable_selector(el: Element) -> str | None:
     if testid := el.attr("data-testid"):
         return f'[data-testid="{testid}"]'
     if el_id := el.attr("id"):
-        return f"#{el_id}"
+        # id 含 CSS 特殊字符（: . [ ] 空格等）时用属性选择器，避免生成非法 CSS
+        return f'[id="{el_id}"]' if not _SAFE_ID_RE.fullmatch(el_id) else f"#{el_id}"
     if text := el.field("text"):
         return f'text="{text}"'
     if aria := el.attr("aria-label"):

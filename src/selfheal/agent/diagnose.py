@@ -19,8 +19,9 @@ from dataclasses import dataclass
 
 from selfheal.collect.collector import Scene
 
-# 从选择器中提取可辨识主键：#id、[attr="v"]、纯文本里的单词等
-_SELECTOR_KEY_RE = re.compile(r"[A-Za-z][\w-]*")
+# 从选择器中提取可辨识主键：#id、[attr="v"]、纯文本里的单词等。
+# 含中文片段（m1）：中文 id（如 #登录按钮）此前提取不到任何 key → 恒判 unknown。
+_SELECTOR_KEY_RE = re.compile(r"[A-Za-z][\w-]*|[一-鿿]+")
 
 
 @dataclass

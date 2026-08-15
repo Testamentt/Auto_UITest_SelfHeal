@@ -49,7 +49,14 @@ def test_factory_returns_ngram_when_enabled():
     s = Settings()
     client = get_embedding_for_settings(s)
     assert isinstance(client, NgramEmbedding)
-    assert client.embedding_version == "v1-ngram"
+    assert client.embedding_version == "v1-ngram-512"  # 版本号含 dim（审查 C3）
+
+
+def test_embedding_version_includes_dim():
+    """审查 C3：版本号含维度，改 dim 后新旧向量不同版本（防 L3 维度崩溃）。"""
+    assert NgramEmbedding(dim=512).embedding_version == "v1-ngram-512"
+    assert NgramEmbedding(dim=256).embedding_version == "v1-ngram-256"
+    assert NgramEmbedding(dim=512).embedding_version != NgramEmbedding(dim=256).embedding_version
 
 
 def test_factory_disabled_returns_none():

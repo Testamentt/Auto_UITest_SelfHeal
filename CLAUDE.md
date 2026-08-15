@@ -111,9 +111,12 @@ AutoAiSelfHeal/
 
 ## 开发约定
 
-- 当前仓库为**骨架阶段**：多数模块是带 docstring 与 `TODO` 的桩，实现时遵循既有分层与命名，不要跨层直接耦合。
+- 项目已完成 Phase 1–5（最小闭环 → AI 大脑 → 沉淀进阶 → 证据指标 → 语义化与风险控制），
+  模块均已实现并有 unit/e2e 双覆盖；新增代码遵循既有分层与命名，不要跨层直接耦合。
+- 已知遗留与待办见 `docs/TODO.md`（T5 置信度归一化 / T6 智能等待默认融入 / T7 知识二次命中 e2e / T8 原生定位替代 HTMLParser 等）。
 - **自愈是插件，不侵入框架**：经 pytest fixture 按 `settings.healing.enabled` / CLI `--selfheal` 提供；`HealingPage` 与原生 `Page` 接口兼容（代理），POM 代码开/关自愈都能跑；关闭时为原生 Page、零开销。不用 import 替换 / monkeypatch（见 roadmap.md 决策 D5）。
 - **兜底优先**：`locator(sel, fallback=...)`；AI 不确定（置信度 < 阈值）时按 `healing.on_uncertain` 处理，默认 `use_fallback`，无备用则 fail（决策 D6）。
 - 新增模型能力一律走 `llm/` 抽象 + `registry` 注册，provider 相关配置放进 `config/settings.yaml`。
 - 修复策略是**可插拔**的：新策略继承 `agent/strategies/base.py`，由 orchestrator 按置信度/成本排序调度。
 - 配置通过 `src/selfheal/config.py` 用 pydantic 加载校验，不要在模块里散落读取环境变量。
+- 自愈资源（知识库连接 / LLM 客户端）经 `HealingPage.close()` / `SelfHealOrchestrator.close()` 释放；注入的资源由注入方负责关闭。

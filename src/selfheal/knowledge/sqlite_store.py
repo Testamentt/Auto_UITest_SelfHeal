@@ -61,7 +61,10 @@ class SqliteKnowledgeStore:
         self._conn.commit()
 
     def add_repair(self, case: RepairCase) -> None:
-        # #10 upsert：同 (原,新,指纹) 已存在则更新，不重复插入
+        # #10 upsert：同 (原,新,指纹) 已存在则更新，不重复插入。
+        # dom_fingerprint 归一化（None → ""）：SQLite UNIQUE 索引对 NULL 不生效（NULL ≠ NULL），
+        # 不归一化会使"无指纹"（页面无可交互元素）的重复修复绕过冲突检测、无界增长（审查 C2）。
+        fp = case.dom_fingerprint or ""
         self._conn.execute(
             "INSERT INTO repairs"
             " (original_selector, new_selector, strategy, confidence, page_url, dom_fingerprint,"
@@ -78,7 +81,7 @@ class SqliteKnowledgeStore:
                 case.strategy,
                 case.confidence,
                 case.page_url,
-                case.dom_fingerprint,
+                fp,
                 case.page_fingerprint,
                 case.repair_key,
                 case.embedding,
@@ -155,14 +158,19 @@ class SqliteKnowledgeStore:
         if not rows:
             return []
         qv = np.frombuffer(query_vec, dtype=np.float32)
-        matrix = np.stack([np.frombuffer(r["embedding"], dtype=np.float32) for r in rows])
+        # 审查 C3：防御脏数据——长度与查询向量不符的行跳过（版本号已含 dim，
+        # 此处兜底旧库 / 手改库残留的异维向量，避免 np.stack 直接 ValueError 崩溃）。
+        valid = [r for r in rows if r["embedding"] is not None and len(r["embedding"]) == len(query_vec)]
+        if not valid:
+            return []
+        matrix = np.stack([np.frombuffer(r["embedding"], dtype=np.float32) for r in valid])
         sims = matrix @ qv  # 向量已归一化 → 余弦
         results: list[tuple[RepairCase, float]] = []
         for idx in np.argsort(-sims):
             sim = float(sims[idx])
             if sim < threshold:
                 break
-            results.append((self._row_to_repair(rows[idx]), sim))
+            results.append((self._row_to_repair(valid[idx]), sim))
             if len(results) >= k:
                 break
         return results
@@ -214,7 +222,7 @@ class SqliteKnowledgeStore:
             strategy=row["strategy"],
             confidence=row["confidence"],
             page_url=row["page_url"],
-            dom_fingerprint=row["dom_fingerprint"],
+            dom_fingerprint=row["dom_fingerprint"] or None,  # 写侧归一化 ""（None→"" 防 NULL 去重失效），读侧还原语义
             page_fingerprint=row["page_fingerprint"],
             repair_key=row["repair_key"],
             embedding=bytes(row["embedding"]) if row["embedding"] is not None else None,

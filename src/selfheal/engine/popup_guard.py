@@ -149,19 +149,22 @@ class PopupGuard:
             return ""
 
     @staticmethod
-    def _stable_selector(el: Locator) -> str | None:
-        """为关闭按钮生成可复用的稳定定位器（复用 dom 公共工具：data-testid > id > 文本 > aria）。"""
+    def _stable_selector(loc: Locator) -> str | None:
+        """为关闭按钮生成可复用的稳定定位器（复用 dom 公共工具：data-testid > id > 文本 > aria）。
+
+        审查 M2：除 data-testid/id 外，还投影 aria-label 与文本——
+        纯文本"关闭"按钮（无 testid/id）此前无法沉淀弹窗特征，每次都要启发式重找。
+        """
         try:
-            # 把 live Locator 的关键属性投影为 dom.Element，复用共享的 build_stable_selector（评审 #6 去重）。
-            # tag 不参与选择器生成（build_stable_selector 只用属性/text/aria），传占位。
-            return build_stable_selector(
-                Element(
-                    "",
-                    [
-                        ("data-testid", el.get_attribute("data-testid")),
-                        ("id", el.get_attribute("id")),
-                    ],
-                )
+            dom_el = Element(
+                "",
+                [
+                    ("data-testid", loc.get_attribute("data-testid")),
+                    ("id", loc.get_attribute("id")),
+                    ("aria-label", loc.get_attribute("aria-label")),
+                ],
             )
+            dom_el.text = (loc.inner_text() or "").strip()
+            return build_stable_selector(dom_el)
         except Exception:  # noqa: BLE001 - 读取属性失败则无法沉淀
             return None
