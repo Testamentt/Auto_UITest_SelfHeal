@@ -163,9 +163,13 @@ class FixGenerator:
                     list(self._strategy_registry),
                 )
                 continue
-            candidate = self._build_strategy(strategy_cls, context).repair(
-                context.scene, context.original_selector, context.description
-            )
+            candidate = None
+            try:
+                candidate = self._build_strategy(strategy_cls, context).repair(
+                    context.scene, context.original_selector, context.description
+                )
+            except Exception:  # noqa: BLE001 - 单个策略内部异常（数据/embedding 等）不中断策略链
+                logger.warning("策略 %s 执行异常，已跳过（继续后续策略）", name, exc_info=True)
             if candidate is None:
                 continue
             # 短路：已达"早接受"阈值，不再尝试后续（更贵的）策略
@@ -189,6 +193,7 @@ class FixGenerator:
                 page_fingerprint=context.page_fingerprint,
                 element_context=context.element_context,
                 review_writer=self._review_writer,  # B6：L3 人审清单收敛出口
+                page=self._page,  # M1：L3 采纳前验证候选 selector 仍存在
             )
         if strategy_cls is VisualStrategy:
             return strategy_cls(client=self._counting_client(self._vision_client, "vlm_calls"))

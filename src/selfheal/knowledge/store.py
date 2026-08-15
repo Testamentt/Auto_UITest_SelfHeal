@@ -56,7 +56,6 @@ class KnowledgeStore:
         ):
             results.append((legacy, "legacy"))
         return results
-        return None
 
     def find_semantic(
         self,
@@ -75,6 +74,8 @@ class KnowledgeStore:
             if c.page_fingerprint == page_fingerprint
             and c.embedding_version == embedding_version
             and c.embedding is not None
+            # 审查 C3：维度与查询向量不符的行跳过（防 matmul 崩溃）
+            and len(c.embedding) == len(query_vec)
         ]
         if not bucket:
             return []

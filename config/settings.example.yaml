@@ -31,6 +31,7 @@ healing:
   knowledge_first: true    # 调用 LLM 前先查知识库
   confidence_threshold: 0.6
   early_accept_threshold: 0.85   # T1 策略短路：达此置信度即采纳，不再试更贵策略（应 > confidence_threshold）
+  llm_diagnose_threshold: 0.75   # C7：成功修复置信度低于此值补一次 LLM 归因（应 > confidence_threshold）
   on_uncertain: use_fallback   # use_fallback | pause | fail（见 RULE.md 决策 D6）
   # T13 高风险页豁免：URL 匹配任一 glob 则不触发自愈（支付/强授权/审计类页面误改代价高）
   exclude_url_patterns: []   # 例: ["*://*/pay*", "*://*/admin/*"]

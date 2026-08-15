@@ -10,6 +10,27 @@ from html.parser import HTMLParser
 # 视为可交互候选的标签（另含 role=button / 带 data-testid 的任意元素）
 _INTERACTIVE_TAGS = {"button", "input", "a", "select", "textarea"}
 
+# HTML void 元素：无结束标签（浏览器 content() 序列化即为无斜杠形式）。
+# 若把它们压栈，栈底会残留该元素并持续吸收后续全部文本（文本污染，审查 C1）。
+_VOID_TAGS = frozenset(
+    {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+)
+
 
 class Element:
     """一个候选 DOM 元素的精简表示（标签 + 属性 dict + 含嵌套的文本）。"""
@@ -39,13 +60,18 @@ class _DOMParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         el = Element(tag, attrs)
         self.elements.append(el)
-        self._stack.append(el)
+        # void 元素（input/br/img 等）无结束标签，不入栈：
+        # 否则残留栈底、吸收后续全部文本（审查 C1 实证缺陷）
+        if tag not in _VOID_TAGS:
+            self._stack.append(el)
 
     def handle_startendtag(self, tag, attrs):
         self.elements.append(Element(tag, attrs))
 
     def handle_endtag(self, tag):
-        if self._stack:
+        # 仅当 endtag 与栈顶匹配才弹出并向上汇聚子文本（兼容 <button><span>x</span></button>）；
+        # 不匹配（未闭合嵌套 / 孤立 endtag）时忽略，防"弹错层"导致文本错配汇聚（配合 void 不入栈）。
+        if self._stack and self._stack[-1].tag == tag:
             el = self._stack.pop()
             if self._stack:  # 把子元素文本向上汇聚，兼容 <button><span>x</span></button>
                 self._stack[-1].text += el.text

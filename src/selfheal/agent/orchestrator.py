@@ -11,6 +11,7 @@ ContextAssembler 组装上下文 → FixGenerator 生成提案 → PersistenceHa
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import TYPE_CHECKING
 
@@ -25,21 +26,30 @@ from selfheal.agent.diagnose_llm import LLMDiagnoser
 from selfheal.agent.fix_generator import FixGenerator, counting_proxy
 from selfheal.agent.persistence import PersistenceHandler
 from selfheal.agent.strategies import HeuristicStrategy, SemanticStrategy, VisualStrategy
+from selfheal.agent.strategies.base import RepairStrategy
 from selfheal.config import Settings
 from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.knowledge.factory import build_knowledge_store
 from selfheal.llm import get_embedding_for_settings
 from selfheal.llm.base import LLMClient, VisionClient
 from selfheal.llm.factory import get_llm_for_settings, get_vision_for_settings
-from selfheal.reporting.hooks import HealingReporter
+from selfheal.reporting.hooks import HealingRecord, HealingReporter
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免运行期强依赖 playwright
     from playwright.sync_api import Page
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_close(obj) -> None:
+    """best-effort 关闭带 close() 的对象（无 close / 关闭失败均静默，不掩盖业务）。"""
+    close = getattr(obj, "close", None)
+    if close is not None:
+        with contextlib.suppress(Exception):
+            close()
+
 # 策略注册表：名字 → 策略类。新增策略在此登记即可被调度（注入 FixGenerator，测试 monkeypatch 仍生效）。
-_STRATEGY_REGISTRY: dict[str, type] = {
+_STRATEGY_REGISTRY: dict[str, type[RepairStrategy]] = {
     "heuristic": HeuristicStrategy,
     "semantic": SemanticStrategy,
     "visual": VisualStrategy,
@@ -64,13 +74,16 @@ class SelfHealOrchestrator:
         self._page = page
         self._settings = settings
         self._knowledge = knowledge or build_knowledge_store(settings)
+        self._owns_knowledge = knowledge is None  # 注入的资源由注入方负责关闭
         self._reporter = reporter or HealingReporter()
         # LLM 可用才构建；缺省时按配置判定，不可用则 None（降级回规则式 / 跳过语义策略）
         self._llm_client = llm_client if llm_client is not None else get_llm_for_settings(settings)
+        self._owns_llm = llm_client is None
         # VLM 可用才构建；不可用则 None（视觉策略返回 None 被跳过）
         self._vision_client = (
             vision_client if vision_client is not None else get_vision_for_settings(settings)
         )
+        self._owns_vision = vision_client is None
         # Embedding 可用才构建；不可用则 None（L1/L3 语义检索被跳过，零回归）
         self._embedding = get_embedding_for_settings(settings)
         # 规则式诊断：零成本恒跑，为成功路径提供根因归因（不触发 LLM，省 Token）
@@ -106,8 +119,19 @@ class SelfHealOrchestrator:
     ) -> HealOutcome:
         """执行一次完整自愈闭环（Router：组装 → 生成 → 路由）。"""
         context = self._assembler.assemble(original_selector, description)
-        # T13：高风险页豁免——URL 命中 exclude_url_patterns 则不触发自愈（只报告，不动作）
+        # T13：高风险页豁免——URL 命中 exclude_url_patterns 则不触发自愈（只报告，不动作）。
+        # 豁免事件也记审计（m4）："只报告"的落点，供看板/审计追溯。
         if context.excluded:
+            self._reporter.record(
+                HealingRecord(
+                    original_selector=original_selector,
+                    new_selector=None,
+                    strategy=None,
+                    confidence=0.0,
+                    root_cause="high_risk_page_excluded",
+                    success=False,
+                )
+            )
             return HealOutcome(success=False, root_cause="high_risk_page_excluded")
         proposal = self._fix_gen.generate(context, failure, use_knowledge)
         return self._persister.resolve(context, proposal)
@@ -115,6 +139,25 @@ class SelfHealOrchestrator:
     def commit_pending(self, attempt_id: str) -> None:
         """B1：验证成功后沉淀知识 + 审计（委托 PersistenceHandler；幂等防重复提交）。"""
         self._persister.commit_pending(attempt_id)
+
+    def close(self) -> None:
+        """释放本实例**自建**的资源（知识库连接 / LLM / VLM 客户端，审查 M3）。
+
+        注入的 knowledge / llm_client / vision_client 由注入方负责关闭（owns 标记）。
+        释放失败不掩盖业务（best-effort）；幂等（重复 close 安全）。
+        """
+        if self._owns_knowledge:
+            _safe_close(self._knowledge)
+        if self._owns_llm:
+            _safe_close(self._llm_client)
+        if self._owns_vision:
+            _safe_close(self._vision_client)
+
+    def __enter__(self) -> SelfHealOrchestrator:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
     # --- 薄委托器：兼容既有内部方法调用与测试（逻辑已下沉协作者） ---
 

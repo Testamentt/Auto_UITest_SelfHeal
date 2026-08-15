@@ -17,7 +17,10 @@ import numpy as np
 
 from selfheal.config import Settings
 
-# 词元：连续 ASCII 字母数字词 或 单个中文字符（CJK）
+# 词元：连续 ASCII 字母数字词 或 **单个**中文字符（CJK）。
+# 注意：与 agent/strategies/heuristic.py 的 _TOKEN_RE（连续中文片段）粒度不同是有意的——
+# 本模块做 n-gram 序列向量，单字才能形成"提交/订单"等中文二元组；意图词元重叠用片段更语义化。
+# 调整任一处分词时需评估另一处（审查 m7：两处重复定义，勿漂移）。
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[一-鿿]")
 
 
@@ -38,11 +41,13 @@ class EmbeddingClient:
 class NgramEmbedding(EmbeddingClient):
     """v1：字符 n-gram 哈希 TF 向量（确定性、本地、零费用）。"""
 
-    embedding_version = "v1-ngram"
-
     def __init__(self, dim: int = 512, ngram_max: int = 2):
         self._dim = dim
         self._ngram_max = ngram_max
+        # 版本号含 dim（审查 C3）：库中向量按 (page_fingerprint, embedding_version) 分桶，
+        # 若版本不含 dim，用户调整 dim 后新旧向量同版本不同维度，find_semantic 的
+        # numpy 矩阵乘法会直接 ValueError 崩溃。
+        self.embedding_version = f"v1-ngram-{dim}"
 
     def embed(self, text: str) -> bytes:
         tokens = _TOKEN_RE.findall(text or "")

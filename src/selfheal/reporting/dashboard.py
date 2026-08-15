@@ -39,11 +39,14 @@ def _render_metrics(metrics: MetricsSnapshot) -> str:
 
 
 def _render_cost(cost: dict) -> str:
-    """T17：多模态成本卡片（LLM/VLM 调用次数 + 估算费用）。"""
+    """T17：多模态成本卡片（LLM/VLM 调用次数 + 估算费用）。
+
+    用 .get 防护缺键（审查 nit）：cost 契约来自 estimate_cost，但不依赖其必然完整。
+    """
     return f"""<div class="metrics">
-  <div class="card"><div class="num">{cost['llm_calls']}</div><div class="label">LLM 调用次数</div></div>
-  <div class="card"><div class="num">{cost['vlm_calls']}</div><div class="label">VLM 调用次数</div></div>
-  <div class="card"><div class="num">¥{cost['total_cost']:.4f}</div><div class="label">估算费用</div></div>
+  <div class="card"><div class="num">{cost.get('llm_calls', 0)}</div><div class="label">LLM 调用次数</div></div>
+  <div class="card"><div class="num">{cost.get('vlm_calls', 0)}</div><div class="label">VLM 调用次数</div></div>
+  <div class="card"><div class="num">¥{cost.get('total_cost', 0.0):.4f}</div><div class="label">估算费用</div></div>
 </div>"""
 
 

@@ -64,12 +64,15 @@ def write_fix_proposal(
     """
     try:
         FIX_PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
-        stamp = _now().replace(":", "-").replace("+00:00", "Z")
+        # m2：同一时刻取一次时间（文件名与记录内容一致）；
+        # 毫秒精度防"同秒同 selector"文件名覆盖（修复前秒级精度会互相覆盖）。
+        now = datetime.now(timezone.utc)
+        stamp = now.isoformat(timespec="milliseconds").replace(":", "-").replace("+00:00", "Z")
         safe_name = (
             "".join(c if c.isalnum() or c in "._-" else "_" for c in original_selector)[:60] or "proposal"
         )
         record = {
-            "created_at": _now(),
+            "created_at": now.isoformat(timespec="seconds"),
             "original_selector": original_selector,
             "new_selector": new_selector,
             "strategy": strategy,

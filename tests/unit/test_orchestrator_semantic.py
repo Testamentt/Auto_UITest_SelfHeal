@@ -164,6 +164,38 @@ def test_semantic_low_sim_no_hit():
     assert cand is None
 
 
+def test_semantic_stale_cached_selector_not_used(monkeypatch, tmp_path):
+    """审查 M1 回归：L3 命中的 new_selector 已失效（页面不存在）→ 不采纳、写人审清单（与 L1 护栏对称）。"""
+    from selfheal.reporting import fix_proposals
+    from selfheal.reporting.fix_proposals import append_review_proposal
+
+    monkeypatch.setattr(fix_proposals, "REVIEW_QUEUE_PATH", tmp_path / "review-queue.md")
+    store = KnowledgeStore()
+    _store_case(store, text="登录", new="#login", verified=True)  # verified 高分 → 本应自动采纳
+
+    class _FakePage:
+        def locator(self, sel, **k):
+            class _Loc:
+                def count(self):
+                    return 0  # #login 不存在 → 候选失效
+
+            return _Loc()
+
+    strat = SemanticStrategy(
+        knowledge=store,
+        embedding=EMB,
+        page_fingerprint="pg1",
+        element_context=_ctx("登录"),
+        page=_FakePage(),
+        review_writer=append_review_proposal,
+    )
+    cand = strat.repair(Scene(url=""), "#old", "登录按钮")
+    assert cand is None  # 候选失效 → 不采纳（交 L4 重定位）
+    # 人审清单记录失效原因
+    text = (tmp_path / "review-queue.md").read_text(encoding="utf-8")
+    assert "cached_selector_stale" in text
+
+
 def test_semantic_empty_context_skips_l3():
     store = KnowledgeStore()
     _store_case(store, text="登录")
@@ -223,3 +255,29 @@ def test_persist_without_embedding_context_leaves_optional_none():
     case = store._repairs[0]
     assert case.page_fingerprint == ""
     assert case.embedding is None and case.repair_key is None
+
+
+# --- 上下文缓存：URL 维度键 + 上限（审查 M4） ---
+
+
+def test_failure_context_cache_keyed_by_url():
+    """同 selector 不同 URL → 不误用旧上下文（SPA 多页面流程）。"""
+    orch = SelfHealOrchestrator(page=None, settings=Settings(), knowledge=KnowledgeStore())
+    dom_a = '<html><body><button id="login">登录</button></body></html>'
+    dom_b = '<html><body><button id="login">退出</button></body></html>'
+    ctx_a = orch._assembler._element_context(Scene(url="https://x/a", dom_snapshot=dom_a), "#login", None)
+    ctx_b = orch._assembler._element_context(Scene(url="https://x/b", dom_snapshot=dom_b), "#login", None)
+    assert ctx_a.text == "登录"
+    assert ctx_b.text == "退出"  # 修复前同 selector 命中缓存 → 误返回"登录"
+    assert len(orch._assembler._failure_context_cache) == 2
+
+
+def test_failure_context_cache_limited():
+    """缓存上限：超过 256 条淘汰最久未用，防长流程内存膨胀。"""
+    orch = SelfHealOrchestrator(page=None, settings=Settings(), knowledge=KnowledgeStore())
+    dom = '<html><body><button id="b">B</button></body></html>'
+    for i in range(300):
+        orch._assembler._element_context(Scene(url=f"https://x/{i}", dom_snapshot=dom), "#b", None)
+    assert len(orch._assembler._failure_context_cache) <= 256
+    # 最早插入的键已被淘汰
+    assert ("https://x/0", "#b") not in orch._assembler._failure_context_cache

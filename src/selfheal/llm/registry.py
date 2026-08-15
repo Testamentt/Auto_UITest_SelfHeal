@@ -1,7 +1,8 @@
 """模型 provider 注册表。
 
 通过名字注册/获取 LLMClient 与 VisionClient 实现，实现业务与具体 SDK 解耦。
-TODO: 待 provider 确定后，在此或独立模块实现具体 client 并注册。
+当前已注册：openai（OpenAICompatibleLLM / OpenAICompatibleVLM，见 openai_client / openai_vision）。
+新 provider 在此或独立模块实现具体 client 并注册。
 """
 
 from __future__ import annotations

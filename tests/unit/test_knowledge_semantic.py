@@ -6,15 +6,15 @@ from selfheal.agent.dom import compute_page_fingerprint, compute_repair_key
 from selfheal.knowledge.schema import RepairCase, RepairQuery
 from selfheal.knowledge.sqlite_store import SqliteKnowledgeStore
 from selfheal.knowledge.store import KnowledgeStore
+from selfheal.llm.embedding import NgramEmbedding
 
 pytestmark = pytest.mark.unit
 
-VER = "v1-ngram"
+# 版本号动态获取（含 dim，见审查 C3）；硬编码会在调整默认 dim 时静默失配
+VER = NgramEmbedding().embedding_version
 
 
 def _vec(text: str) -> bytes:
-    from selfheal.llm.embedding import NgramEmbedding
-
     return NgramEmbedding().embed(text)
 
 
@@ -117,6 +117,25 @@ def test_semantic_threshold(tmp_path):
     store.add_repair(_case(text="登录"))
     # 查询相似但不同（"登录 提交" vs "登录"）→ sim<1；阈值设得极高 → 拒绝
     assert store.find_semantic(_vec("登录 提交"), "pg1", VER, k=1, threshold=0.999) == []
+
+
+def test_semantic_dim_mismatch_skipped_not_crash(tmp_path):
+    """审查 C3 回归：库中混入异维向量（旧库/手改）→ 跳过该行，不崩溃、不误命中。"""
+    store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
+    store.add_repair(_case(text="登录", new="#login"))  # 正常 512 维
+    # 手工注入一条同版本但异维（256 维）的脏向量
+    import sqlite3
+
+    with sqlite3.connect(str(tmp_path / "kb.db")) as conn:
+        conn.execute(
+            "INSERT INTO repairs (original_selector, new_selector, strategy, confidence,"
+            " page_url, page_fingerprint, embedding, embedding_version)"
+            " VALUES ('#x', '#y', 'heuristic', 0.9, 'u', 'pg1', ?, ?)",
+            (b"\x00" * 256 * 4, VER),
+        )
+    results = store.find_semantic(_vec("登录"), "pg1", VER, k=5, threshold=0.7)
+    # 只命中正常向量，脏向量被跳过（修复前 np.stack 会 ValueError 崩溃）
+    assert [c.new_selector for c, _ in results] == ["#login"]
 
 
 # --- 防污染衰减 ---

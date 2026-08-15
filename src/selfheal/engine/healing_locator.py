@@ -48,7 +48,12 @@ class HealingFailedError(Exception):
 
 
 def _is_timeout_error(exc: BaseException) -> bool:
-    """判定是否为 Playwright 定位/等待超时（自愈的触发条件）。"""
+    """判定是否为 Playwright 定位/等待超时（自愈的触发条件）。
+
+    优先按 playwright TimeoutError 实例判断；类名粗判（"Timeout" in name）仅作
+    无 playwright 环境下的兜底（m8 已知风险：自定义异常类名含 Timeout 会误触发自愈，
+    影响面小：最多多跑一轮闭环，随后按结果正常处理）。
+    """
     if _PWTimeoutError is not None and isinstance(exc, _PWTimeoutError):
         return True
     return "Timeout" in type(exc).__name__  # 兜底：无 playwright 时按类名粗判
@@ -297,6 +302,7 @@ class HealingLocator:
                     return result
 
         wrapped.__name__ = name
+        wrapped.__doc__ = f"自愈包装动作 {name}：失败（超时）→ 自愈 → 重试。"
         return wrapped
 
     def _heal_and_resolve(
@@ -399,6 +405,14 @@ class HealingPage:
     @property
     def reporter(self) -> HealingReporter:
         return self._reporter
+
+    def close(self) -> None:
+        """释放自愈资源（orchestrator 自建的知识库连接 / LLM 客户端，审查 M3）。
+
+        注入的 knowledge 由注入方负责；关闭后本实例不可再用于自愈。
+        """
+        if self._orchestrator is not None:
+            self._orchestrator.close()
 
     def locator(
         self,

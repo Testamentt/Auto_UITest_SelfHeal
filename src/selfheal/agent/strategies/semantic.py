@@ -71,12 +71,14 @@ class SemanticStrategy(RepairStrategy):
         page_fingerprint: str | None = None,
         element_context: ElementContext | None = None,
         review_writer: Callable | None = None,
+        page=None,  # 页面引用（M1：L3 采纳前验证候选 selector 仍存在）；None=页面不可用，视为存在
     ):
         self._client = client
         self._knowledge = knowledge
         self._embedding = embedding
         self._page_fingerprint = page_fingerprint or ""
         self._element_context = element_context
+        self._page = page
         # B6：L3 未达自动采纳时的人审清单写出（由编排侧注入，策略不再直连 reporting 层）
         self._review_writer = review_writer
 
@@ -106,6 +108,23 @@ class SemanticStrategy(RepairStrategy):
         if not hits:
             return None
         case, sim = hits[0]
+        # M1 护栏（与 L1 对称）：知识库候选可能已再次失效（页面又改版）——
+        # 采纳前验证 new_selector 仍真实存在；失效则写人审清单、不采纳（交 L4 重定位）。
+        # page=None（页面不可用）时视为存在，与 selector_exists 语义一致。
+        # selector_exists 惰性导入：context ↔ strategies 包存在导入环（orchestrator → context → strategies）。
+        from selfheal.agent.context import selector_exists
+
+        if not selector_exists(self._page, case.new_selector):
+            if self._review_writer is not None:
+                self._review_writer(
+                    original_selector=original_selector,
+                    new_selector=case.new_selector,
+                    confidence=sim,
+                    page_url=case.page_url,
+                    strategy=self.name,
+                    reason="cached_selector_stale",
+                )
+            return None
         if self._accept(case, sim):
             self._bump(case)
             return RepairCandidate(

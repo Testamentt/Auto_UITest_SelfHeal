@@ -62,7 +62,9 @@ def knowledge(tmp_path_factory) -> KnowledgeBackend:
     from selfheal.knowledge.sqlite_store import SqliteKnowledgeStore  # 惰性导入
 
     db_path = tmp_path_factory.mktemp("knowledge") / "knowledge.db"
-    return SqliteKnowledgeStore(str(db_path))
+    store = SqliteKnowledgeStore(str(db_path))
+    yield store
+    store.close()  # M3：会话结束关闭连接（临时库，Windows 下不关会锁文件）
 
 
 @pytest.fixture(scope="session")
@@ -146,6 +148,7 @@ def healing_page(settings, knowledge, context, request):
     page = HealingPage(context.new_page(), settings, knowledge=knowledge, enabled_override=cli)
     _session_reporters.append(page.reporter)  # B3：登记 reporter 供会话结束聚合写看板
     yield page
+    page.close()  # M3：释放自愈资源（orchestrator 自建资源；注入的会话级 knowledge 由 fixture 关闭）
 
 
 @pytest.fixture
