@@ -1,6 +1,6 @@
 # TODO — 优化与待办清单
 
-> 来源：`docs/reviews/2026-08-04-phase3-retrospective.md` · 随进展勾选/更新（R5 活文档）
+> 来源：`docs/reviews/2026-08-04-phase3-retrospective.md` · 全量评审 `docs/reviews/2026-08-15-code-review.md` · 随进展勾选/更新（R5 活文档）
 > T1–T4 具体实现方案：`docs/plans/2026-08-04-phase4-t1-t4-implementation.md`
 > 图例：⬜ 待办 · 🟡 进行中 · ✅ 完成 · 🔴 阻断项 · 🟠 部分完成
 
@@ -47,13 +47,16 @@
 - [x] **T9 · 对齐 config 与 example yaml**（P6）✅ 2026-08-05（即评审 #16）
   - 移除 example 的 execution/reporting 死配置段；`Settings` 加 `extra='forbid'`，未来漂移加载期报错
   - 位置：`src/selfheal/config.py`、`config/settings.example.yaml`
-- [ ] **T10 · 工具模块归位**（P8）
-  - `agent/dom.py`、`agent/llm_io.py` 迁至 `collect/` 或独立 `utils/`
-- [ ] **T11 · collector 补 trace / network 采集**
-  - 兑现架构承诺（当前 TODO）；失败现场含 trace 便于回放定位
+- [ ] **T10 · 工具模块归位**（P8）🟠 部分完成（A5 已拆包 2026-08-04）
+  - `agent/dom.py` → `agent/dom/` 子模块（解析/指纹/定位器/提取，A5）已完成；`agent/llm_io.py` 未动
+  - 完整目标（迁至 `collect/` 或独立 `utils/`）仍待办
+- [ ] **T11 · collector 补 trace / network 采集** 🟠 部分完成
+  - network（C5）✅ 已实现 2026-08-05：`Scene.network_logs` 随现场带出近期请求/响应（限长 200）
+  - trace 内联 ⬜ 待办：`Scene.trace_path` 仍为占位；录制已由 conftest `--trace-healing` 完成
   - 位置：`src/selfheal/collect/collector.py`
-- [ ] **T12 · orchestrator 职责瘦身**（P8）
-  - 若继续膨胀，拆分策略调度 / 持久化 / 诊断为独立协作者（DI）
+- [x] **T12 · orchestrator 职责瘦身**（P8）✅ 2026-08-05（A1 重构）
+  - 已落地：拆分 ContextAssembler（context.py）/ FixGenerator（fix_generator.py）/ PersistenceHandler（persistence.py），
+    orchestrator 降为 Router + 组合根
   - 位置：`src/selfheal/agent/orchestrator.py`
 
 ## 🛡️ 风险控制（对应 `docs/architecture.md`「预期与风险」，Phase 5 D 已完成 2026-08-05）

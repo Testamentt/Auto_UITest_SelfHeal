@@ -37,7 +37,8 @@ AutoAiSelfHeal 是一个**带 AI 自愈能力的 UI 自动化测试框架**。�
 | 报告 | Allure + 自研 HTML | 自愈看板、视频回放 |
 | CI/CD | GitHub Actions | 演示自动化流水线 |
 
-> LLM/VLM 的具体 provider 尚未确定。所有模型调用**必须**经过 `src/selfheal/llm/` 的抽象接口，禁止在业务代码里直接 import 某个 SDK，以便后续无痛切换。
+> **provider 已定**（见 `docs/roadmap.md` D7/D13）：LLM=DeepSeek（OpenAI 兼容端点）、VLM=通义 qwen3-vl-flash（DashScope 兼容端点）。
+> 所有模型调用**必须**经过 `src/selfheal/llm/` 的抽象接口（`llm/factory.py` 统一构建、`registry` 注册），禁止在业务代码里直接 import 某个 SDK，切换 provider 只改 `config/settings.yaml`。
 
 ## 架构（大局）
 
@@ -57,8 +58,8 @@ AI 自愈 Agent src/selfheal/agent/       大脑：orchestrator 编排闭环，d
 由 `agent/orchestrator.py` 编排，是本项目最核心的逻辑链路：
 
 1. **执行监控**：`engine/` 执行步骤，捕获定位失败 / 超时 / 不可交互等异常。
-2. **现场采集**：`collect/collector.py` 抓取截图、DOM 快照、网络日志、trace。
-3. **智能诊断**：`agent/diagnose.py` 借助 LLM 判定根因（元素不存在 / 不可交互 / 超时 / 弹窗遮挡）。
+2. **现场采集**：`collect/collector.py` 抓取截图、DOM 快照、网络日志（trace 录制由测试框架层 conftest `--trace-healing` 完成，采集器内联 trace 见 TODO T11）。
+3. **智能诊断**：`agent/diagnose.py` 规则式根因粗分（零成本恒跑）+ `agent/diagnose_llm.py` LLM 精判（白名单 5 值；模型不可用时降级规则式）。
 4. **多策略修复**：`agent/strategies/` 依次尝试
    - `heuristic.py` 启发式匹配（多属性组合）
    - `semantic.py` 语义定位（自然语言描述）
