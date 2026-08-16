@@ -53,7 +53,7 @@ Phase 4 展示包装（视频回放 / CI 产物 / README）、Phase 1–3 均已
 | D5 | 自愈集成方式 | Fixture 骨架 + 接口代理 + 装饰器补充；不用 import 魔法 | 可开关、POM 无缝、可维护（R4） |
 | D6 | 不确定时兜底 | use_fallback，无备用则 fail；pause 仅交互模式 | CI 友好 + 人工兜底 |
 | D7 | LLM 客户端形态 | 单一 OpenAI 兼容客户端（base_url+model 覆盖多 provider），openai SDK 惰性导入 | 切换 provider 只改配置；CI 无 openai 也能 import |
-| D8 | DOM 公共能力 | 抽 `agent/dom.py`（解析 + 稳定定位器），heuristic/llm_io/semantic 共用 | 消除循环导入、重复与私有耦合（R4） |
+| D8 | DOM 公共能力 | 抽 `agent/dom.py` 公共工具（解析 + 稳定定位器），heuristic/llm_io/semantic 共用；现为 `agent/dom/` 子模块（A5 拆包：parser / selector_builder / fingerprint / extractor） | 消除循环导入、重复与私有耦合（R4） |
 | D9 | LLM 降级策略 | 不依赖 response_format；extract_json 容错 + 白名单；防幻觉护栏（selector 须真实存在） | 模型不稳定时闭环不中断 |
 | D10 | 知识库后端形态 | KnowledgeBackend 接口 + 内存/SQLite 双实现 + factory 按配置选择；DOM 指纹（可交互元素稳定定位器排序哈希）参与检索择优 | 可切换、可持久化、同结构页面复用更可靠 |
 | D11 | 弹窗处理 | PopupGuard 知识优先（弹窗特征库）+ 关闭按钮启发式识别，成功后沉淀特征；动作超时先清弹窗再走自愈 | 直击"被遮挡"类失败，通过率卖点 |

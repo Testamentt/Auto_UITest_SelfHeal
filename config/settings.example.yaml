@@ -11,6 +11,7 @@ browser:
 
 # LLM（已定选型，见 docs/architecture.md「已定选型」）：DeepSeek OpenAI 兼容端点
 llm:
+  enabled: true             # 模型能力总开关；False 或缺少 API key 时诊断退规则式、语义策略被跳过
   provider: openai
   model: deepseek-v4-flash
   api_key_env: OPENAI_API_KEY   # 从环境变量名读取密钥，勿写明文
@@ -19,6 +20,7 @@ llm:
 
 # VLM（已定选型）：通义 qwen3-vl-flash，DashScope OpenAI 兼容端点
 vision:
+  enabled: true             # 视觉能力总开关；False 或缺少 key 时视觉策略被跳过
   provider: openai
   model: qwen3-vl-flash
   api_key_env: DASHSCOPE_API_KEY   # 从环境变量名读取密钥，勿写明文
