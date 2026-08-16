@@ -14,7 +14,8 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 │  支撑：llm/ 模型抽象（provider 无关） · knowledge/ 知识库       │
 ├─────────────────────────────────────────────────────────────┤
 │  数据采集层 collect/                                          │
-│  页面截图 │ DOM 快照（网络日志 / trace：规划中）                │
+│  页面截图 │ DOM 快照 │ 网络日志（C5，限长缓存）                │
+│  trace 采集内联：规划中（录制已由 conftest --trace-healing 完成）│
 ├─────────────────────────────────────────────────────────────┤
 │  能力建设层（执行引擎）engine/                                 │
 │  Playwright 封装 │ 自愈定位器 │ 智能等待 │ 弹窗处理            │
@@ -27,7 +28,7 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 
 1. **执行监控**：`engine/` 执行步骤并捕获定位失败/超时/不可交互异常。
 2. **现场采集**：`collect/collector.py` 抓取截图、DOM 快照、网络日志、trace。
-3. **智能诊断**：`agent/diagnose.py` 借 LLM 判定根因（不存在 / 不可交互 / 超时 / 弹窗遮挡）。
+3. **智能诊断**：`agent/diagnose.py` 规则式粗分（零成本恒跑）+ `agent/diagnose_llm.py` LLM 精判（白名单 5 值；模型不可用时降级规则式）。
 4. **多策略修复**：`agent/strategies/` 按配置顺序尝试 启发式 → 语义 → 视觉。Phase 5 起调度链为 **L1 精确指纹（`repair_key` 硬短路）→ L2 启发式 → L3 语义向量检索（知识库命中）→ L4 视觉（VLM）**，语义策略升级为"知识优先的向量检索 + LLM 兜底"。
 5. **验证与沉淀**：重试原步骤；成功则把「原定位器 → 新定位器 → 置信度」写入 `knowledge/`。
 6. **报告与审计**：`reporting/hooks.py` 记录全过程。
@@ -38,6 +39,7 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 - **provider 无关**：所有模型调用经 `llm/base.py` 抽象 + `llm/registry.py` 注册，业务代码不直接依赖具体 SDK。
 - **策略可插拔**：修复策略继承 `strategies/base.py`，由 orchestrator 按置信度/成本调度，顺序可配置。
 - **策略短路（T1）**：某策略置信度达 `early_accept_threshold` 即采纳，不再调用后续更贵的策略（省 LLM/VLM）。
+- **护栏与隔离（2026-08-15 Code Review 加固）**：知识复用（L1/L3）均验证候选 selector 仍真实存在（失效转人审清单，不白用缓存）；单个策略内部异常不中断策略链（跳过 + 记日志）；`HealingPage.close()` / `SelfHealOrchestrator.close()` 释放自建资源（注入的资源由注入方负责）。
 - **配置集中**：`config.py` 用 pydantic 统一加载校验；密钥仅存环境变量名（`.env` 已 gitignore，绝不入库）。
 
 ## 预期与风险（生产使用必读）
@@ -64,7 +66,7 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 **已落地（Phase 4/5）**：视频回放（Playwright Trace：`context.tracing` 录制 → `playwright show-trace` 回放，`--trace-healing` 触发）、风险控制 T13–T17（高风险页豁免 / dry-run / 修复写回人审 / flaky 区分 / 成本看板）、知识库语义化（L1 精确命中 + L3 向量检索）。
 
 **仍规划**：
-- **网络日志 / trace 采集**（见 TODO T11）：当前 `collector` 只采集截图 + DOM，`Scene.network_logs`/`trace_path` 为占位（trace 由 conftest 的 `--trace-healing` 录制，采集器内联网络日志待补）。
+- **trace 采集内联**（见 TODO T11）：`Scene.trace_path` 仍为占位；trace 录制已由 conftest 的 `--trace-healing` 完成（`context.tracing` → `reports/traces/`），采集器内联 trace 路径待补。网络日志（C5）已实现：`Scene.network_logs` 随现场带出近期请求/响应（限长 200 条防膨胀）。
 
 ## 已定选型与遗留 TBD
 
@@ -72,7 +74,7 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 - LLM：DeepSeek（OpenAI 兼容端点，`deepseek-v4-flash`），key 走 `OPENAI_API_KEY`。
 - VLM：通义 `qwen3-vl-flash`（DashScope 兼容端点），key 走 `DASHSCOPE_API_KEY`；候选护栏防幻觉。
 - 知识库后端：SQLite（`knowledge/sqlite_store.py`），DOM 指纹 + 页面指纹（page_fingerprint）参与检索择优。
-- 知识库语义化（Phase 5 A）：本地确定性 n-gram 哈希 TF 向量（`llm/embedding.py::NgramEmbedding`，零 API 费用）+ numpy 余弦；L1 `repair_key` 精确命中 + L3 语义向量检索；升级路径 v2 = fastembed 本地模型（如 bge-small-zh），`embedding_version` 列平滑迁移。
+- 知识库语义化（Phase 5 A）：本地确定性 n-gram 哈希 TF 向量（`llm/embedding.py::NgramEmbedding`，零 API 费用）+ numpy 余弦；L1 `repair_key` 精确命中 + L3 语义向量检索；`embedding_version` 含维度（如 `v1-ngram-512`，调整 dim 自动换桶防维度错配）平滑迁移；升级路径 v2 = fastembed 本地模型（如 bge-small-zh）。
 
 **遗留 TBD**：
 - 视觉定位的控件画像（当前为候选集选择）。

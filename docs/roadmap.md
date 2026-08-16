@@ -1,8 +1,8 @@
 # 项目路线图（Roadmap）
 
 > **活文档**：随进展同步更新，不是快照（见 `RULE.md` R5）。
-> 最后更新：2026-08-05 · 当前阶段：**Phase 5 知识库语义化 + 风险控制（T13–T17）已完成**
-> 关联文档：评审 `docs/reviews/2026-08-04-architecture-review.md` · 优化 TODO `docs/TODO.md`
+> 最后更新：2026-08-15 · 当前阶段：**Phase 5 完成态 + 2026-08-15 Code Review 加固（P0–P2）**
+> 关联文档：评审 `docs/reviews/2026-08-15-code-review.md`（全量审查）· 修复计划 `docs/plans/2026-08-15-code-review-fixes.md` · 优化 TODO `docs/TODO.md`
 
 ## 当前目标
 
@@ -10,6 +10,8 @@
 - **A 语义化**：本地确定性 n-gram 向量（A1）→ 存储/检索（A2）→ orchestrator 接线 L1/L3（A3）。
 - **D 风险控制**：T13 高风险页豁免 / T14 dry-run / T15 修复写回人审 / T16 flaky 区分 / T17 成本看板。
 Phase 4 展示包装（视频回放 / CI 产物 / README）、Phase 1–3 均已完成并通过全量测试。
+
+**2026-08-15 Code Review 加固（P0–P2）**：全量审查后修复 4 个实证缺陷（DOM 解析 void 元素文本污染 / SQLite NULL 指纹去重失效 / 向量维度错配崩溃 / 策略链无异常隔离）+ 4 项护栏（L3 候选失效验证 / 弹窗特征 text-aria 投影 / 资源生命周期 close 链 / 上下文缓存 URL 键 + LRU），unit 200 passed、e2e 7 passed。
 
 ## 关键约束
 
@@ -63,9 +65,11 @@ Phase 4 展示包装（视频回放 / CI 产物 / README）、Phase 1–3 均已
 
 - **真实 VLM 校准**：视觉冒烟（`-k visual`）需 `pip install openai` + 设置 `DASHSCOPE_API_KEY` 环境变量后运行，校准 qwen3-vl-flash 的识别准确率与置信度。
 - **真实 LLM 校准**：语义/诊断冒烟（`-k llm_smoke`）需 `OPENAI_API_KEY`（或改为 DashScope 文本模型）后运行。
-- 语义向量 v1 为本地 n-gram（跨语言含中文较弱）；语义更强可升级 fastembed 本地模型（v2），向量列带 `embedding_version` 平滑迁移。
+- 语义向量 v1 为本地 n-gram（跨语言含中文较弱）；语义更强可升级 fastembed 本地模型（v2），向量列带 `embedding_version`（含维度）平滑迁移。
 - 弹窗特征签名基于文本归一化，结构指纹（DOM 结构哈希）可视需要增强。
 - 智能等待目前 POM 显式调用；是否默认融入动作前置等待可视实测决定。
+- DOM 解析为自研 HTMLParser（`agent/dom/parser.py`）：2026-08-15 已修复 void 元素文本污染（审查 C1），但解析鲁棒性仍弱于 Playwright 原生查询（T8 待办：原生定位替代/交叉校验）。
+- 采集器内联 trace 待补（T11）：录制已由 conftest `--trace-healing` 完成，`Scene.trace_path` 仍为占位。
 
 ## 下一步计划
 

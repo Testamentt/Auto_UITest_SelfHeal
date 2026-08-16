@@ -39,7 +39,8 @@
   - 位置：`tests/e2e/`
 - [ ] **T8 · Playwright 原生定位替代/校验 HTMLParser 重解析**（P7）
   - 用原生查询替代或交叉校验自写 DOM 解析，提升真实 DOM 鲁棒性
-  - 位置：`src/selfheal/agent/dom.py`
+  - 位置：`src/selfheal/agent/dom.py`（现已拆为 `agent/dom/` 子模块）
+  - 🟠 部分缓解：2026-08-15 修复 HTMLParser void 元素文本污染（审查 C1）+ endtag 错配防御，原生定位替代仍待办
 
 ## ⚪ 低优先级（清理 / 可维护性）
 
@@ -71,4 +72,9 @@
 
 ## 已完成（存档）
 
+- [x] **2026-08-15 · Code Review 全量审查 + 加固（P0–P2）** ✅ 2026-08-15
+  - 全量审查：`docs/reviews/2026-08-15-code-review.md`（3 个实证缺陷 + 4 项护栏 + 工程清理）
+  - P0 修复：DOM parser void 元素文本污染（C1）/ SQLite NULL 指纹去重失效（C2）/ 向量维度错配崩溃（C3，embedding_version 含 dim）/ 策略链异常隔离（C4）
+  - P1 加固：L3 候选失效验证（M1）/ 弹窗特征 text-aria 投影（M2）/ 资源生命周期 close 链（M3）/ 上下文缓存 URL 键 + LRU（M4）
+  - 验收：unit 200 passed（+24 回归）、e2e 7 passed、ruff 全绿
 - [x] Phase 3 评审加固：弹窗去"取消/cancel"、关闭态零副作用、find_repair 语义对齐、_persist 保护、wait_until_stable 总超时、SQLite 上下文管理器（2026-08-04）
