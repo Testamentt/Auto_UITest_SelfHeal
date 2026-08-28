@@ -22,7 +22,7 @@ from selfheal.agent.confidence import KEY_SEMANTIC_L3, KEY_SEMANTIC_LLM, calibra
 from selfheal.agent.dom import (
     ElementContext,
     build_stable_selector,
-    parse_interactive_elements,
+    interactive_candidates,
 )
 from selfheal.agent.llm_io import build_compact_dom, extract_json, safe_float, safe_str
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
@@ -165,10 +165,11 @@ class SemanticStrategy(RepairStrategy):
     ) -> RepairCandidate | None:
         if self._client is None or not description or not scene.dom_snapshot:
             return None
-        # 护栏白名单：页面中真实存在、可由 build_stable_selector 生成的稳定定位器
+        # 护栏白名单：页面中真实存在、可由 build_stable_selector 生成的稳定定位器。
+        # T8：候选来源优先 Playwright 原生解析（有 page 采集），静态 DOM 快照解析兜底。
         real_selectors = {
             s
-            for el in parse_interactive_elements(scene.dom_snapshot)
+            for el in interactive_candidates(scene)
             if (s := build_stable_selector(el))
         }
         if not real_selectors:

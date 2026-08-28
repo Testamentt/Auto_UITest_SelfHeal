@@ -11,7 +11,7 @@ dom.build_stable_selector 生成），编造的定位器直接拒绝。
 from __future__ import annotations
 
 from selfheal.agent.confidence import KEY_VISUAL, calibrate
-from selfheal.agent.dom import build_stable_selector, parse_interactive_elements
+from selfheal.agent.dom import build_stable_selector, interactive_candidates
 from selfheal.agent.llm_io import extract_json, safe_float, safe_str
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
 from selfheal.agent.strategies.heuristic import score_selector
@@ -38,7 +38,8 @@ class VisualStrategy(RepairStrategy):
             return None
         candidates = [
             s
-            for el in parse_interactive_elements(scene.dom_snapshot)
+            # T8：候选来源优先 Playwright 原生解析（有 page 采集），静态 DOM 快照解析兜底
+            for el in interactive_candidates(scene)
             if (s := build_stable_selector(el))
         ]
         if not candidates:
