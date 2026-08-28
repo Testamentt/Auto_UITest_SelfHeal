@@ -52,6 +52,14 @@ knowledge:
   backend: sqlite          # sqlite=持久化（默认）/ memory=进程内
   path: .cache/knowledge.db
 
+# T6 动作前置智能等待：动作（click/fill 等）执行前先做一次短稳等待，
+# 缓解"元素正在加载/抖动就执行动作"的误报超时。默认关闭=保持 POM 显式调用
+# wait_until_stable 的既有行为（决策 D12）；best-effort，等待失败不阻塞动作。
+action_wait:
+  enabled: false
+  timeout_ms: 2000           # 短稳等待总超时（毫秒）
+  stable_ms: 300             # 元素 bounding_box 需保持不变的时长（毫秒）
+
 # 本地确定性 Embedding（知识库语义化 A）：n-gram，零网络/零费用/<10ms；v2 fastembed 见文档
 embedding:
   enabled: true

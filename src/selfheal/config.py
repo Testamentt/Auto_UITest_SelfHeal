@@ -57,6 +57,21 @@ class LLMConfig(BaseModel):
     temperature: float = 0.0
 
 
+class ActionWaitConfig(BaseModel):
+    """动作前置智能等待（T6）。
+
+    - enabled: 动作（click/fill 等 HEALABLE）执行前是否先做一次短稳等待。
+      **默认 False**——保持"POM 显式调用 wait_until_stable"的既有行为（决策 D12：
+      不改变默认动作语义），零侵入；需要"默认融入"的团队开启即可。
+    - timeout_ms / stable_ms: 短稳等待参数，复用 engine/smart_wait.py 的 wait_until_stable。
+      等待是增强而非正确性前提：失败仅记 debug、不阻塞动作（避免把等待变成新的超时源）。
+    """
+
+    enabled: bool = False
+    timeout_ms: int = 2000
+    stable_ms: int = 300
+
+
 class HealingConfig(BaseModel):
     """自愈行为配置。
 
@@ -95,6 +110,7 @@ class HealingConfig(BaseModel):
     exclude_url_patterns: list[str] = []
     dry_run: bool = False
     fix_proposals: bool = False
+    action_wait: ActionWaitConfig = ActionWaitConfig()  # T6：动作前置智能等待（默认关闭）
 
     def accept_threshold(self, strategy: str) -> float:
         """该策略的采纳阈值（T5）：strategy_thresholds 命中则用之，否则回退全局。"""
