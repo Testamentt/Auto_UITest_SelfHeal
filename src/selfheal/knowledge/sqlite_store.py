@@ -160,7 +160,9 @@ class SqliteKnowledgeStore:
         qv = np.frombuffer(query_vec, dtype=np.float32)
         # 审查 C3：防御脏数据——长度与查询向量不符的行跳过（版本号已含 dim，
         # 此处兜底旧库 / 手改库残留的异维向量，避免 np.stack 直接 ValueError 崩溃）。
-        valid = [r for r in rows if r["embedding"] is not None and len(r["embedding"]) == len(query_vec)]
+        valid = [
+            r for r in rows if r["embedding"] is not None and len(r["embedding"]) == len(query_vec)
+        ]
         if not valid:
             return []
         matrix = np.stack([np.frombuffer(r["embedding"], dtype=np.float32) for r in valid])
@@ -222,7 +224,8 @@ class SqliteKnowledgeStore:
             strategy=row["strategy"],
             confidence=row["confidence"],
             page_url=row["page_url"],
-            dom_fingerprint=row["dom_fingerprint"] or None,  # 写侧归一化 ""（None→"" 防 NULL 去重失效），读侧还原语义
+            dom_fingerprint=row["dom_fingerprint"]
+            or None,  # 写侧归一化 ""（None→"" 防 NULL 去重失效），读侧还原语义
             page_fingerprint=row["page_fingerprint"],
             repair_key=row["repair_key"],
             embedding=bytes(row["embedding"]) if row["embedding"] is not None else None,

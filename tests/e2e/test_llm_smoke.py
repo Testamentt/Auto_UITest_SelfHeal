@@ -35,6 +35,8 @@ def test_semantic_healing_smoke(healing_page):
     evidence_dir = Path("reports/evidence")
     evidence_dir.mkdir(parents=True, exist_ok=True)
     (evidence_dir / "llm_healing_records.json").write_text(
-        json.dumps([asdict(r) for r in healing_page.reporter.records], ensure_ascii=False, indent=2),
+        json.dumps(
+            [asdict(r) for r in healing_page.reporter.records], ensure_ascii=False, indent=2
+        ),
         encoding="utf-8",
     )

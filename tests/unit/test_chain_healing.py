@@ -105,7 +105,9 @@ class _RecOrch:
 
 def _hl(page, selector="#form", **kw):
     """构造根 HealingLocator（默认开启自愈）。"""
-    return HealingLocator(page.locator(selector), page, selector, HealingConfig(), _RecOrch([]), **kw)
+    return HealingLocator(
+        page.locator(selector), page, selector, HealingConfig(), _RecOrch([]), **kw
+    )
 
 
 # --- 链记录与递归包裹 ---
@@ -163,7 +165,11 @@ def test_root_broken_heals_root_and_replays_chain():
     """根选择器断裂：第一次自愈修根，重放整条链（含 first property）后成功。"""
     orch = _RecOrch([HealOutcome(success=True, new_selector="#form2", confidence=0.9)])
     page = _Page(broken={"#form"}, handlers={"#btn": lambda: "root-replayed-ok"})
-    hl = HealingLocator(page.locator("#form"), page, "#form", HealingConfig(), orch).locator("#btn").first
+    hl = (
+        HealingLocator(page.locator("#form"), page, "#form", HealingConfig(), orch)
+        .locator("#btn")
+        .first
+    )
     assert hl.click() == "root-replayed-ok"
     # 第一次自愈：修根 selector + 走知识库
     assert orch.calls[0][0] == "#form"
@@ -177,7 +183,9 @@ def test_leaf_broken_second_heal_targets_leaf():
     """中段/叶子选择器断裂：第一次修根+重放仍失败 → 第二次自愈直接修叶子。"""
     orch = _RecOrch(
         [
-            HealOutcome(success=True, new_selector="#form", confidence=0.9),  # 修根（根未坏，返回原根）
+            HealOutcome(
+                success=True, new_selector="#form", confidence=0.9
+            ),  # 修根（根未坏，返回原根）
             HealOutcome(success=True, new_selector="#btn2", confidence=0.9),  # 修叶子
         ]
     )

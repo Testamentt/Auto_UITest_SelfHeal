@@ -111,7 +111,11 @@ def _attach_trace_to_allure(trace_path) -> None:
     try:
         import allure
 
-        allure.attach.file(str(trace_path), name="Playwright Trace（回放）", attachment_type=allure.attachment_type.ZIP)
+        allure.attach.file(
+            str(trace_path),
+            name="Playwright Trace（回放）",
+            attachment_type=allure.attachment_type.ZIP,
+        )
     except ImportError:  # pragma: no cover - allure 可选
         pass
 

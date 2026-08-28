@@ -48,6 +48,7 @@ def _safe_close(obj) -> None:
         with contextlib.suppress(Exception):
             close()
 
+
 # 策略注册表：名字 → 策略类。新增策略在此登记即可被调度（注入 FixGenerator，测试 monkeypatch 仍生效）。
 _STRATEGY_REGISTRY: dict[str, type[RepairStrategy]] = {
     "heuristic": HeuristicStrategy,
@@ -108,7 +109,9 @@ class SelfHealOrchestrator:
             page,
             _STRATEGY_REGISTRY,
         )
-        self._persister = PersistenceHandler(settings, self._knowledge, self._reporter, self._embedding, page)
+        self._persister = PersistenceHandler(
+            settings, self._knowledge, self._reporter, self._embedding, page
+        )
 
     def run(
         self,

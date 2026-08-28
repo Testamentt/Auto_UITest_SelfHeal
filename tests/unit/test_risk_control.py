@@ -24,7 +24,9 @@ class _FakeCollector:
         return Scene(url=self._url, dom_snapshot=self._dom)
 
 
-def _orch(settings: Settings, store: KnowledgeStore | None = None, url: str = "", dom: str | None = None):
+def _orch(
+    settings: Settings, store: KnowledgeStore | None = None, url: str = "", dom: str | None = None
+):
     orch = SelfHealOrchestrator(page=None, settings=settings, knowledge=store or KnowledgeStore())
     orch._assembler._collector = _FakeCollector(url, dom)
     return orch

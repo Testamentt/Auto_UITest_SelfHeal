@@ -79,7 +79,9 @@ class PopupGuard:
             return False
         # 3) 沉淀特征（仅当能生成可复用定位器时）。沉淀 best-effort：失败仅记日志、不影响关闭结果。
         if self._knowledge is not None and signature and dismiss_selector:
-            self._safe_add_popup(PopupFeature(signature=signature, dismiss_selector=dismiss_selector))
+            self._safe_add_popup(
+                PopupFeature(signature=signature, dismiss_selector=dismiss_selector)
+            )
         return True
 
     # --- 内部步骤 ---

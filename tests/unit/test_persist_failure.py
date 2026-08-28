@@ -13,7 +13,9 @@ from selfheal.knowledge.store import KnowledgeStore
 
 pytestmark = pytest.mark.unit
 
-_DOM = '<html><body><button data-testid="submit-btn" aria-label="登录按钮">登录</button></body></html>'
+_DOM = (
+    '<html><body><button data-testid="submit-btn" aria-label="登录按钮">登录</button></body></html>'
+)
 
 
 class _HealPage:
@@ -101,4 +103,6 @@ def test_persist_failure_tolerated():
     out = orch.run("#submit-btn-old", "登录按钮")
     assert out.success
     assert out.strategy == "heuristic"
-    orch.commit_pending(out.attempt_id)  # 沉淀失败在 commit 阶段被容忍（_persist 内部捕获 + warning）
+    orch.commit_pending(
+        out.attempt_id
+    )  # 沉淀失败在 commit 阶段被容忍（_persist 内部捕获 + warning）

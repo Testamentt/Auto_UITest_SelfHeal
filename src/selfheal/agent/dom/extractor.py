@@ -15,7 +15,8 @@ _MAX_SIBLINGS = 5
 _MAX_PATH_DEPTH = 8
 
 _LIVE_JS = (
-    """(sel) => {
+    (
+        """(sel) => {
   try {
     const el = document.querySelector(sel);
     if (!el) return null;
@@ -54,7 +55,10 @@ _LIVE_JS = (
     return null;
   }
 }"""
-).replace("_MAX_DEPTH", str(_MAX_PATH_DEPTH)).replace("_MAX_SIB", str(_MAX_SIBLINGS))
+    )
+    .replace("_MAX_DEPTH", str(_MAX_PATH_DEPTH))
+    .replace("_MAX_SIB", str(_MAX_SIBLINGS))
+)
 
 
 @dataclass
@@ -120,7 +124,7 @@ def _snapshot_element_context(dom_snapshot: str, failed_selector: str) -> dict |
         import re
 
         m = re.search(r'text\s*=\s*["\']([^"\']+)["\']', failed_selector)
-        target = m.group(1) if m else failed_selector.strip('#. ')
+        target = m.group(1) if m else failed_selector.strip("#. ")
         el = soup.find(string=lambda s: s and target and target in s)
         el = el.parent if el is not None else None
     if el is None:
@@ -152,7 +156,7 @@ def _snapshot_element_context(dom_snapshot: str, failed_selector: str) -> dict |
     return {
         "text": (el.get_text(" ", strip=True) or "").strip(),
         "path": ">".join(parts),
-        "siblings": siblings[: _MAX_SIBLINGS],
+        "siblings": siblings[:_MAX_SIBLINGS],
     }
 
 

@@ -69,7 +69,8 @@ def write_fix_proposal(
         now = datetime.now(timezone.utc)
         stamp = now.isoformat(timespec="milliseconds").replace(":", "-").replace("+00:00", "Z")
         safe_name = (
-            "".join(c if c.isalnum() or c in "._-" else "_" for c in original_selector)[:60] or "proposal"
+            "".join(c if c.isalnum() or c in "._-" else "_" for c in original_selector)[:60]
+            or "proposal"
         )
         record = {
             "created_at": now.isoformat(timespec="seconds"),

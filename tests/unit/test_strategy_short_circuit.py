@@ -36,7 +36,9 @@ def test_short_circuit_skips_costly_strategies():
     fake_llm = FakeLLMClient(responses=['{"selector":"x","confidence":0.9}'])
     fake_vision = FakeVisionClient(responses=['{"selector":"x","confidence":0.9}'])
 
-    best = _orch(llm=fake_llm, vision=fake_vision)._best_candidate(scene, "#old-selector", "登录按钮")
+    best = _orch(llm=fake_llm, vision=fake_vision)._best_candidate(
+        scene, "#old-selector", "登录按钮"
+    )
 
     assert best is not None
     assert best.strategy == "heuristic"

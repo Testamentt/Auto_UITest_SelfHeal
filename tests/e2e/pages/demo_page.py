@@ -25,9 +25,7 @@ class DemoPage(BasePage):
         self.locator('[data-testid="password"]', description="密码输入框").fill(password)
         # 模拟 UI 改版导致的失效定位器：旧 id 已不存在。
         # 自愈应凭 description 重新识别"登录按钮"；同时提供人工备用定位器兜底。
-        self.locator(
-            "#submit-btn-old", description="登录按钮", fallback="#submit-btn-v2"
-        ).click()
+        self.locator("#submit-btn-old", description="登录按钮", fallback="#submit-btn-v2").click()
 
     def click_secondary_via_fallback(self) -> None:
         """无法自愈的场景：description 故意不匹配，只能靠人工备用定位器。"""

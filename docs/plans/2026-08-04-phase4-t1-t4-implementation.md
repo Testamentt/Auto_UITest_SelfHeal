@@ -75,10 +75,12 @@ vision:
 4. **证据留存**（代码小增强）：在两个冒烟测试中把**截图 + 模型返回的定位结果**写入 `reports/evidence/`（PNG + JSON），作为展示素材。例如 visual 冒烟末尾：
 
 ```python
-evidence_dir = Path("reports/evidence"); evidence_dir.mkdir(parents=True, exist_ok=True)
+evidence_dir = Path("reports/evidence")
+evidence_dir.mkdir(parents=True, exist_ok=True)
 (evidence_dir / "visual_scene.png").write_bytes(scene.screenshot)
 (evidence_dir / "visual_result.json").write_text(
-    json.dumps({"selector": cand.selector, "confidence": cand.confidence}, ensure_ascii=False))
+    json.dumps({"selector": cand.selector, "confidence": cand.confidence}, ensure_ascii=False)
+)
 ```
 
 ### 验收

@@ -81,7 +81,11 @@ class _FixedStrategy:
 
 
 def _use_fixed_strategy(monkeypatch, selector, confidence=0.9):
-    monkeypatch.setattr(_FixedStrategy, "candidate", RepairCandidate(selector=selector, confidence=confidence, strategy="heuristic"))
+    monkeypatch.setattr(
+        _FixedStrategy,
+        "candidate",
+        RepairCandidate(selector=selector, confidence=confidence, strategy="heuristic"),
+    )
     monkeypatch.setitem(orch_mod._STRATEGY_REGISTRY, "fixed", _FixedStrategy)
 
 
