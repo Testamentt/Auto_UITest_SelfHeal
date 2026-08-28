@@ -63,8 +63,10 @@ Phase 4 展示包装（视频回放 / CI 产物 / README）、Phase 1–3 均已
 
 ## 待解决问题
 
-- **真实 VLM 校准**：视觉冒烟（`-k visual`）需 `pip install openai` + 设置 `DASHSCOPE_API_KEY` 环境变量后运行，校准 qwen3-vl-flash 的识别准确率与置信度。
-- **真实 LLM 校准**：语义/诊断冒烟（`-k llm_smoke`）需 `OPENAI_API_KEY`（或改为 DashScope 文本模型）后运行。
+- **真实模型冒烟已跑通（2026-08-28，`-k llm_smoke or visual_smoke`）**：
+  - **VLM 校准（qwen3-vl-flash）**：demo 登录按钮视觉定位一次成功 → `[data-testid="submit-btn"]`，自报置信度 **0.921**（raw²≈0.848）；护栏（selector 真实存在 / 越界拒绝 / 重试 3 次）正常。
+  - **LLM 校准（deepseek-v4-flash）**：语义定位直怼成功（绕开启发式早停）→ 同上 selector，自报置信度 **1.0**；完整自愈链路用例同步通过。**观测**：LLM 高自报段倾向满分级，T5 `shrink_self_reported`（raw²）对满分自报无收敛效果，对 0.9x 段有效——多场景数据沉淀后按段标定收缩口径。
+  - 证据：`reports/evidence/semantic_result.json` / `visual_result.json`（reports/ 已 gitignore，不入库）。
 - 语义向量 v1 为本地 n-gram（跨语言含中文较弱）；语义更强可升级 fastembed 本地模型（v2），向量列带 `embedding_version`（含维度）平滑迁移。
 - 弹窗特征签名基于文本归一化，结构指纹（DOM 结构哈希）可视需要增强。
 - 智能等待目前 POM 显式调用（`healing.action_wait` 已可按需开启为动作前置，默认关闭守 D12）；是否翻转默认可视实测决定。
@@ -82,5 +84,7 @@ Phase 4 展示包装（视频回放 / CI 产物 / README）、Phase 1–3 均已
 
 **后续可选（按 `docs/TODO.md`，T5–T11 全部完成 2026-08-28）**：
 - 语义化 v2：fastembed 本地模型（如 bge-small-zh）替换 n-gram，语义更强仍本地推理；规模大时可迁 sqlite-vec / Chroma。
-- T5 归一化补充：真实模型标定数据沉淀后为 LLM/VLM 自报段的 raw² 经验收缩填数据标定函数（`agent/confidence.py`）。
+- T5 归一化补充：已初采真实数据点（LLM 语义 1.0 / VLM 视觉 0.921，2026-08-28 冒烟）；
+  待多场景数据后为 LLM/VLM 自报段填数据标定函数（`agent/confidence.py`），
+  当前仅保留可选 raw² 经验收缩（对 0.9x 段有效；满分自报无效，需按段标定）。
 - T6 动作前置等待：如需成为默认行为，据实测决定翻转 `healing.action_wait.enabled` 默认值。
