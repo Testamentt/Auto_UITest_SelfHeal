@@ -10,6 +10,7 @@ dom.build_stable_selector 生成），编造的定位器直接拒绝。
 
 from __future__ import annotations
 
+from selfheal.agent.confidence import KEY_VISUAL, calibrate
 from selfheal.agent.dom import build_stable_selector, parse_interactive_elements
 from selfheal.agent.llm_io import extract_json, safe_float, safe_str
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
@@ -65,5 +66,8 @@ class VisualStrategy(RepairStrategy):
         l2_score = score_selector(scene.dom_snapshot, selector, original_selector, description)
         final_conf = round(confidence * (0.4 + 0.6 * l2_score), 3)
         return RepairCandidate(
-            selector=selector, confidence=final_conf, strategy=self.name
+            selector=selector,
+            # T5：视觉段统一标尺出口（C4 已融合 L2，恒等不二次收缩，契约见 agent/confidence.py）
+            confidence=calibrate(KEY_VISUAL, final_conf),
+            strategy=self.name,
         )

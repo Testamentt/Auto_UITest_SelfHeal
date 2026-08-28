@@ -89,10 +89,17 @@ class FixGenerator:
         ):
             return FixProposal(cached_outcome=cached)
         # 2) 规则式诊断（零成本恒跑）：成功路径的根因归因，不触发 LLM
-        root_cause = self._rule_diagnoser.diagnose(context.scene, context.original_selector, failure)
+        root_cause = self._rule_diagnoser.diagnose(
+            context.scene, context.original_selector, failure
+        )
         # 3) 策略链调度，取置信度最高者
         best = self.best_candidate(context)
-        threshold = self._settings.healing.confidence_threshold
+        # T5：采纳按该策略的独立阈值裁决（缺省回退全局 confidence_threshold）；best=None 时用全局
+        threshold = (
+            self._settings.healing.accept_threshold(best.strategy)
+            if best is not None
+            else self._settings.healing.confidence_threshold
+        )
         if best is not None and best.confidence >= threshold:
             # C7：低置信度成功（[threshold, llm_diagnose_threshold)）也补 LLM 归因，
             # 丰富审计与人审清单；高置信成功直接用规则归因，省一次 LLM 调用。
@@ -100,12 +107,16 @@ class FixGenerator:
                 self._llm_diagnoser is not None
                 and best.confidence < self._settings.healing.llm_diagnose_threshold
             ):
-                root_cause = self._llm_diagnoser.diagnose(context.scene, context.original_selector, failure)
+                root_cause = self._llm_diagnoser.diagnose(
+                    context.scene, context.original_selector, failure
+                )
                 self._bump_diag_count()
             return FixProposal(best=best, root_cause=root_cause)
         # 策略链失败（无候选或置信度不足）：LLM 深挖归因，供人审清单/失败报告（诊断后置，C3）
         if self._llm_diagnoser is not None:
-            root_cause = self._llm_diagnoser.diagnose(context.scene, context.original_selector, failure)
+            root_cause = self._llm_diagnoser.diagnose(
+                context.scene, context.original_selector, failure
+            )
             self._bump_diag_count()
         return FixProposal(best=best, root_cause=root_cause)
 
@@ -120,7 +131,11 @@ class FixGenerator:
         # v2：repair_key = md5(page_fingerprint|tag_path)，不含文本。
         # 仅当有结构上下文（tag_path 非空）才提供 key：静态兜底上下文 tag_path 为空，
         # 若照常计算会使同页所有静态失败折叠成同一键（碰撞、跨用例误命中）→ 只走旧式检索。
-        if element_context is not None and not element_context.is_empty and element_context.tag_path:
+        if (
+            element_context is not None
+            and not element_context.is_empty
+            and element_context.tag_path
+        ):
             repair_key = compute_repair_key(context.page_fingerprint, element_context.tag_path)
         for case, source in self._knowledge.query(
             RepairQuery(
@@ -129,9 +144,14 @@ class FixGenerator:
                 repair_key=repair_key,
             )
         ):
-            # #10：读取时校验置信度边界（None/越界按未命中），防脏数据进入复用；再验证缓存选择器可用
+            # #10：读取时校验置信度边界（None/越界按未命中），防脏数据进入复用；再验证缓存选择器可用。
+            # T5：复用门槛与案例来源策略的独立阈值对齐（缺省回退全局），知识复用裁决不再用单一全局尺子。
             conf = case.confidence
-            if conf is None or not (0.0 <= conf <= 1.0) or conf < self._settings.healing.confidence_threshold:
+            if (
+                conf is None
+                or not (0.0 <= conf <= 1.0)
+                or conf < self._settings.healing.accept_threshold(case.strategy or "knowledge")
+            ):
                 continue
             if not selector_exists(self._page, case.new_selector):
                 continue
@@ -150,9 +170,12 @@ class FixGenerator:
         return None
 
     def best_candidate(self, context: HealingContext) -> RepairCandidate | None:
-        """按 strategy_order 逐个尝试策略取最优；置信度达"早接受"阈值即短路（T1，省 LLM/VLM）。"""
+        """按 strategy_order 逐个尝试策略取最优；置信度达"早接受"阈值即短路（T1，省 LLM/VLM）。
+
+        T5：短路阈值按策略独立（strategy_early_accept 缺省回退全局 early_accept_threshold）；
+        候选置信度已由各策略产出点经 calibrate 统一到同一采纳标尺，best 比较天然可比。
+        """
         best: RepairCandidate | None = None
-        early_accept = self._settings.healing.early_accept_threshold
         for name in self._settings.healing.strategy_order:
             strategy_cls = self._strategy_registry.get(name)
             if strategy_cls is None:
@@ -172,8 +195,8 @@ class FixGenerator:
                 logger.warning("策略 %s 执行异常，已跳过（继续后续策略）", name, exc_info=True)
             if candidate is None:
                 continue
-            # 短路：已达"早接受"阈值，不再尝试后续（更贵的）策略
-            if candidate.confidence >= early_accept:
+            # 短路：已达该策略的"早接受"阈值（T1 + T5 按策略），不再尝试后续（更贵的）策略
+            if candidate.confidence >= self._settings.healing.early_accept_for(name):
                 return candidate
             if best is None or candidate.confidence > best.confidence:
                 best = candidate
@@ -194,6 +217,7 @@ class FixGenerator:
                 element_context=context.element_context,
                 review_writer=self._review_writer,  # B6：L3 人审清单收敛出口
                 page=self._page,  # M1：L3 采纳前验证候选 selector 仍存在
+                shrink_self_reported=self._settings.healing.shrink_self_reported,  # T5
             )
         if strategy_cls is VisualStrategy:
             return strategy_cls(client=self._counting_client(self._vision_client, "vlm_calls"))

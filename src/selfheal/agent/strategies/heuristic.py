@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 
+from selfheal.agent.confidence import KEY_HEURISTIC, calibrate
 from selfheal.agent.dom import Element, build_stable_selector, parse_interactive_elements
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
 from selfheal.collect.collector import Scene
@@ -100,5 +101,8 @@ class HeuristicStrategy(RepairStrategy):
         if not selector:
             return None
         return RepairCandidate(
-            selector=selector, confidence=round(best_score, 3), strategy=self.name
+            selector=selector,
+            # T5：统一置信度标尺出口（本策略恒等，契约见 agent/confidence.py）
+            confidence=calibrate(KEY_HEURISTIC, best_score),
+            strategy=self.name,
         )

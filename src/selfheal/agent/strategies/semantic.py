@@ -18,6 +18,7 @@ import contextlib
 from collections.abc import Callable
 from datetime import datetime, timezone
 
+from selfheal.agent.confidence import KEY_SEMANTIC_L3, KEY_SEMANTIC_LLM, calibrate
 from selfheal.agent.dom import (
     ElementContext,
     build_stable_selector,
@@ -72,6 +73,7 @@ class SemanticStrategy(RepairStrategy):
         element_context: ElementContext | None = None,
         review_writer: Callable | None = None,
         page=None,  # 页面引用（M1：L3 采纳前验证候选 selector 仍存在）；None=页面不可用，视为存在
+        shrink_self_reported: bool = False,  # T5：LLM 自报段保守收缩开关（见 agent/confidence.py）
     ):
         self._client = client
         self._knowledge = knowledge
@@ -79,6 +81,7 @@ class SemanticStrategy(RepairStrategy):
         self._page_fingerprint = page_fingerprint or ""
         self._element_context = element_context
         self._page = page
+        self._shrink_self_reported = shrink_self_reported
         # B6：L3 未达自动采纳时的人审清单写出（由编排侧注入，策略不再直连 reporting 层）
         self._review_writer = review_writer
 
@@ -128,7 +131,10 @@ class SemanticStrategy(RepairStrategy):
         if self._accept(case, sim):
             self._bump(case)
             return RepairCandidate(
-                selector=case.new_selector, confidence=round(sim, 3), strategy=self.name
+                selector=case.new_selector,
+                # T5：L3 相似度段统一标尺出口（恒等，契约见 agent/confidence.py）
+                confidence=calibrate(KEY_SEMANTIC_L3, sim),
+                strategy=self.name,
             )
         # 未达自动采纳：写人审清单（经编排侧注入的 review_writer，B6 收敛出口），
         # 不采纳（继续 L4）、不阻塞流水线；writer 未注入则跳过（不写不炸）。
@@ -188,5 +194,12 @@ class SemanticStrategy(RepairStrategy):
         if selector not in real_selectors or not (0.0 <= confidence <= 1.0):
             return None
         return RepairCandidate(
-            selector=selector, confidence=round(confidence, 3), strategy=self.name
+            selector=selector,
+            # T5：LLM 自报段统一标尺出口（shrink_self_reported 开启时保守收缩，见 confidence.py）
+            confidence=calibrate(
+                KEY_SEMANTIC_LLM,
+                round(confidence, 3),
+                shrink_self_reported=self._shrink_self_reported,
+            ),
+            strategy=self.name,
         )
