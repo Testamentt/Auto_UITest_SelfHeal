@@ -4,8 +4,12 @@
 采集是**尽力而为**：单项失败不炸闭环（置默认值），visual 无截图自然返回 None 被跳过。
 
 网络日志（C5）：构造时挂载 page.on('request'/'response') 监听，缓存近期请求/响应
-（限长防膨胀），capture() 时随 Scene 带出——供"页面加载分析"展示。trace 由测试框架
-层录制（conftest `--trace-healing` 经 context.tracing 落盘 + CI 上传），采集器不参与。
+（限长防膨胀），capture() 时随 Scene 带出——供"页面加载分析"展示。
+
+trace（T11）：capture() 顺带产出**现场内联 trace**——外层录制中（conftest `--trace-healing`
+或 settings.browser.trace）时，把当前片段导出为独立现场 trace 填入 `Scene.trace_path`
+（可 show-trace 回放）并恢复录制；未录制则不擅自启动（占位保持 None）。整用例 trace
+由测试框架层录制（conftest 经 context.tracing 落盘 + CI 上传），两者职责互补不冲突。
 
 注意：Playwright 仅作类型依赖（TYPE_CHECKING），本模块可在无浏览器环境下被单元测试导入。
 """
@@ -14,7 +18,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from selfheal.agent.dom import (
     CrossCheck,
@@ -49,8 +55,9 @@ class Scene:
 class SceneCollector:
     """失败现场采集。page 在构造时不做调用，capture() 时才采集；构造时挂网络监听。"""
 
-    def __init__(self, page: Page | None):
+    def __init__(self, page: Page | None, trace_dir: str = "reports/traces"):
         self._page = page
+        self._trace_dir = trace_dir  # T11：现场内联 trace 输出目录（默认与 browser.trace_dir 一致）
         self._network_logs: list[dict] = []
         self._attach_network_listeners(page)
 
@@ -105,8 +112,46 @@ class SceneCollector:
         scene.screenshot = self._safe_screenshot()
         scene.dom_snapshot = self._safe_dom()
         self._try_native_cross_check(scene)  # T8：原生解析 + 交叉校验（best-effort）
+        scene.trace_path = self._try_inline_trace()  # T11：现场内联 trace（未录制则 None）
         scene.network_logs = list(self._network_logs)  # C5：随现场带出近期请求/响应
         return scene
+
+    def _try_inline_trace(self) -> str | None:
+        """T11：失败现场内联 trace（best-effort），使 `Scene.trace_path` 真实落盘而非占位。
+
+        仅当页面 context 的 tracing **正在录制**（外层 conftest `--trace-healing` 或
+        settings.browser.trace）时：停止当前片段导出为独立现场 trace（trace_dir /
+        inline-trace-<uuid>.zip，随后立即重新 start 恢复录制）——现场 trace 含失败发生
+        过程、可独立回放（`playwright show-trace`），整用例 trace 的后半段继续录制不中断。
+
+        未在录制时（Playwright 的 stop 会抛 "Must start tracing before stopping"，
+        实测确认）→ 不擅自启动录制（避免副作用/拖慢），返回 None 保持占位空语义。
+        """
+        if self._page is None:
+            return None
+        try:
+            tracing = self._page.context.tracing
+            path = self._inline_trace_path()
+            tracing.stop(path=str(path))  # 未录制时抛错 → 走 except（安全探测，零副作用）
+        except Exception:  # noqa: BLE001 - 未录制/保存失败：不生成现场 trace
+            logger.debug(
+                "现场内联 trace 不可用（未录制或保存失败），Scene.trace_path 保持占位",
+                exc_info=True,
+            )
+            return None
+        # stop 成功：现场 trace 已保存；尽力恢复外层录制（与 conftest 同参数），
+        # 恢复失败不丢已保存的现场 trace（仅整用例 trace 后半段缺失，不阻塞）
+        try:
+            tracing.start(screenshots=True, snapshots=True)
+        except Exception:  # noqa: BLE001 - 恢复录制失败不阻塞
+            logger.warning("恢复整用例 trace 录制失败（现场 trace 已单独保存）", exc_info=True)
+        return str(path)
+
+    def _inline_trace_path(self) -> Path:
+        """现场 trace 输出路径：trace_dir 目录（自动创建）+ 唯一文件名（uuid 前缀防并发冲突）。"""
+        directory = Path(self._trace_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory / f"inline-trace-{uuid4().hex[:8]}.zip"
 
     def _try_native_cross_check(self, scene: Scene) -> None:
         """T8：用 Playwright 原生查询解析交互候选，并与静态解析交叉校验。

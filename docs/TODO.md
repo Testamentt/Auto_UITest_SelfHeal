@@ -76,10 +76,17 @@
     `agent/llm_io.py` 降为 **shim**（带 TODO(workaround) 标记，确认无外部引用后删除）
   - 顺带清理 `config.py` 过期 TODO 注释（T9 已闭环：execution/reporting 决策不建模，extra=forbid 防漂移）
   - 验收：全量 unit 234 passed、ruff 全绿（迁移零行为变化）
-- [ ] **T11 · collector 补 trace / network 采集** 🟠 部分完成
-  - network（C5）✅ 已实现 2026-08-05：`Scene.network_logs` 随现场带出近期请求/响应（限长 200）
-  - trace 内联 ⬜ 待办：`Scene.trace_path` 仍为占位；录制已由 conftest `--trace-healing` 完成
-  - 位置：`src/selfheal/collect/collector.py`
+- [x] **T11 · collector 补 trace / network 采集** ✅ 2026-08-28
+  - network（C5）✅（2026-08-05）：`Scene.network_logs` 随现场带出近期请求/响应（限长 200）
+  - trace 内联 ✅：`SceneCollector._try_inline_trace`——外层录制中（`--trace-healing` /
+    browser.trace）时把当前片段导出为独立现场 trace（`trace_dir/inline-trace-<uuid>.zip`，
+    可 show-trace 回放）填入 `Scene.trace_path`（不再占位）并恢复录制；未录制不擅自启动
+    （探测基于 Playwright stop 未 start 抛错，实测确认）；trace_dir 由 ContextAssembler 注入
+    settings.browser.trace_dir；与 conftest 整用例录制职责互补、互不冲突
+  - 位置：`src/selfheal/collect/collector.py`（SceneCollector）、`agent/context.py`
+  - 验收：`test_collector.py` 扩展 4 项单测（fake tracing：未录制/落盘+恢复/恢复失败保路径）+
+    `test_trace_inline_e2e.py` 3 项 e2e（录制中落盘/恢复后再采集新文件/未录制占位 None）；
+    全量 unit 238 passed、ruff 全绿
 - [x] **T12 · orchestrator 职责瘦身**（P8）✅ 2026-08-05（A1 重构）
   - 已落地：拆分 ContextAssembler（context.py）/ FixGenerator（fix_generator.py）/ PersistenceHandler（persistence.py），
     orchestrator 降为 Router + 组合根
