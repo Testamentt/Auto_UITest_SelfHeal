@@ -168,9 +168,7 @@ class SemanticStrategy(RepairStrategy):
         # 护栏白名单：页面中真实存在、可由 build_stable_selector 生成的稳定定位器。
         # T8：候选来源优先 Playwright 原生解析（有 page 采集），静态 DOM 快照解析兜底。
         real_selectors = {
-            s
-            for el in interactive_candidates(scene)
-            if (s := build_stable_selector(el))
+            s for el in interactive_candidates(scene) if (s := build_stable_selector(el))
         }
         if not real_selectors:
             return None

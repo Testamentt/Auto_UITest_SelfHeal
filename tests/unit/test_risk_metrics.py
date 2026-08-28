@@ -73,7 +73,9 @@ def test_record_verified_true_when_original_still_broken():
     """原定位器修复后仍不存在 → 真自愈（verified=True）。"""
     page = _FakePage(present={'[data-testid="login"]'})
     orch = SelfHealOrchestrator(page, Settings(), knowledge=KnowledgeStore())
-    outcome = HealOutcome(success=True, new_selector='[data-testid="login"]', confidence=0.9, strategy="heuristic")
+    outcome = HealOutcome(
+        success=True, new_selector='[data-testid="login"]', confidence=0.9, strategy="heuristic"
+    )
     orch._persister._record("#old", outcome)
     assert orch._reporter.records[0].verified is True
 
@@ -82,7 +84,9 @@ def test_record_verified_false_when_flaky():
     """原定位器修复后已恢复 → 失败是瞬时的（flaky，verified=False）。"""
     page = _FakePage(present={'[data-testid="login"]', "#old"})
     orch = SelfHealOrchestrator(page, Settings(), knowledge=KnowledgeStore())
-    outcome = HealOutcome(success=True, new_selector='[data-testid="login"]', confidence=0.9, strategy="heuristic")
+    outcome = HealOutcome(
+        success=True, new_selector='[data-testid="login"]', confidence=0.9, strategy="heuristic"
+    )
     orch._persister._record("#old", outcome)
     assert orch._reporter.records[0].verified is False
 

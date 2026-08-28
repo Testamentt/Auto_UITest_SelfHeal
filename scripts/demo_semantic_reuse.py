@@ -33,7 +33,9 @@ from selfheal.knowledge.schema import RepairCase  # noqa: E402
 from selfheal.llm.embedding import NgramEmbedding  # noqa: E402
 
 DEMO_URL = "https://demo/login"
-DOM = '<html><body><button data-testid="submit-btn" aria-label="登录按钮">登录</button></body></html>'
+DOM = (
+    '<html><body><button data-testid="submit-btn" aria-label="登录按钮">登录</button></body></html>'
+)
 NEW_SELECTOR = '[data-testid="submit-btn"]'
 
 
@@ -79,7 +81,9 @@ def _timeout() -> FailureContext:
 def _print_outcome(label: str, out: HealOutcome) -> None:
     status = "[成功]" if out.success else "[失败]"
     print(f"  → {label}")
-    print(f"     策略={out.strategy or '-'} 置信度={out.confidence:.2f} 来源={out.root_cause or '-'} {status}")
+    print(
+        f"     策略={out.strategy or '-'} 置信度={out.confidence:.2f} 来源={out.root_cause or '-'} {status}"
+    )
     if out.new_selector:
         print(f"     新定位器 = {out.new_selector}")
 
@@ -135,11 +139,16 @@ def _demo(db_path: str) -> None:
     try:
         query_ctx = ElementContext(text="登录", tag_path="html>body>div>form>button", source="live")
         strat = SemanticStrategy(
-            knowledge=kb, embedding=NgramEmbedding(), page_fingerprint=page_fp, element_context=query_ctx
+            knowledge=kb,
+            embedding=NgramEmbedding(),
+            page_fingerprint=page_fp,
+            element_context=query_ctx,
         )
         cand = strat.repair(Scene(url=DEMO_URL), "#submit-btn", "登录")
         assert cand is not None and cand.strategy == "semantic", "L3 语义检索应命中"
-        print(f"  → L3 命中：新定位器 = {cand.selector}  策略 = {cand.strategy}  置信度(sim) = {cand.confidence:.3f}")
+        print(
+            f"  → L3 命中：新定位器 = {cand.selector}  策略 = {cand.strategy}  置信度(sim) = {cand.confidence:.3f}"
+        )
         print("  （L3 依据文本+兄弟+标签路径的语义相似复用历史修复，无需启发式/LLM 重新定位）")
     finally:
         # 关闭 SQLite 连接（Windows 下不关会锁文件，导致临时库无法清理）

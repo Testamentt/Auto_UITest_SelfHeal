@@ -9,7 +9,9 @@ pytestmark = pytest.mark.unit
 
 
 def _rec(selector="#old", strategy="heuristic", root_cause="not_found", success=True):
-    return HealingRecord(selector, '[data-testid="submit-btn"]', strategy, 0.95, root_cause, success)
+    return HealingRecord(
+        selector, '[data-testid="submit-btn"]', strategy, 0.95, root_cause, success
+    )
 
 
 def test_render_contains_audit_row():

@@ -73,7 +73,9 @@ def test_high_confidence_success_skips_llm_diagnosis(monkeypatch):
     llm = _RecLLM()
     settings = Settings()
     settings.healing.strategy_order = ["fixed"]
-    _use_fixed_strategy(monkeypatch, RepairCandidate(selector="#ok", confidence=0.9, strategy="heuristic"))
+    _use_fixed_strategy(
+        monkeypatch, RepairCandidate(selector="#ok", confidence=0.9, strategy="heuristic")
+    )
     orch = _orch(settings, llm=llm)
     outcome = orch.run("#submit-btn", description="登录")
     assert outcome.success is True
@@ -87,7 +89,9 @@ def test_low_confidence_success_triggers_llm_diagnosis(monkeypatch):
     llm = _RecLLM()
     settings = Settings()
     settings.healing.strategy_order = ["fixed"]
-    _use_fixed_strategy(monkeypatch, RepairCandidate(selector="#ok", confidence=0.62, strategy="heuristic"))
+    _use_fixed_strategy(
+        monkeypatch, RepairCandidate(selector="#ok", confidence=0.62, strategy="heuristic")
+    )
     orch = _orch(settings, llm=llm)
     outcome = orch.run("#submit-btn", description="登录")
     assert outcome.success is True
@@ -116,7 +120,9 @@ def test_below_threshold_candidate_emits_human_review_proposal(monkeypatch):
     llm = _RecLLM()
     settings = Settings()
     settings.healing.strategy_order = ["fixed"]
-    _use_fixed_strategy(monkeypatch, RepairCandidate(selector="#maybe", confidence=0.3, strategy="heuristic"))
+    _use_fixed_strategy(
+        monkeypatch, RepairCandidate(selector="#maybe", confidence=0.3, strategy="heuristic")
+    )
     orch = _orch(settings, llm=llm)
     emitted = []
     orch._persister._emit_proposal = lambda *a, **k: emitted.append(a)  # 拦截写文件副作用

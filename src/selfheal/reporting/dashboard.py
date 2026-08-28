@@ -17,14 +17,20 @@ from selfheal.reporting.metrics import MetricsSnapshot, compute_metrics
 def _render_metrics(metrics: MetricsSnapshot) -> str:
     """渲染指标摘要区（成功率卡片 + 真自愈/flaky + 策略分布 + 根因分布）。"""
     rate = metrics.success_rate
-    strategy_items = "".join(
-        f"<li>{html.escape(k)}：{v} 次</li>"
-        for k, v in sorted(metrics.strategy_distribution.items())
-    ) or "<li>（无）</li>"
-    rootcause_items = "".join(
-        f"<li>{html.escape(k)}：{v} 次</li>"
-        for k, v in sorted(metrics.root_cause_distribution.items())
-    ) or "<li>（无）</li>"
+    strategy_items = (
+        "".join(
+            f"<li>{html.escape(k)}：{v} 次</li>"
+            for k, v in sorted(metrics.strategy_distribution.items())
+        )
+        or "<li>（无）</li>"
+    )
+    rootcause_items = (
+        "".join(
+            f"<li>{html.escape(k)}：{v} 次</li>"
+            for k, v in sorted(metrics.root_cause_distribution.items())
+        )
+        or "<li>（无）</li>"
+    )
     return f"""<div class="metrics">
   <div class="card"><div class="num">{metrics.total}</div><div class="label">自愈总数</div></div>
   <div class="card"><div class="num">{metrics.success}</div><div class="label">成功次数</div></div>
@@ -44,9 +50,9 @@ def _render_cost(cost: dict) -> str:
     用 .get 防护缺键（审查 nit）：cost 契约来自 estimate_cost，但不依赖其必然完整。
     """
     return f"""<div class="metrics">
-  <div class="card"><div class="num">{cost.get('llm_calls', 0)}</div><div class="label">LLM 调用次数</div></div>
-  <div class="card"><div class="num">{cost.get('vlm_calls', 0)}</div><div class="label">VLM 调用次数</div></div>
-  <div class="card"><div class="num">¥{cost.get('total_cost', 0.0):.4f}</div><div class="label">估算费用</div></div>
+  <div class="card"><div class="num">{cost.get("llm_calls", 0)}</div><div class="label">LLM 调用次数</div></div>
+  <div class="card"><div class="num">{cost.get("vlm_calls", 0)}</div><div class="label">VLM 调用次数</div></div>
+  <div class="card"><div class="num">¥{cost.get("total_cost", 0.0):.4f}</div><div class="label">估算费用</div></div>
 </div>"""
 
 
@@ -101,7 +107,9 @@ def render_dashboard(records: list[HealingRecord], cost: dict | None = None) -> 
 """
 
 
-def write_dashboard(records: list[HealingRecord], out_path: str | Path, cost: dict | None = None) -> Path:
+def write_dashboard(
+    records: list[HealingRecord], out_path: str | Path, cost: dict | None = None
+) -> Path:
     """把看板写入文件并返回路径。"""
     path = Path(out_path)
     path.parent.mkdir(parents=True, exist_ok=True)

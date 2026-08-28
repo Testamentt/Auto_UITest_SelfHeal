@@ -61,9 +61,7 @@ def test_lookup_l1_hard_short_circuit():
     _store_case(store, text="确定", new="#a-new")
     orch = SelfHealOrchestrator(page=None, settings=Settings(), knowledge=store)
     scene = Scene(url="https://x/pg1")
-    outcome = orch._lookup_knowledge(
-        scene, "#old", "fp", "pg1", _ctx("确定")
-    )
+    outcome = orch._lookup_knowledge(scene, "#old", "fp", "pg1", _ctx("确定"))
     assert outcome is not None and outcome.success
     assert outcome.strategy == "knowledge"
     assert outcome.root_cause == "cached_l1"
@@ -200,7 +198,10 @@ def test_semantic_empty_context_skips_l3():
     store = KnowledgeStore()
     _store_case(store, text="登录")
     strat = SemanticStrategy(
-        knowledge=store, embedding=EMB, page_fingerprint="pg1", element_context=ElementContext(source="static")
+        knowledge=store,
+        embedding=EMB,
+        page_fingerprint="pg1",
+        element_context=ElementContext(source="static"),
     )
     assert strat.repair(Scene(url=""), "#old", None) is None  # 无 client → LLM 兜底也为 None
 
@@ -265,8 +266,12 @@ def test_failure_context_cache_keyed_by_url():
     orch = SelfHealOrchestrator(page=None, settings=Settings(), knowledge=KnowledgeStore())
     dom_a = '<html><body><button id="login">登录</button></body></html>'
     dom_b = '<html><body><button id="login">退出</button></body></html>'
-    ctx_a = orch._assembler._element_context(Scene(url="https://x/a", dom_snapshot=dom_a), "#login", None)
-    ctx_b = orch._assembler._element_context(Scene(url="https://x/b", dom_snapshot=dom_b), "#login", None)
+    ctx_a = orch._assembler._element_context(
+        Scene(url="https://x/a", dom_snapshot=dom_a), "#login", None
+    )
+    ctx_b = orch._assembler._element_context(
+        Scene(url="https://x/b", dom_snapshot=dom_b), "#login", None
+    )
     assert ctx_a.text == "登录"
     assert ctx_b.text == "退出"  # 修复前同 selector 命中缓存 → 误返回"登录"
     assert len(orch._assembler._failure_context_cache) == 2

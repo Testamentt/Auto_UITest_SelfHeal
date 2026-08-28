@@ -53,6 +53,7 @@ ruff check .          # 代码检查
 ```python
 from selfheal.engine.base_page import BasePage
 
+
 class LoginPage(BasePage):
     url = "https://example.com/login"
 
@@ -77,7 +78,7 @@ def test_login(pom):
 
 ```python
 def test_login_with_healing(healing_page):
-    demo = DemoPage(healing_page)   # 带自愈：失效定位器自动修复
+    demo = DemoPage(healing_page)  # 带自愈：失效定位器自动修复
     demo.open()
     demo.login()
 ```

@@ -18,7 +18,15 @@ def _vec(text: str) -> bytes:
     return NgramEmbedding().embed(text)
 
 
-def _case(*, original="#a", new="#a-new", page_fp="pg1", text="确定", path="html>body>button", embedding=None):
+def _case(
+    *,
+    original="#a",
+    new="#a-new",
+    page_fp="pg1",
+    text="确定",
+    path="html>body>button",
+    embedding=None,
+):
     return RepairCase(
         original_selector=original,
         new_selector=new,
@@ -54,7 +62,9 @@ def test_query_facade_l1_then_legacy(tmp_path):
     """A3 门面：query 按 L1 精确 → 旧式检索优先级返回候选；同一案例不重复。"""
     store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
     store.add_repair(_case(original="#a", new="#l1-new"))
-    q = RepairQuery(original_selector="#a", repair_key=compute_repair_key("pg1", "html>body>button"))
+    q = RepairQuery(
+        original_selector="#a", repair_key=compute_repair_key("pg1", "html>body>button")
+    )
     results = store.query(q)
     assert [(c.new_selector, s) for c, s in results] == [("#l1-new", "l1")]  # 同一案例去重
     # 无 L1 命中 → 仅旧式检索
@@ -65,8 +75,12 @@ def test_query_facade_l1_then_legacy(tmp_path):
 
 def test_page_fingerprint_distinct():
     dom = '<button data-testid="a">确定</button>'
-    assert compute_page_fingerprint("https://x/login", dom) != compute_page_fingerprint("https://x/pay", dom)
-    assert compute_page_fingerprint("https://x/login", dom) == compute_page_fingerprint("https://x/login", dom)
+    assert compute_page_fingerprint("https://x/login", dom) != compute_page_fingerprint(
+        "https://x/pay", dom
+    )
+    assert compute_page_fingerprint("https://x/login", dom) == compute_page_fingerprint(
+        "https://x/login", dom
+    )
 
 
 # --- find_by_repair_key（L1）---

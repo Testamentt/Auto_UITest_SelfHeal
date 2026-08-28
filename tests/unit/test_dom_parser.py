@@ -63,7 +63,7 @@ def test_void_tags_defined():
 def test_interactive_filter():
     """候选过滤：可交互标签 / role=button / data-testid，普通 div 排除。"""
     dom = (
-        '<html><body><div>纯文本</div>'
+        "<html><body><div>纯文本</div>"
         '<button id="a">A</button><div role="button" id="b">B</div>'
         '<span data-testid="c">C</span></body></html>'
     )
