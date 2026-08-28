@@ -58,7 +58,7 @@ AI 自愈 Agent src/selfheal/agent/       大脑：orchestrator 编排闭环，d
 由 `agent/orchestrator.py` 编排，是本项目最核心的逻辑链路：
 
 1. **执行监控**：`engine/` 执行步骤，捕获定位失败 / 超时 / 不可交互等异常。
-2. **现场采集**：`collect/collector.py` 抓取截图、DOM 快照、网络日志（trace 录制由测试框架层 conftest `--trace-healing` 完成，采集器内联 trace 见 TODO T11）。
+2. **现场采集**：`collect/collector.py` 抓取截图、DOM 快照、网络日志、现场内联 trace（T11：外层录制中导出 `Scene.trace_path` 现场文件，与 conftest `--trace-healing` 整用例录制互补）。
 3. **智能诊断**：`agent/diagnose.py` 规则式根因粗分（零成本恒跑）+ `agent/diagnose_llm.py` LLM 精判（白名单 5 值；模型不可用时降级规则式）。
 4. **多策略修复**：`agent/strategies/` 依次尝试
    - `heuristic.py` 启发式匹配（多属性组合）
@@ -114,7 +114,7 @@ AutoAiSelfHeal/
 
 - 项目已完成 Phase 1–5（最小闭环 → AI 大脑 → 沉淀进阶 → 证据指标 → 语义化与风险控制），
   模块均已实现并有 unit/e2e 双覆盖；新增代码遵循既有分层与命名，不要跨层直接耦合。
-- 已知遗留与待办见 `docs/TODO.md`（T5 置信度归一化 / T6 智能等待默认融入 / T7 知识二次命中 e2e / T8 原生定位替代 HTMLParser 等）。
+- 遗留与待办见 `docs/TODO.md`（T1–T17 已完成并勾选；长线项见 roadmap「后续可选」：语义化 v2 fastembed、T5 收缩数据标定、action_wait 默认翻转等）。
 - **自愈是插件，不侵入框架**：经 pytest fixture 按 `settings.healing.enabled` / CLI `--selfheal` 提供；`HealingPage` 与原生 `Page` 接口兼容（代理），POM 代码开/关自愈都能跑；关闭时为原生 Page、零开销。不用 import 替换 / monkeypatch（见 roadmap.md 决策 D5）。
 - **兜底优先**：`locator(sel, fallback=...)`；AI 不确定（置信度 < 阈值）时按 `healing.on_uncertain` 处理，默认 `use_fallback`，无备用则 fail（决策 D6）。
 - 新增模型能力一律走 `llm/` 抽象 + `registry` 注册，provider 相关配置放进 `config/settings.yaml`。

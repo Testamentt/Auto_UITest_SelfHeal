@@ -66,7 +66,7 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 **已落地（Phase 4/5）**：视频回放（Playwright Trace：`context.tracing` 录制 → `playwright show-trace` 回放，`--trace-healing` 触发）、风险控制 T13–T17（高风险页豁免 / dry-run / 修复写回人审 / flaky 区分 / 成本看板）、知识库语义化（L1 精确命中 + L3 向量检索）。
 
 **仍规划**：
-- **trace 采集内联**（见 TODO T11）：`Scene.trace_path` 仍为占位；trace 录制已由 conftest 的 `--trace-healing` 完成（`context.tracing` → `reports/traces/`），采集器内联 trace 路径待补。网络日志（C5）已实现：`Scene.network_logs` 随现场带出近期请求/响应（限长 200 条防膨胀）。
+- **trace 现场内联已落地（T11，2026-08-28）**：采集器 `SceneCollector._try_inline_trace` 在外层录制中（`--trace-healing` / `browser.trace`）把当前片段导出为独立现场 trace（`trace_dir/inline-trace-<uuid>.zip`，可 `playwright show-trace` 回放），填入 `Scene.trace_path` 并恢复录制；未录制不擅自启动（占位为空）。conftest 整用例录制（`context.tracing` → `reports/traces/trace-<test>.zip`）与现场 trace 职责互补、互不冲突。网络日志（C5）已实现：`Scene.network_logs` 随现场带出近期请求/响应（限长 200 条防膨胀）。
 
 ## 已定选型与遗留 TBD
 

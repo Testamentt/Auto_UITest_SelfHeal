@@ -36,7 +36,7 @@ ruff check .          # 代码检查
 > **自愈开关**：`pytest --selfheal` / `--no-selfheal`（优先于 `settings.healing.enabled`）。
 > **自愈演示**：`tests/e2e/pages/demo_page.html`（模拟 UI 改版导致定位器失效），由 `-m e2e` 覆盖三场景：自愈成功 / 兜底 / 关闭=原生。
 
-> **视频回放（Playwright Trace）**：`pytest --trace-healing` 录制，用 `playwright show-trace reports/traces/trace-<test>.zip` 交互式回放（DOM + 操作时间线）；CI 会随 e2e 上传 traces 产物。
+> **视频回放（Playwright Trace）**：`pytest --trace-healing` 录制，用 `playwright show-trace reports/traces/trace-<test>.zip` 交互式回放（DOM + 操作时间线）；自愈发生时会额外产出**现场内联 trace**（`reports/traces/inline-trace-<uuid>.zip`，T11，含失败现场可直接回放）；CI 会随 e2e 上传 traces 产物。
 
 > ✅ **核心自愈闭环已跑通**：启发式 + 语义（DeepSeek）+ 视觉（qwen3-vl-flash）多策略、SQLite 知识沉淀、弹窗处理、智能等待；真实模型已验证（见 `docs/roadmap.md`）。
 
