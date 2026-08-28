@@ -270,9 +270,10 @@ class HealingLocator:
         return f"元素{selector!r}，位于{url or '当前页面'}{self._chain_hint()}"
 
     def _healing_action(self, name: str, action: Callable) -> Callable:
-        """把原生动作包成：失败（超时）→ 自愈 → 用新定位器重试。"""
+        """把原生动作包成：前置可忽略等待 → 失败（超时）→ 自愈 → 用新定位器重试。"""
 
         def wrapped(*args: Any, **kwargs: Any) -> Any:
+            self._wait_before_action()  # T6：动作前可选的短稳等待（best-effort，失败不阻塞）
             try:
                 return action(*args, **kwargs)
             except Exception as exc:  # noqa: BLE001 - 需甄别超时后决定自愈或上抛
@@ -305,6 +306,24 @@ class HealingLocator:
         wrapped.__doc__ = f"自愈包装动作 {name}：失败（超时）→ 自愈 → 重试。"
         return wrapped
 
+    def _wait_before_action(self) -> None:
+        """T6：动作前可选的智能等待（healing.action_wait.enabled）。
+
+        对目标 locator 做一次短稳等待（复用 engine/smart_wait.py 的 wait_until_stable），
+        缓解"元素仍在加载/抖动就执行动作"导致的误报超时。**best-effort**：
+        等待失败仅记 debug、不阻塞动作——等待是增强而非正确性前提，
+        避免把"等待"变成新的超时源（元素不存在时动作照常执行 → 走既有自愈/超时语义）。
+        """
+        if not self._enabled:
+            return
+        aw = self._cfg.action_wait
+        if not aw.enabled:
+            return
+        try:
+            _wait_until_stable(self._locator, timeout_ms=aw.timeout_ms, stable_ms=aw.stable_ms)
+        except Exception:  # noqa: BLE001 - 等待失败不阻塞动作（见 docstring）
+            logger.debug("动作前置智能等待跳过（元素未达稳定，不阻塞动作）", exc_info=True)
+
     def _heal_and_resolve(
         self, exc: BaseException | None = None, use_knowledge: bool = True, leaf: bool = False
     ) -> Locator:
@@ -329,8 +348,12 @@ class HealingLocator:
             outcome = self._orch.run(selector, desc, failure=failure, use_knowledge=use_knowledge)
         except Exception as run_exc:  # noqa: BLE001 - 闭环内部异常兜底，不替换原始异常
             logger.warning("自愈闭环内部异常，按不确定兜底处理", exc_info=True)
-            outcome = HealOutcome(success=False, root_cause=f"heal_internal:{type(run_exc).__name__}")
-        self._last_heal_outcome = outcome  # B1：供重试成功后 commit_pending（无 attempt_id 则 no-op）
+            outcome = HealOutcome(
+                success=False, root_cause=f"heal_internal:{type(run_exc).__name__}"
+            )
+        self._last_heal_outcome = (
+            outcome  # B1：供重试成功后 commit_pending（无 attempt_id 则 no-op）
+        )
         if outcome.success and outcome.new_selector:
             return self._page.locator(outcome.new_selector)
         return self._resolve_uncertain(outcome)
@@ -353,7 +376,9 @@ class HealingLocator:
 
     def _failure_report(self, outcome: HealOutcome) -> str:
         proposed = (
-            f", 建议定位器(dry-run)={outcome.proposed_selector!r}" if outcome.proposed_selector else ""
+            f", 建议定位器(dry-run)={outcome.proposed_selector!r}"
+            if outcome.proposed_selector
+            else ""
         )
         return (
             f"自愈失败：原定位器={self._selector!r}, 描述={self._description!r}, "
@@ -391,7 +416,9 @@ class HealingPage:
         if self._enabled:
             # 仅开启时构建知识库 / 闭环 / 弹窗处理（关闭时零开销、等同原生 Page，不产生文件副作用）
             self._knowledge = knowledge or build_knowledge_store(settings)
-            self._orchestrator = SelfHealOrchestrator(page, settings, self._knowledge, self._reporter)
+            self._orchestrator = SelfHealOrchestrator(
+                page, settings, self._knowledge, self._reporter
+            )
             self._popup_guard = PopupGuard(page, self._knowledge)
         else:
             self._knowledge = knowledge

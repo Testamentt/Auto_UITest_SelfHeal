@@ -39,9 +39,14 @@
   - 位置：`src/selfheal/agent/confidence.py`（新增）、`config.py`、`fix_generator.py`、`persistence.py`、`strategies/`
   - 验收：`test_confidence_normalize.py` 19 项单测 + `test_strategy_threshold_e2e.py` 2 项 e2e；
     全量 unit 219 passed、e2e 9 passed、ruff 全绿
-- [ ] **T6 · 智能等待默认融入动作前置**
-  - 当前 `wait_until_stable` 仅 POM 显式调用；评估作为动作前默认可选步骤
-  - 位置：`src/selfheal/engine/smart_wait.py`、`healing_locator.py`
+- [x] **T6 · 智能等待默认融入动作前置** ✅ 2026-08-28
+  - `healing.action_wait` 子配置（enabled 默认 **False**=零侵入守 D12 / timeout_ms=2000 / stable_ms=300）
+  - `HealingLocator._wait_before_action`：动作（HEALABLE）执行前做一次短稳等待（复用 smart_wait），
+    best-effort——等待失败仅记 debug、不阻塞动作（等待是增强不是正确性前提）
+  - 位置：`src/selfheal/config.py`（ActionWaitConfig）、`engine/healing_locator.py`
+  - 验收：`test_action_wait.py` 6 项单测（开关/前置调用/失败降级/显式调用可用）+
+    `test_smart_wait_flow.py` 扩展 2 项 e2e（抖动元素直接 click 成功 / 既有自愈流程不受影响）；
+    全量 unit 225 passed、ruff 全绿
 - [ ] **T7 · 知识二次命中 e2e（坐实"越用越聪明"）**（P9）
   - 修复一次 → 第二次同场景命中知识缓存直接复用
   - 位置：`tests/e2e/`
