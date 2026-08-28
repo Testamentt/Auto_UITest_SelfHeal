@@ -2,7 +2,7 @@
 
 import pytest
 
-from selfheal.agent.llm_io import build_compact_dom, extract_json, safe_float, safe_str
+from selfheal.llm.io import build_compact_dom, extract_json, safe_float, safe_str
 
 pytestmark = pytest.mark.unit
 

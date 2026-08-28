@@ -68,9 +68,14 @@
 - [x] **T9 · 对齐 config 与 example yaml**（P6）✅ 2026-08-05（即评审 #16）
   - 移除 example 的 execution/reporting 死配置段；`Settings` 加 `extra='forbid'`，未来漂移加载期报错
   - 位置：`src/selfheal/config.py`、`config/settings.example.yaml`
-- [ ] **T10 · 工具模块归位**（P8）🟠 部分完成（A5 已拆包 2026-08-04）
-  - `agent/dom.py` → `agent/dom/` 子模块（解析/指纹/定位器/提取，A5）已完成；`agent/llm_io.py` 未动
-  - 完整目标（迁至 `collect/` 或独立 `utils/`）仍待办
+- [x] **T10 · 工具模块归位**（P8）✅ 2026-08-28
+  - `agent/dom.py` → `agent/dom/` 子模块（A5）已完成；本轮补完 `agent/llm_io.py`：
+    LLM I/O 基础设施（build_compact_dom / extract_json / safe_float / safe_str）迁至
+    **`llm/io.py`**（随模型抽象层归位：模型通信的输入准备与输出编解码）
+  - 调用方（diagnose_llm / semantic / visual / test_llm_io）全部改走新路径；
+    `agent/llm_io.py` 降为 **shim**（带 TODO(workaround) 标记，确认无外部引用后删除）
+  - 顺带清理 `config.py` 过期 TODO 注释（T9 已闭环：execution/reporting 决策不建模，extra=forbid 防漂移）
+  - 验收：全量 unit 234 passed、ruff 全绿（迁移零行为变化）
 - [ ] **T11 · collector 补 trace / network 采集** 🟠 部分完成
   - network（C5）✅ 已实现 2026-08-05：`Scene.network_logs` 随现场带出近期请求/响应（限长 200）
   - trace 内联 ⬜ 待办：`Scene.trace_path` 仍为占位；录制已由 conftest `--trace-healing` 完成
