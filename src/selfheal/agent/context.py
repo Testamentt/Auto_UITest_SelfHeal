@@ -89,7 +89,8 @@ class ContextAssembler:
     def __init__(self, page: Page | None, settings: Settings):
         self._page = page
         self._settings = settings
-        self._collector = SceneCollector(page)
+        # T11：采集器顺带产出失败现场内联 trace（trace_dir 与 browser.trace_dir 一致）
+        self._collector = SceneCollector(page, settings.browser.trace_dir)
         # 失败上下文缓存（一次提取，L1/L3/persist 复用，避免全量 DOM 解析多次）。
         # 键 = (url, selector)：SPA 多页面流程同 selector 不同元素不误用（审查 M4）；
         # OrderedDict 做 LRU 上限 _CONTEXT_CACHE_LIMIT，防长流程内存膨胀。
@@ -118,7 +119,9 @@ class ContextAssembler:
 
         return any(fnmatch.fnmatch(url, p) for p in patterns)
 
-    def _element_context(self, scene: Scene, selector: str, description: str | None) -> ElementContext:
+    def _element_context(
+        self, scene: Scene, selector: str, description: str | None
+    ) -> ElementContext:
         """提取失败元素上下文；命中缓存直接复用（一次提取原则，避免重复 DOM 解析）。
 
         键含 URL（审查 M4）：同 selector 在不同页面（SPA 多流程）不误用旧上下文。
@@ -127,7 +130,9 @@ class ContextAssembler:
         cached = self._failure_context_cache.get(key)
         if cached is not None:
             return cached
-        ctx = extract_element_context(self._page, scene.dom_snapshot if scene else None, selector, description)
+        ctx = extract_element_context(
+            self._page, scene.dom_snapshot if scene else None, selector, description
+        )
         self._failure_context_cache[key] = ctx
         self._failure_context_cache.move_to_end(key)  # LRU：最近使用排到尾部
         if len(self._failure_context_cache) > self._context_cache_limit:

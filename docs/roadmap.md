@@ -1,7 +1,7 @@
 # 项目路线图（Roadmap）
 
 > **活文档**：随进展同步更新，不是快照（见 `RULE.md` R5）。
-> 最后更新：2026-08-28 · 当前阶段：T5 置信度归一化完成（进行中：TODO 优化项 T5→T11 依次完善）
+> 最后更新：2026-08-28 · 当前阶段：TODO 优化项 **T5–T11 全部完成**（置信度归一化/动作前置等待/知识命中 e2e/原生解析交叉校验/模块归位/trace 内联）
 > 关联文档：评审 `docs/reviews/2026-08-15-code-review.md`（全量审查）· 优化 TODO `docs/TODO.md`
 
 ## 当前目标
@@ -67,9 +67,9 @@ Phase 4 展示包装（视频回放 / CI 产物 / README）、Phase 1–3 均已
 - **真实 LLM 校准**：语义/诊断冒烟（`-k llm_smoke`）需 `OPENAI_API_KEY`（或改为 DashScope 文本模型）后运行。
 - 语义向量 v1 为本地 n-gram（跨语言含中文较弱）；语义更强可升级 fastembed 本地模型（v2），向量列带 `embedding_version`（含维度）平滑迁移。
 - 弹窗特征签名基于文本归一化，结构指纹（DOM 结构哈希）可视需要增强。
-- 智能等待目前 POM 显式调用；是否默认融入动作前置等待可视实测决定。
-- DOM 解析为自研 HTMLParser（`agent/dom/parser.py`）：2026-08-15 已修复 void 元素文本污染（审查 C1），但解析鲁棒性仍弱于 Playwright 原生查询（T8 待办：原生定位替代/交叉校验）。
-- 采集器内联 trace 待补（T11）：录制已由 conftest `--trace-healing` 完成，`Scene.trace_path` 仍为占位。
+- 智能等待目前 POM 显式调用（`healing.action_wait` 已可按需开启为动作前置，默认关闭守 D12）；是否翻转默认可视实测决定。
+- DOM 解析：静态 HTMLParser 与 Playwright 原生解析（T8）已双轨并存 + 交叉校验（不一致记 warning 进 Scene）；两轨一致口径暂稳，后续若页面结构复杂化可视交叉校验报告决定是否收敛为原生单轨。
+- 采集器内联 trace（T11）已落地：录制中产出 `inline-trace-<uuid>.zip` 现场文件（`Scene.trace_path` 不再占位）；与 conftest 整用例录制互补。
 
 ## 下一步计划
 
@@ -80,8 +80,7 @@ Phase 4 展示包装（视频回放 / CI 产物 / README）、Phase 1–3 均已
    L1 `repair_key` 硬短路 + L3 语义向量检索进策略链，失败上下文三级回退提取，persist 富化指纹/向量。
 2. ✅ **D 风险控制（T13–T17）**：高风险页豁免 / dry-run / 修复写回人审清单 / flaky 区分 / 多模态成本看板。
 
-**后续可选（按 `docs/TODO.md`，T5/T6 已完成 2026-08-28）**：
-- T7 知识二次命中 e2e、T8 Playwright 原生定位替代 HTMLParser；
+**后续可选（按 `docs/TODO.md`，T5–T11 全部完成 2026-08-28）**：
 - 语义化 v2：fastembed 本地模型（如 bge-small-zh）替换 n-gram，语义更强仍本地推理；规模大时可迁 sqlite-vec / Chroma。
 - T5 归一化补充：真实模型标定数据沉淀后为 LLM/VLM 自报段的 raw² 经验收缩填数据标定函数（`agent/confidence.py`）。
-- T6 动作前置等待：`healing.action_wait` 已可按需开启（默认关闭守 D12）；如需成为默认行为，据实测决定翻转默认值。
+- T6 动作前置等待：如需成为默认行为，据实测决定翻转 `healing.action_wait.enabled` 默认值。
