@@ -24,12 +24,12 @@ from selfheal.agent.dom import (
     build_stable_selector,
     interactive_candidates,
 )
-from selfheal.agent.llm_io import build_compact_dom, extract_json, safe_float, safe_str
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
 from selfheal.collect.collector import Scene
 from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.llm.base import ChatMessage, LLMClient
 from selfheal.llm.embedding import EmbeddingClient
+from selfheal.llm.io import build_compact_dom, extract_json, safe_float, safe_str
 
 # L3 语义检索：最低相似度 / 自动采纳阈值 / 新鲜窗口
 L3_MIN_SIM = 0.75

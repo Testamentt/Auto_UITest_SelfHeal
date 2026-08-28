@@ -181,10 +181,11 @@ class EmbeddingConfig(BaseModel):
 
 
 class Settings(BaseModel):
-    """顶层配置模型。TODO: 补全 execution / reporting 子模型。
+    """顶层配置模型。
 
-    extra='forbid'（#16）：yaml 里有但 Settings 未建模的字段会在加载期报错，
-    而非被 pydantic 静默丢弃，杜绝"死配置"漂移。
+    extra='forbid'（#16/T9）：yaml 里有但 Settings 未建模的字段会在加载期报错，
+    而非被 pydantic 静默丢弃，杜绝"死配置"漂移。execution / reporting 段经 T9
+    决策**不建模**（无对应运行时需求），配置示例中也不得出现相关键。
     """
 
     model_config = ConfigDict(extra="forbid")

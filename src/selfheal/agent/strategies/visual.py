@@ -12,11 +12,11 @@ from __future__ import annotations
 
 from selfheal.agent.confidence import KEY_VISUAL, calibrate
 from selfheal.agent.dom import build_stable_selector, interactive_candidates
-from selfheal.agent.llm_io import extract_json, safe_float, safe_str
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
 from selfheal.agent.strategies.heuristic import score_selector
 from selfheal.collect.collector import Scene
 from selfheal.llm.base import VisionClient
+from selfheal.llm.io import extract_json, safe_float, safe_str
 
 _PROMPT_TEMPLATE = """你是 Web UI 自动化测试专家。原定位器已失效，请根据描述在截图中识别目标元素。
 目标描述: {description}
