@@ -16,6 +16,13 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from selfheal.agent.dom import (
+    CrossCheck,
+    cross_validate_interactive,
+    parse_interactive_elements,
+    parse_interactive_elements_native,
+)
+
 if TYPE_CHECKING:  # 仅类型检查时导入，避免运行期强依赖 playwright
     from playwright.sync_api import Page
 
@@ -34,6 +41,9 @@ class Scene:
     dom_snapshot: str | None = None
     network_logs: list[dict] = field(default_factory=list)
     trace_path: str | None = None
+    # T8：Playwright 原生解析的可交互候选 + 与静态解析的交叉校验结果（page 可用时填充，否则 None）
+    native_elements: list | None = None
+    dom_cross_check: CrossCheck | None = None
 
 
 class SceneCollector:
@@ -60,7 +70,11 @@ class SceneCollector:
     def _on_request(self, req: Any) -> None:
         try:
             self._network_logs.append(
-                {"type": "request", "url": getattr(req, "url", ""), "method": getattr(req, "method", "")}
+                {
+                    "type": "request",
+                    "url": getattr(req, "url", ""),
+                    "method": getattr(req, "method", ""),
+                }
             )
             self._trim_network_logs()
         except Exception:  # noqa: BLE001 - 单条日志失败不影响
@@ -69,7 +83,11 @@ class SceneCollector:
     def _on_response(self, resp: Any) -> None:
         try:
             self._network_logs.append(
-                {"type": "response", "url": getattr(resp, "url", ""), "status": getattr(resp, "status", "")}
+                {
+                    "type": "response",
+                    "url": getattr(resp, "url", ""),
+                    "status": getattr(resp, "status", ""),
+                }
             )
             self._trim_network_logs()
         except Exception:  # noqa: BLE001 - 单条日志失败不影响
@@ -86,8 +104,32 @@ class SceneCollector:
         scene = Scene(url=self._safe_url())
         scene.screenshot = self._safe_screenshot()
         scene.dom_snapshot = self._safe_dom()
+        self._try_native_cross_check(scene)  # T8：原生解析 + 交叉校验（best-effort）
         scene.network_logs = list(self._network_logs)  # C5：随现场带出近期请求/响应
         return scene
+
+    def _try_native_cross_check(self, scene: Scene) -> None:
+        """T8：用 Playwright 原生查询解析交互候选，并与静态解析交叉校验。
+
+        结果写入 scene（native_elements / dom_cross_check），供策略链优先原生、
+        报告溯源一致性。**best-effort**：原生查询失败仅记 debug，scene 字段保持 None
+        （策略链随即回退静态解析，零行为变化）。
+        """
+        try:
+            native = parse_interactive_elements_native(self._page)
+            static = parse_interactive_elements(scene.dom_snapshot)
+            check = cross_validate_interactive(static, native)
+            scene.native_elements = native
+            scene.dom_cross_check = check
+            if check.total > 0 and not check.consistent:
+                # R4：不静默——两来源口径漂移要可发现（明细进 Scene 供报告/审计溯源）
+                logger.warning(
+                    "DOM 两来源解析不一致：静态独有=%s，原生独有=%s",
+                    check.only_static,
+                    check.only_native,
+                )
+        except Exception:  # noqa: BLE001 - 原生解析失败降级静态，不炸采集
+            logger.debug("原生 DOM 解析/交叉校验失败（回退静态解析）", exc_info=True)
 
     def _safe_url(self) -> str:
         try:

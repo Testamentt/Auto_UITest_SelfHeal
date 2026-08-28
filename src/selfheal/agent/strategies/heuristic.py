@@ -17,7 +17,12 @@ from __future__ import annotations
 import re
 
 from selfheal.agent.confidence import KEY_HEURISTIC, calibrate
-from selfheal.agent.dom import Element, build_stable_selector, parse_interactive_elements
+from selfheal.agent.dom import (
+    Element,
+    build_stable_selector,
+    interactive_candidates,
+    parse_interactive_elements,  # score_selector（C4 静态交叉校验）专用
+)
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
 from selfheal.collect.collector import Scene
 
@@ -91,7 +96,8 @@ class HeuristicStrategy(RepairStrategy):
             return None
         intent_tokens = _tokenize(original_selector) | _tokenize(description)
         best_el, best_score = None, 0.0
-        for el in parse_interactive_elements(scene.dom_snapshot):
+        # T8：候选来源优先 Playwright 原生解析（有 page 采集），静态 DOM 快照解析兜底
+        for el in interactive_candidates(scene):
             score = _score(el, intent_tokens, description)
             if score > best_score:
                 best_el, best_score = el, score

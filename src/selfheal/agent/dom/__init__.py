@@ -12,14 +12,25 @@ from selfheal.agent.dom.fingerprint import (
     compute_repair_key,
     dom_fingerprint,
 )
-from selfheal.agent.dom.parser import Element, parse_interactive_elements
+from selfheal.agent.dom.parser import (
+    CrossCheck,
+    Element,
+    cross_validate_interactive,
+    interactive_candidates,
+    parse_interactive_elements,
+    parse_interactive_elements_native,
+)
 from selfheal.agent.dom.selector_builder import build_stable_selector
 
 __all__ = [
     "Element",
     "ElementContext",
+    "CrossCheck",
     "build_stable_selector",
     "parse_interactive_elements",
+    "parse_interactive_elements_native",
+    "interactive_candidates",
+    "cross_validate_interactive",
     "dom_fingerprint",
     "compute_page_fingerprint",
     "compute_repair_key",

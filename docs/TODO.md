@@ -47,13 +47,21 @@
   - 验收：`test_action_wait.py` 6 项单测（开关/前置调用/失败降级/显式调用可用）+
     `test_smart_wait_flow.py` 扩展 2 项 e2e（抖动元素直接 click 成功 / 既有自愈流程不受影响）；
     全量 unit 225 passed、ruff 全绿
-- [ ] **T7 · 知识二次命中 e2e（坐实"越用越聪明"）**（P9）
-  - 修复一次 → 第二次同场景命中知识缓存直接复用
-  - 位置：`tests/e2e/`
-- [ ] **T8 · Playwright 原生定位替代/校验 HTMLParser 重解析**（P7）
-  - 用原生查询替代或交叉校验自写 DOM 解析，提升真实 DOM 鲁棒性
-  - 位置：`src/selfheal/agent/dom.py`（现已拆为 `agent/dom/` 子模块）
-  - 🟠 部分缓解：2026-08-15 修复 HTMLParser void 元素文本污染（审查 C1）+ endtag 错配防御，原生定位替代仍待办
+- [x] **T7 · 知识二次命中 e2e（坐实"越用越聪明"）**（P9）✅ 2026-08-28
+  - `tests/e2e/test_knowledge_reuse.py` 2 项：场景 A 第一次启发式自愈落库 → 第二次同场景
+    strategy=="knowledge" 直接复用；场景 B 沉淀后页面再次改版使缓存 selector 失效 →
+    缓存验证拒绝 → 转策略重修（知识库非"永久正确答案"）
+  - 用例使用独立内存知识库自证链路（不受 session 级共享库初始状态影响）
+  - 验收：`-m e2e test_knowledge_reuse` 2 passed；全量 e2e 回归通过
+- [x] **T8 · Playwright 原生定位替代/校验 HTMLParser 重解析**（P7）✅ 2026-08-28
+  - 新增原生解析路径 `agent/dom/parser.py::parse_interactive_elements_native`（浏览器端一次性
+    取回交互候选）+ `interactive_candidates(scene)` 入口（策略链优先原生、静态解析兜底）
+  - 采集器 `collector.capture()` 做两来源**交叉校验**（`cross_validate_interactive` 按稳定定位器
+    对齐），差异记 warning + `Scene.dom_cross_check` 供报告溯源；原生解析失败降级静态、零行为变化
+  - 静态 HTMLParser 保留为单测主力路径（无浏览器）；指纹/LLM 提示/score_selector 保持静态（确定性依赖）
+  - 验收：`test_dom_native_check.py` 9 项单测（一致/单侧缺失/空集/裸元素/候选入口/native 降级）+
+    `test_native_dom_e2e.py` 3 项 e2e（演示页/弹窗页两来源一致、heuristic 原生候选路径）；
+    全量 unit 234 passed、ruff 全绿
 
 ## ⚪ 低优先级（清理 / 可维护性）
 
