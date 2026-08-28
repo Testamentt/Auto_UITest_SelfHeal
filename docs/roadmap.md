@@ -1,8 +1,8 @@
 # 项目路线图（Roadmap）
 
 > **活文档**：随进展同步更新，不是快照（见 `RULE.md` R5）。
-> 最后更新：2026-08-15 · 当前阶段：**Phase 5 完成态 + 2026-08-15 Code Review 加固（P0–P2）**
-> 关联文档：评审 `docs/reviews/2026-08-15-code-review.md`（全量审查）· 修复计划 `docs/plans/2026-08-15-code-review-fixes.md` · 优化 TODO `docs/TODO.md`
+> 最后更新：2026-08-28 · 当前阶段：T5 置信度归一化完成（进行中：TODO 优化项 T5→T11 依次完善）
+> 关联文档：评审 `docs/reviews/2026-08-15-code-review.md`（全量审查）· 优化 TODO `docs/TODO.md`
 
 ## 当前目标
 
@@ -80,6 +80,7 @@ Phase 4 展示包装（视频回放 / CI 产物 / README）、Phase 1–3 均已
    L1 `repair_key` 硬短路 + L3 语义向量检索进策略链，失败上下文三级回退提取，persist 富化指纹/向量。
 2. ✅ **D 风险控制（T13–T17）**：高风险页豁免 / dry-run / 修复写回人审清单 / flaky 区分 / 多模态成本看板。
 
-**后续可选（按 `docs/TODO.md`）**：
-- T5 置信度归一化、T6 智能等待默认融入、T7 知识二次命中 e2e、T8 Playwright 原生定位替代 HTMLParser；
+**后续可选（按 `docs/TODO.md`，T5 已完成 2026-08-28）**：
+- T6 智能等待默认融入、T7 知识二次命中 e2e、T8 Playwright 原生定位替代 HTMLParser；
 - 语义化 v2：fastembed 本地模型（如 bge-small-zh）替换 n-gram，语义更强仍本地推理；规模大时可迁 sqlite-vec / Chroma。
+- T5 归一化补充：真实模型标定数据沉淀后为 LLM/VLM 自报段的 raw² 经验收缩填数据标定函数（`agent/confidence.py`）。

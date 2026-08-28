@@ -45,9 +45,16 @@ class PersistenceHandler:
     def resolve(self, context: HealingContext, proposal: FixProposal) -> HealOutcome:
         """阈值路由：知识复用 / dry-run 建议 / 成功暂存 / 失败（含人审建议）。"""
         if proposal.cached_outcome is not None:
-            self._record(context.original_selector, proposal.cached_outcome)  # 知识复用也记录（供审计）
+            self._record(
+                context.original_selector, proposal.cached_outcome
+            )  # 知识复用也记录（供审计）
             return proposal.cached_outcome
-        threshold = self._settings.healing.confidence_threshold
+        # T5：采纳阈值按候选来源策略独立裁决（缺省回退全局）；best=None（策略链全失败）时用全局
+        threshold = (
+            self._settings.healing.accept_threshold(proposal.best.strategy)
+            if proposal.best is not None
+            else self._settings.healing.confidence_threshold
+        )
         if proposal.best is not None and proposal.best.confidence >= threshold:
             if self._settings.healing.dry_run:
                 # T14 dry-run：只生成修复建议、不实际应用（不持久化、不换定位器重试），供人审
@@ -78,7 +85,9 @@ class PersistenceHandler:
         self._attempt_counter += 1
         outcome.attempt_id = f"heal-{self._attempt_counter}"
         self._pending[outcome.attempt_id] = (outcome, context)
-        if len(self._pending) >= self._PENDING_LIMIT:  # 上限防膨胀（引擎失败不 commit 时，丢弃最旧暂存）
+        if (
+            len(self._pending) >= self._PENDING_LIMIT
+        ):  # 上限防膨胀（引擎失败不 commit 时，丢弃最旧暂存）
             self._pending.pop(next(iter(self._pending)))
 
     def commit_pending(self, attempt_id: str) -> None:
@@ -105,7 +114,9 @@ class PersistenceHandler:
                 # B4：L1 键写入不依赖 embedding；仅当有结构上下文（tag_path）时写键，
                 # 静态上下文（tag_path 为空）不产生键，防同页碰撞（与查询侧门控对称）。
                 if element_context.tag_path:
-                    repair_key = compute_repair_key(context.page_fingerprint, element_context.tag_path)
+                    repair_key = compute_repair_key(
+                        context.page_fingerprint, element_context.tag_path
+                    )
                 if self._embedding is not None:
                     embedding = self._embedding.embed(element_context.query_text)
                     embedding_version = self._embedding.embedding_version

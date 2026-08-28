@@ -74,6 +74,12 @@ class HealingConfig(BaseModel):
     - llm_diagnose_threshold（C7）: LLM 归因触发阈值。低于该值的"成功"修复（置信度落在
       [confidence_threshold, llm_diagnose_threshold) 区间）也补一次 LLM 诊断，丰富审计与人审清单；
       应 > confidence_threshold。策略链全失败时无条件触发 LLM 归因（不依赖本阈值）。
+    - strategy_thresholds / strategy_early_accept（T5）: 按策略独立阈值。键为策略名
+      （heuristic / semantic / visual，可插拔注册表），缺省回退全局 confidence_threshold /
+      early_accept_threshold。未知名键宽待（回退全局），便于先调配置再看行为。
+    - shrink_self_reported（T5）: 置信度归一化的可选保守收缩。开启后对自报型策略
+      （LLM 语义自报段）做 raw² 收缩，缓解自报虚高被直接采纳；默认关闭（行为与 T4 后
+      完全一致），待真实模型校准数据沉淀后再启用（见 agent/confidence.py）。
     """
 
     enabled: bool = True
@@ -82,18 +88,42 @@ class HealingConfig(BaseModel):
     confidence_threshold: float = 0.6
     early_accept_threshold: float = 0.85
     llm_diagnose_threshold: float = 0.75
+    strategy_thresholds: dict[str, float] = {}
+    strategy_early_accept: dict[str, float] = {}
+    shrink_self_reported: bool = False
     on_uncertain: Literal["use_fallback", "pause", "fail"] = "use_fallback"
     exclude_url_patterns: list[str] = []
     dry_run: bool = False
     fix_proposals: bool = False
 
+    def accept_threshold(self, strategy: str) -> float:
+        """该策略的采纳阈值（T5）：strategy_thresholds 命中则用之，否则回退全局。"""
+        return self.strategy_thresholds.get(strategy, self.confidence_threshold)
+
+    def early_accept_for(self, strategy: str) -> float:
+        """该策略的"早接受"短路阈值（T5/T1）：strategy_early_accept 命中则用之，否则回退全局。"""
+        return self.strategy_early_accept.get(strategy, self.early_accept_threshold)
+
     @model_validator(mode="after")
     def _validate_thresholds(self) -> HealingConfig:
-        """阈值层级约束：early_accept > confidence、llm_diagnose > confidence（防配置倒挂）。"""
+        """阈值层级约束：early_accept > confidence、llm_diagnose > confidence、按策略同构（防配置倒挂）。"""
         if self.early_accept_threshold <= self.confidence_threshold:
             raise ValueError("early_accept_threshold 应 > confidence_threshold")
         if self.llm_diagnose_threshold <= self.confidence_threshold:
             raise ValueError("llm_diagnose_threshold 应 > confidence_threshold")
+        # T5：按策略阈值——值域 [0,1] 且同一策略的 early_accept 必须 > accept（防倒挂）
+        for key, value in list(self.strategy_thresholds.items()) + list(
+            self.strategy_early_accept.items()
+        ):
+            if not (0.0 <= value <= 1.0):
+                raise ValueError(f"按策略阈值 {key!r} 超出 [0, 1] 值域: {value}")
+        for key, accept in self.strategy_thresholds.items():
+            early = self.strategy_early_accept.get(key)
+            if early is not None and early <= accept:
+                raise ValueError(
+                    f"strategy_early_accept[{key!r}] 应 > strategy_thresholds[{key!r}] "
+                    f"({early} <= {accept})"
+                )
         return self
 
 

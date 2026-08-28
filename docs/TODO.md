@@ -28,9 +28,17 @@
 
 ## 🟡 中优先级
 
-- [ ] **T5 · 置信度归一化 / 按策略阈值**（P5）
-  - 跨策略置信度标定统一，或为每策略设独立接受阈值
-  - 位置：`src/selfheal/agent/orchestrator.py`、`strategies/`
+- [x] **T5 · 置信度归一化 / 按策略阈值**（P5）✅ 2026-08-28
+  - 方案 C（计划确认）：`agent/confidence.py` 归一化层——`CALIBRATORS` 可插拔注册表 + `calibrate`，
+    默认恒等（与 T4 后行为零回归）；`shrink_self_reported` 开启时对 LLM 自报段做 raw² 保守收缩，
+    待真实模型标定数据沉淀后再启用/调参（roadmap 待解决问题）
+  - 按策略阈值：`healing.strategy_thresholds` / `strategy_early_accept`（缺省回退全局，
+    validator 防越界/倒挂）；路由接线：generate 采纳 / best_candidate 短路 / lookup_knowledge
+    按来源策略 / persistence.resolve 采纳
+  - 策略产出点统一经 calibrate 出口（heuristic / semantic L3+LLM / visual，标尺契约文档化于 confidence.py）
+  - 位置：`src/selfheal/agent/confidence.py`（新增）、`config.py`、`fix_generator.py`、`persistence.py`、`strategies/`
+  - 验收：`test_confidence_normalize.py` 19 项单测 + `test_strategy_threshold_e2e.py` 2 项 e2e；
+    全量 unit 219 passed、e2e 9 passed、ruff 全绿
 - [ ] **T6 · 智能等待默认融入动作前置**
   - 当前 `wait_until_stable` 仅 POM 显式调用；评估作为动作前默认可选步骤
   - 位置：`src/selfheal/engine/smart_wait.py`、`healing_locator.py`
