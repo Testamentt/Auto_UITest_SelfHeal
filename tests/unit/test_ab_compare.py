@@ -32,7 +32,8 @@ def test_parse_junit_classifies_results(tmp_path):
     cases = ab_compare.parse_junit(xml)
     assert cases["test_ab_s1_login_button[disabled]"] == {"result": "failed", "time": 1.5}
     assert cases["test_ab_s1_login_button[healing]"] == {"result": "passed", "time": 2.0}
-    assert cases["test_ab_s2_username_input[disabled]"]["result"] == "skipped"  # xfail 记 skipped
+    # xfail 在 junit 里记 <skipped type="pytest.xfail">：归为 xfail（=无自愈预期失败），非真 skipped
+    assert cases["test_ab_s2_username_input[disabled]"]["result"] == "xfail"
 
 
 def test_build_rows_aligns_variants_and_judges_value():
@@ -41,10 +42,22 @@ def test_build_rows_aligns_variants_and_judges_value():
     junit["test_ab_s3_password_input[healing]"] = {"result": "failed", "time": 2.0}
     rows, summary = ab_compare.build_rows(junit, junit)
     by_scenario = {r["scenario"]: r for r in rows}
-    assert by_scenario["s1_login_button"]["value"] == "自愈修复 ✓"  # A 失败 + B 通过
+    assert by_scenario["s1_login_button"]["value"] == "自愈修复 ✓"  # A xfail（预期失败）+ B 通过
+    assert by_scenario["s2_username_input"]["value"] == "自愈修复 ✓"
     assert by_scenario["s3_password_input"]["value"] == "自愈未救回（需人工）"
-    assert summary["manual_fixes"] == "2" and summary["auto_healed"] == "1"
-    assert summary["with_heal_pass"] == "2"
+    assert summary["manual_fixes"] == "3" and summary["auto_healed"] == "2"
+    assert summary["with_heal_pass"] == "2" and summary["no_heal_pass"] == "0"
+
+
+def test_build_rows_distinguishes_real_skip_from_xfail():
+    """真 skipped（非 xfail）不算"需人工修复"：只标注 —，不进 manual_fixes。"""
+    junit = {
+        "test_ab_s1_login_button[disabled]": {"result": "skipped", "time": 0.0},
+        "test_ab_s1_login_button[healing]": {"result": "passed", "time": 1.0},
+    }
+    rows, summary = ab_compare.build_rows(junit, junit)
+    assert rows[0]["value"] == "—"
+    assert summary["manual_fixes"] == "0"
 
 
 def test_build_rows_handles_missing_variant():

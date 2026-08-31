@@ -126,6 +126,9 @@ def send(url: str, payload: dict[str, Any], timeout_s: float = 10.0) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows GBK 控制台无法编码 payload 里的 emoji（⛔/✅）：stdout 按 UTF-8 容错输出
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="自愈回归通知推送（T19）")
     parser.add_argument("--provider", default="dingtalk", choices=PROVIDERS)
     parser.add_argument("--summary-file", default="reports/healing-records.json")

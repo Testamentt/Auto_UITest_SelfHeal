@@ -44,6 +44,8 @@ ruff check .          # 代码检查
 
 > ✅ **核心自愈闭环已跑通**：启发式 + 语义（DeepSeek）+ 视觉（qwen3-vl-flash）多策略、SQLite 知识沉淀、弹窗处理、智能等待；真实模型已验证（见 `docs/roadmap.md`）。
 
+> 📊 **自愈价值实证（T20 · 本地实测 2026-08-31）**：同一组 3 个失效场景双轮对比——**关闭自愈 0/3 通过（需人工修复 3 次）vs 开启自愈 3/3 通过（0 干预）**，自愈成本约 ¥0.09（LLM 2 次 / VLM 1 次）。复现：`python scripts/ab_compare.py`（产出 `reports/ab-compare.md`）。
+
 > 🧠 **Phase 5 · 知识库语义化「越用越聪明」**：修复知识经本地确定性向量（零 API 费用）检索复用——L1 精确命中（`repair_key` 硬短路，ID 变了文本/结构不变仍命中）→ L3 语义向量检索（相似场景直接复用）。演示：`python scripts/demo_semantic_reuse.py`。
 
 > 🛡️ **Phase 5 · 风险控制**（`config/settings.yaml` `healing` 段）：高风险页豁免（`exclude_url_patterns`）、dry-run 仅报告不执行（`dry_run`）、修复写回人审清单（`fix_proposals`，不自动改库）、看板区分真自愈 vs flaky、多模态成本看板（T13–T17）。
