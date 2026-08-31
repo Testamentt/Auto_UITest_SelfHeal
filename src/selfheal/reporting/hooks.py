@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
+from selfheal.reporting.allure_bridge import attach_json
+
 if TYPE_CHECKING:  # 仅类型检查时导入，避免 metrics → hooks 循环
     from selfheal.reporting.metrics import MetricsSnapshot
 
@@ -49,11 +51,11 @@ class HealingReporter:
         return estimate_cost(self.stats.get("llm_calls", 0), self.stats.get("vlm_calls", 0))
 
     def _attach_allure(self, rec: HealingRecord) -> None:
-        try:
-            import allure
+        """T18：自愈记录 JSON 附件（统一经 allure_bridge，未装 allure 时静默降级）。
 
-            allure.attach(
-                str(asdict(rec)), name="自愈记录", attachment_type=allure.attachment_type.JSON
-            )
-        except ImportError:
-            pass  # 未安装 allure 时静默降级
+        verified 语义明示（复用 T16 布尔，不额外采集）：
+        True = 修复后验证原定位器仍失效（真自愈）；False = 原定位器已恢复（flaky 侥幸通过）。
+        """
+        payload = asdict(rec)
+        payload["verified_by_selector_exists"] = rec.verified
+        attach_json(payload, name="自愈记录")
