@@ -104,6 +104,43 @@
   - 验收：`test_allure_bridge.py` 14 项单测（优先级/环境页/附件/降级分支）+ 本地
     `--alluredir` 实测（标签、自愈记录附件、环境页均落盘）+ 全量 unit/e2e 回归、ruff 全绿
 
+## 🚀 后续规划（T19+，2026-08-31 性价比评估立项）
+
+> 评估口径：**难度**（工作量+技术风险）× **回报**（价值/使用频次），仅收录高性价比项。
+> 实现顺序即编号顺序：**T19 → T20 → T21 → T22**；候补与落选记录见本节末尾。
+
+- [ ] **T19 · 定时回归 + 自愈失败通知**（难度 ★★☆ / 回报 ★★★★）
+  - CI 新增 `schedule` cron 夜间触发 e2e+自愈回归；失败时按可配置 webhook（通用 JSON POST，
+    兼容钉钉/企微/Slack）推送自愈摘要（成功率 / 成本 / 失败用例清单）
+  - 位置：`.github/workflows/ci.yml`、`scripts/notify.py`（payload 组装独立函数可单测）
+  - 验收：payload 组装 unit（mock HTTP）+ workflow 语法校验；框架从"演示"变"持续运行"
+- [ ] **T20 · 自愈价值 A/B 对比演示套件**（T3b）（难度 ★★☆ / 回报 ★★★★★）
+  - 同一组演示场景 ×（开启/关闭自愈）双轮运行 → 对比报告（通过率 / 人工干预次数 / 耗时）；
+    README 与汇报直接引用实证数据——**核心卖点"自愈提升稳定性"的量化证据**
+  - 位置：`scripts/ab_compare.py` + 复用 `tests/e2e/pages/` 演示页
+  - 验收：一键脚本产出对比结论；对比计算逻辑 unit 覆盖
+- [ ] **T21 · pytest-xdist 并行兼容**（难度 ★★☆ / 回报 ★★★）
+  - 现状：环境装有 xdist 但 pyproject 未声明；多 worker 下 SQLite 并发写、
+    `_session_reporters` 聚合、Allure results 合并行为均未验证
+  - 内容：`-n 2` 全量验证 → 修 SQLite（WAL / 写冲突重试）+ 会话聚合策略（xdist worker 协议）
+    → pyproject 显式声明依赖
+  - 验收：`pytest -m unit -n 2` 与 `pytest -m e2e -n 2` 全绿且看板/Allure 产物完整
+- [ ] **T22 · 修复建议自动开草稿 PR**（难度 ★★☆ / 回报 ★★★）
+  - CI 读 fix-proposals JSON → 自动开**草稿** PR（body 含人审 checklist）；仍不自动合并
+    （守 T15 人审边界）
+  - 验收：PR body 生成逻辑 unit；实际开 PR 在 feature 分支验证后合入
+
+### 候补池（性价比尚可，待前置条件）
+- **iframe / Shadow DOM 自愈**：真实场景大空白（`healing_locator.py:73` 明示原生透传），
+  但跨 frame 候选解析/存在性验证是架构级改动——先做评估 spike，再决定是否立项
+- **自愈指标跨运行历史**：价值依赖持续运行（T19 先行）→ dashboard 时间序列
+- **知识库运维 CLI**（list / 去重 / 失效清理）：知识库长期运行的卫生问题
+
+### 落选记录（本轮不立项，理由存档）
+- 语义化 v2 fastembed / T5 收缩标定：依赖真实场景数据沉淀，当前无数据支撑收益
+- 多浏览器矩阵 / action_wait 默认翻转：待实测数据决定，现做收益不明确
+- 数据驱动 / 软断言 / 多环境 profile / 版本发布管理：用例规模与协作需求上来再做
+
 ## 🛡️ 风险控制（对应 `docs/architecture.md`「预期与风险」，Phase 5 D 已完成 2026-08-05）
 
 - [x] **T13 · 高风险页豁免配置**：`healing.exclude_url_patterns`（glob），orchestrator 开头按 URL 匹配命中即不触发自愈（支付 / 强授权 / 审计类页面）。位置：`config.py`、`agent/orchestrator.py`。验收：`test_risk_control.py` 4 项。
