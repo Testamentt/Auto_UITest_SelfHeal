@@ -72,15 +72,19 @@ def parse_junit_from_str(text: str) -> dict[str, dict[str, float | str]]:
 def _parse_tree(root: ET.Element) -> dict[str, dict[str, float | str]]:
     """junit 树 → {用例名: {result, time}}。
 
-    result 归类：passed（无失败子元素）/ failed（<failure> 或 <error>）/ skipped（<skipped>）。
+    result 归类：passed（无失败子元素）/ failed（<failure> 或 <error>）/
+    xfail（<skipped type="pytest.xfail">，A 组预期失败 = 无自愈需人工修复）/
+    skipped（其余真跳过）。
     """
     cases: dict[str, dict[str, float | str]] = {}
     for tc in root.iter("testcase"):
         status = "passed"
         if tc.find("failure") is not None or tc.find("error") is not None:
             status = "failed"
-        elif tc.find("skipped") is not None:
-            status = "skipped"
+        else:
+            skipped = tc.find("skipped")
+            if skipped is not None:
+                status = "xfail" if "xfail" in (skipped.get("type") or "") else "skipped"
         cases[tc.get("name", "")] = {"result": status, "time": float(tc.get("time", 0))}
     return cases
 
@@ -107,9 +111,10 @@ def build_rows(
         a = junit_disabled.get(f"{base}[disabled]", {"result": "未运行", "time": 0.0})
         b = junit_healing.get(f"{base}[healing]", {"result": "未运行", "time": 0.0})
         a_res, b_res = str(a["result"]), str(b["result"])
-        if a_res == "failed" and b_res == "passed":
+        no_heal_broken = a_res in ("failed", "xfail")  # xfail = 无自愈时预期失败（需人工修复）
+        if no_heal_broken and b_res == "passed":
             value = "自愈修复 ✓"
-        elif a_res == "failed":
+        elif no_heal_broken:
             value = "自愈未救回（需人工）"
         elif a_res == "passed":
             value = "原定位器仍有效（非失效场景）"
@@ -129,7 +134,7 @@ def build_rows(
     summary = {
         "no_heal_pass": str(sum(1 for r in rows if r["no_heal"] == "passed")),
         "with_heal_pass": str(sum(1 for r in rows if r["with_heal"] == "passed")),
-        "manual_fixes": str(sum(1 for r in rows if r["no_heal"] == "failed")),
+        "manual_fixes": str(sum(1 for r in rows if r["no_heal"] in ("failed", "xfail"))),
         "auto_healed": str(healed),
         "no_heal_time": f"{sum(float(r['no_heal_time']) for r in rows):.2f}s",
         "with_heal_time": f"{sum(float(r['with_heal_time']) for r in rows):.2f}s",
@@ -178,6 +183,9 @@ def _load_cost() -> dict | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows GBK 控制台无法编码 ¥/emoji：stdout 统一按 UTF-8 容错输出（报告文件本就是 UTF-8）
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="自愈价值 A/B 对比（T20）")
     parser.add_argument("--skip-run", action="store_true", help="跳过运行，仅重渲染既有 junitxml")
     parser.add_argument("--junit-disabled", default=str(ROOT / "reports" / "ab-junit-disabled.xml"))

@@ -120,18 +120,19 @@
     workflow 中 schedule 配置以注释保留（含启用说明），恢复仅需取消注释一行
   - 验收：`test_notify.py` 12 项单测（四格式 / 统计口径 / send mock / skip 与缺摘要降级）；
     全量 unit 264 passed、ruff 全绿；真实 webhook 推送与 e2e 回归留集成阶段
-- [ ] **T20 · 自愈价值 A/B 对比演示套件**（T3b）（难度 ★★☆ / 回报 ★★★★★）🟠 代码+单测完成 2026-08-31
+- [x] **T20 · 自愈价值 A/B 对比演示套件**（T3b）（难度 ★★☆ / 回报 ★★★★★）✅ 2026-08-31（含实跑实证）
   - ✅ `tests/e2e/test_ab_scenarios.py`：3 个「UI 改版定位失效」场景（登录按钮 / 用户名框 /
     密码框）× parametrize 双变体同源运行——`disabled` 变体 xfail(strict)（CI 保持绿，
     语义=无自愈需人工修复）、`healing` 变体走自愈（description 与 aria-label 全等，
     确定性 heuristic 命中，不依赖真实模型）
   - ✅ `scripts/ab_compare.py`：两轮定向运行（`-k` 过滤变体 + junitxml 收集）→
-    `parse_junit` / `build_rows`（对齐判定：自愈修复 ✓ / 自愈未救回 / 非失效场景）/
-    `render_markdown`（通过率、需人工修复数、耗时、自愈成本）→ `reports/ab-compare.md`
-  - ✅ 单测：`test_ab_compare.py` 6 项（解析归类 / 变体对齐 / 缺失容错 / 渲染含成本行 / 命令组装）；
-    全量 unit 270 passed、ruff 全绿
-  - ⏸ **A/B 实跑产出实证报告**留集成阶段（用户要求：e2e 回归确认后统一执行；
-    届时 `python scripts/ab_compare.py` → 报告贴回 README）
+    `parse_junit`（区分 xfail 与真 skipped）/ `build_rows`（对齐判定：自愈修复 ✓ /
+    自愈未救回 / 非失效场景）/ `render_markdown` → `reports/ab-compare.md`
+  - ✅ **实跑实证（集成回归）**：关闭自愈 **0/3** 通过（需人工修复 **3** 次）vs 开启自愈
+    **3/3** 通过（0 干预）；自愈成本 ¥0.09（LLM 2 / VLM 1）；结论已贴 README
+  - 修正记录：junit 中 xfail 记 `<skipped type="pytest.xfail">`，首轮误判为真跳过——
+    解析归类区分后判定正确（`test_ab_compare.py` 7 项覆盖）；stdout GBK 编码容错
+  - 全量 unit 293 passed、ruff 全绿
   - 同一组演示场景 ×（开启/关闭自愈）双轮运行 → 对比报告（通过率 / 人工干预次数 / 耗时）；
     README 与汇报直接引用实证数据——**核心卖点"自愈提升稳定性"的量化证据**
   - 位置：`scripts/ab_compare.py` + 复用 `tests/e2e/pages/` 演示页
@@ -147,8 +148,9 @@
     （多进程共享库场景的写排队 + 读写并发；临时库/单进程无害）
   - ✅ pyproject dev 显式声明 `pytest-xdist>=3.5`
   - 验收：`test_xdist_compat.py` 12 项单测（worker 判定/分片读写清理/聚合出口/pragma 生效/
-    双连接交错写）+ **`pytest -m unit -n 2` 全量 282 passed**；`e2e -n 2` 实跑留集成阶段
-    （用户要求：e2e 回归确认后统一执行）
+    双连接交错写）+ `pytest -m unit -n 2` 全量 282 passed + **`pytest -m e2e -n 2` 全量
+    23 passed / 3 xfailed（2026-08-31 集成回归）**：xdist 下 dashboard/healing-records.json
+    由分片正确聚合（各 worker 自愈记录不丢）、allure results 130 文件无冲突、并行提速约 2 倍
   - 现状：环境装有 xdist 但 pyproject 未声明；多 worker 下 SQLite 并发写、
     `_session_reporters` 聚合、Allure results 合并行为均未验证
   - 内容：`-n 2` 全量验证 → 修 SQLite（WAL / 写冲突重试）+ 会话聚合策略（xdist worker 协议）
