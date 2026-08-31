@@ -91,6 +91,18 @@
   - 已落地：拆分 ContextAssembler（context.py）/ FixGenerator（fix_generator.py）/ PersistenceHandler（persistence.py），
     orchestrator 降为 Router + 组合根
   - 位置：`src/selfheal/agent/orchestrator.py`
+- [x] **T18 · Allure 报告增强（环境页/标签/证据链/Pages 发布）** ✅ 2026-08-31
+  - 新增 `reporting/allure_bridge.py`（**零侵入**，同 D5 精神）：模块级 `_HAS_ALLURE` 一次性
+    探测依赖，未装 allure-pytest 全 API 降级 no-op；write_environment（环境页）/
+    apply_dynamic_labels（marker→标签，优先级 **healing > e2e > unit** 取唯一 feature）/ attach_json/attach_file
+  - 接线：conftest autouse fixture 动态打标签（dynamic API 须测试上下文）+ sessionfinish
+    写 environment.properties；`_attach_trace_to_allure` 统一走 bridge
+  - 证据链：自愈记录 JSON 附件（`reporting/hooks.py`）增 `verified_by_selector_exists`
+    字段（**复用 T16 verified 布尔，不额外采集**）；trace zip 附件保留
+  - CI 新增 `publish` job：合并 unit/e2e results → simple-elf/allure-report-action（历史趋势）
+    → peaceiris 发布 **gh-pages**（分支已建：占位页 + .nojekyll）；仅 main 分支发布
+  - 验收：`test_allure_bridge.py` 14 项单测（优先级/环境页/附件/降级分支）+ 本地
+    `--alluredir` 实测（标签、自愈记录附件、环境页均落盘）+ 全量 unit/e2e 回归、ruff 全绿
 
 ## 🛡️ 风险控制（对应 `docs/architecture.md`「预期与风险」，Phase 5 D 已完成 2026-08-05）
 

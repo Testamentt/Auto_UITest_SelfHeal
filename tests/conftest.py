@@ -15,9 +15,27 @@ import pytest
 
 from selfheal.config import Settings, load_settings
 from selfheal.knowledge.base import KnowledgeBackend
+from selfheal.reporting.allure_bridge import (
+    _HAS_ALLURE,
+    apply_dynamic_labels,
+    attach_file,
+    write_environment,
+)
 
 # B3：会话级自愈记录聚合（写 HTML 看板的运行时生成路径）
 _session_reporters: list = []
+
+
+@pytest.fixture(autouse=True)
+def _allure_auto_labels(request):
+    """T18：按 marker 优先级（healing > e2e > unit）自动打 Allure epic/feature 标签。
+
+    无 allure-pytest（_HAS_ALLURE=False）时零开销直通；dynamic 标签须在测试
+    上下文（fixture/setup 期）调用，故放 autouse fixture 而非收集钩子。
+    """
+    if _HAS_ALLURE:
+        apply_dynamic_labels(request.node)
+    yield
 
 
 def pytest_addoption(parser):
@@ -103,21 +121,8 @@ def context(browser_manager, settings, request):
 
 
 def _attach_trace_to_allure(trace_path) -> None:
-    """把已落盘的 trace 附到 Allure 报告（best-effort；未装 allure 或文件缺失则跳过）。"""
-    import os
-
-    if not os.path.exists(trace_path):
-        return
-    try:
-        import allure
-
-        allure.attach.file(
-            str(trace_path),
-            name="Playwright Trace（回放）",
-            attachment_type=allure.attachment_type.ZIP,
-        )
-    except ImportError:  # pragma: no cover - allure 可选
-        pass
+    """把已落盘的 trace 附到 Allure 报告（T18 统一经 allure_bridge：best-effort）。"""
+    attach_file(trace_path, name="Playwright Trace（回放）")
 
 
 @pytest.fixture
@@ -168,6 +173,13 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 - pytest 钩子�
 
     此前看板只能手工导出；本钩子让 CI / 本地跑完测试即产出 reports/dashboard.html。
     """
+    # T18：Allure 环境页（--alluredir 启用时写入；会话结束后写，不被 allure-pytest 清理）
+    try:
+        results_dir = session.config.getoption("allure_report_dir", None)
+        if results_dir:
+            write_environment(results_dir, load_settings())
+    except Exception:  # noqa: BLE001 - 环境页失败不影响测试结果
+        pass
     records = []
     stats: dict[str, int] = {}
     for reporter in _session_reporters:
