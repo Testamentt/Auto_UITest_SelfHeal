@@ -120,7 +120,18 @@
     workflow 中 schedule 配置以注释保留（含启用说明），恢复仅需取消注释一行
   - 验收：`test_notify.py` 12 项单测（四格式 / 统计口径 / send mock / skip 与缺摘要降级）；
     全量 unit 264 passed、ruff 全绿；真实 webhook 推送与 e2e 回归留集成阶段
-- [ ] **T20 · 自愈价值 A/B 对比演示套件**（T3b）（难度 ★★☆ / 回报 ★★★★★）
+- [ ] **T20 · 自愈价值 A/B 对比演示套件**（T3b）（难度 ★★☆ / 回报 ★★★★★）🟠 代码+单测完成 2026-08-31
+  - ✅ `tests/e2e/test_ab_scenarios.py`：3 个「UI 改版定位失效」场景（登录按钮 / 用户名框 /
+    密码框）× parametrize 双变体同源运行——`disabled` 变体 xfail(strict)（CI 保持绿，
+    语义=无自愈需人工修复）、`healing` 变体走自愈（description 与 aria-label 全等，
+    确定性 heuristic 命中，不依赖真实模型）
+  - ✅ `scripts/ab_compare.py`：两轮定向运行（`-k` 过滤变体 + junitxml 收集）→
+    `parse_junit` / `build_rows`（对齐判定：自愈修复 ✓ / 自愈未救回 / 非失效场景）/
+    `render_markdown`（通过率、需人工修复数、耗时、自愈成本）→ `reports/ab-compare.md`
+  - ✅ 单测：`test_ab_compare.py` 6 项（解析归类 / 变体对齐 / 缺失容错 / 渲染含成本行 / 命令组装）；
+    全量 unit 270 passed、ruff 全绿
+  - ⏸ **A/B 实跑产出实证报告**留集成阶段（用户要求：e2e 回归确认后统一执行；
+    届时 `python scripts/ab_compare.py` → 报告贴回 README）
   - 同一组演示场景 ×（开启/关闭自愈）双轮运行 → 对比报告（通过率 / 人工干预次数 / 耗时）；
     README 与汇报直接引用实证数据——**核心卖点"自愈提升稳定性"的量化证据**
   - 位置：`scripts/ab_compare.py` + 复用 `tests/e2e/pages/` 演示页
