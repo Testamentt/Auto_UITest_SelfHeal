@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # 定时回归（T19）：当前未启用——用户决策（2026-08-31）"目前不需要进行回归"。
+  # 启用方式：取消下方两行注释即可，notify job 将自动从"仅失败告警"切换为
+  # "成功发摘要 + 失败发告警"（触发条件已预留 github.event_name == 'schedule'）。
+  # schedule:
+  #   - cron: "0 22 * * *"   # UTC 22:00 = 北京 06:00
 
 # 两阶段（见 RULE.md R2 配套约定）：unit 门禁 → e2e 集成
 
@@ -82,6 +87,53 @@ jobs:
           name: selfheal-dashboard
           path: reports/dashboard.html
           if-no-files-found: ignore
+
+      - name: Upload healing records (T19 通知摘要数据源)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: healing-records
+          path: reports/healing-records.json
+          if-no-files-found: ignore
+
+  notify:
+    name: 回归通知（webhook）
+    runs-on: ubuntu-latest
+    needs: [unit, e2e]
+    # 触发范围：失败必告警（仅 main，PR 不打扰）；定时回归启用后成功也发摘要
+    # （github.event_name == 'schedule' 分支已预留）。WEBHOOK_URL 未配置 → 脚本自跳过。
+    if: >-
+      always() &&
+      (failure() || github.event_name == 'schedule') &&
+      github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download healing records
+        uses: actions/download-artifact@v4
+        with:
+          name: healing-records
+          path: reports
+        continue-on-error: true # 摘要缺失（如 unit 阶段挂）不阻塞告警
+
+      - name: Send notification
+        env:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          # 组装失败 job 名单（needs 结果 -> 逗号串）
+          FAILED_JOBS: >-
+            ${{
+              needs.unit.result == 'failure' && 'unit' || ''
+            }}${{
+              needs.e2e.result == 'failure' && ', e2e' || ''
+            }}
+          CONCLUSION: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+        run: |
+          python scripts/notify.py \
+            --provider "${{ vars.NOTIFY_PROVIDER || 'dingtalk' }}" \
+            --summary-file reports/healing-records.json \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --conclusion "$CONCLUSION" \
+            --failed-jobs "$FAILED_JOBS"
 
   publish:
     name: 发布 Allure 报告（GitHub Pages + 历史趋势）

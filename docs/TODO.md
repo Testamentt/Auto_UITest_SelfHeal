@@ -109,11 +109,17 @@
 > 评估口径：**难度**（工作量+技术风险）× **回报**（价值/使用频次），仅收录高性价比项。
 > 实现顺序即编号顺序：**T19 → T20 → T21 → T22**；候补与落选记录见本节末尾。
 
-- [ ] **T19 · 定时回归 + 自愈失败通知**（难度 ★★☆ / 回报 ★★★★）
-  - CI 新增 `schedule` cron 夜间触发 e2e+自愈回归；失败时按可配置 webhook（通用 JSON POST，
-    兼容钉钉/企微/Slack）推送自愈摘要（成功率 / 成本 / 失败用例清单）
-  - 位置：`.github/workflows/ci.yml`、`scripts/notify.py`（payload 组装独立函数可单测）
-  - 验收：payload 组装 unit（mock HTTP）+ workflow 语法校验；框架从"演示"变"持续运行"
+- [ ] **T19 · 自愈回归通知 + 定时回归挂点**（难度 ★★☆ / 回报 ★★★★）🟠 部分完成 2026-08-31
+  - ✅ 通知基建：`scripts/notify.py`——`build_summary`（成功率/真自愈率/策略分布/成本统计）
+    + `build_payload` 四 provider（钉钉 / 企微 / Slack / generic，纯函数可快照）
+    + `send`（urllib best-effort，失败不阻塞 CI）+ `WEBHOOK_URL` 未配置自跳过（exit 0）
+  - ✅ 数据流：`conftest.sessionfinish` 落盘 `reports/healing-records.json`（CI artifact
+    `healing-records`）；ci.yml 增 `notify` job——main 失败必告警（PR 不打扰），
+    成功摘要分支已预留 `schedule` 条件，将来启用 cron 即自动生效
+  - ⏸ 定时回归 cron 暂不启用：用户决策"目前不需要进行回归"（2026-08-31）——
+    workflow 中 schedule 配置以注释保留（含启用说明），恢复仅需取消注释一行
+  - 验收：`test_notify.py` 12 项单测（四格式 / 统计口径 / send mock / skip 与缺摘要降级）；
+    全量 unit 264 passed、ruff 全绿；真实 webhook 推送与 e2e 回归留集成阶段
 - [ ] **T20 · 自愈价值 A/B 对比演示套件**（T3b）（难度 ★★☆ / 回报 ★★★★★）
   - 同一组演示场景 ×（开启/关闭自愈）双轮运行 → 对比报告（通过率 / 人工干预次数 / 耗时）；
     README 与汇报直接引用实证数据——**核心卖点"自愈提升稳定性"的量化证据**

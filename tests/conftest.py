@@ -194,5 +194,29 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 - pytest 钩子�
 
         cost = estimate_cost(stats.get("llm_calls", 0), stats.get("vlm_calls", 0))
         write_dashboard(records, "reports/dashboard.html", cost=cost)
+        _write_healing_records_json(records, cost)  # T19：通知摘要数据源（CI artifact）
     except Exception:  # noqa: BLE001 - 看板生成失败不影响测试结果
+        pass
+
+
+def _write_healing_records_json(records: list, cost: dict) -> None:
+    """T19：把会话自愈记录 + 成本摘要落盘 JSON，供 scripts/notify.py 组装通知。
+
+    best-effort：写出失败不影响测试结果；文件随 CI artifact 上传（healing-records）。
+    """
+    import json
+    from dataclasses import asdict
+    from pathlib import Path
+
+    try:
+        reports = Path("reports")
+        reports.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "records": [asdict(r) for r in records],
+            "cost": cost,
+        }
+        (reports / "healing-records.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception:  # noqa: BLE001 - 摘要落盘失败不影响测试结果
         pass

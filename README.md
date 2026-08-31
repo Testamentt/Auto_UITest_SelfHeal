@@ -40,6 +40,8 @@ ruff check .          # 代码检查
 
 > **Allure 报告（T18）**：CI 在 main 分支自动合并 unit/e2e 结果发布到 **GitHub Pages**（含环境页、自愈标签分组、自愈记录/trace 附件、历史趋势）；本地查看需安装 [allure CLI](https://allurereport.org/docs/install/)（依赖 Java）后执行 `pytest --alluredir=allure-results` + `allure serve allure-results`。未装 allure-pytest 时全部附件能力静默降级、零影响。
 
+> 🔔 **回归通知（T19）**：main 分支回归失败时经 webhook 告警（支持钉钉/企微/Slack，`vars.NOTIFY_PROVIDER` 选格式、`secrets.WEBHOOK_URL` 配置地址，未配置自动跳过）；夜间定时回归的 cron 已预留注释（见 `.github/workflows/ci.yml`，按需取消注释启用，启用后成功也发自愈摘要）。
+
 > ✅ **核心自愈闭环已跑通**：启发式 + 语义（DeepSeek）+ 视觉（qwen3-vl-flash）多策略、SQLite 知识沉淀、弹窗处理、智能等待；真实模型已验证（见 `docs/roadmap.md`）。
 
 > 🧠 **Phase 5 · 知识库语义化「越用越聪明」**：修复知识经本地确定性向量（零 API 费用）检索复用——L1 精确命中（`repair_key` 硬短路，ID 变了文本/结构不变仍命中）→ L3 语义向量检索（相似场景直接复用）。演示：`python scripts/demo_semantic_reuse.py`。
