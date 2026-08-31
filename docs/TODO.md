@@ -136,7 +136,19 @@
     README 与汇报直接引用实证数据——**核心卖点"自愈提升稳定性"的量化证据**
   - 位置：`scripts/ab_compare.py` + 复用 `tests/e2e/pages/` 演示页
   - 验收：一键脚本产出对比结论；对比计算逻辑 unit 覆盖
-- [ ] **T21 · pytest-xdist 并行兼容**（难度 ★★☆ / 回报 ★★★）
+- [ ] **T21 · pytest-xdist 并行兼容**（难度 ★★☆ / 回报 ★★★）🟠 代码+单测并行验证完成 2026-08-31
+  - ✅ 诊断：xdist 下每 worker 独立进程——knowledge session 级 tmp 库实际不共享（无并发写冲突），
+    **真实 bug 是 `_session_reporters` 聚合**：各 worker 的 sessionfinish 互相覆盖
+    dashboard.html / healing-records.json → 记录丢失
+  - ✅ 修复：conftest 分片聚合协议——`is_xdist_worker`（workerinput 判定）→ worker 写
+    `.healing-shard-<gwN>.json` 分片 → controller 合并分片 + 本地记录后统一写
+    dashboard / healing-records.json 并清理分片；无 xdist 单进程路径行为不变（零回归）
+  - ✅ SQLite 防御：`connect(timeout=30)` + `PRAGMA busy_timeout=30000` + `journal_mode=WAL`
+    （多进程共享库场景的写排队 + 读写并发；临时库/单进程无害）
+  - ✅ pyproject dev 显式声明 `pytest-xdist>=3.5`
+  - 验收：`test_xdist_compat.py` 12 项单测（worker 判定/分片读写清理/聚合出口/pragma 生效/
+    双连接交错写）+ **`pytest -m unit -n 2` 全量 282 passed**；`e2e -n 2` 实跑留集成阶段
+    （用户要求：e2e 回归确认后统一执行）
   - 现状：环境装有 xdist 但 pyproject 未声明；多 worker 下 SQLite 并发写、
     `_session_reporters` 聚合、Allure results 合并行为均未验证
   - 内容：`-n 2` 全量验证 → 修 SQLite（WAL / 写冲突重试）+ 会话聚合策略（xdist worker 协议）

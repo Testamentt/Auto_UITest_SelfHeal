@@ -168,8 +168,90 @@ def disabled_page(settings, context):
     yield HealingPage(context.new_page(), settings, enabled_override=False)
 
 
+def is_xdist_worker(config) -> bool:
+    """T21：xdist worker 进程判定（仅 worker 有 workerinput；controller / 单进程均无）。"""
+    return getattr(config, "workerinput", None) is not None
+
+
+def _write_shard(directory, worker_id: str, records: list, stats: dict) -> None:
+    """T21：xdist worker 把自愈记录写为独立分片（controller 统一聚合，避免互相覆盖丢数据）。"""
+    import json
+    from dataclasses import asdict
+
+    directory.mkdir(parents=True, exist_ok=True)
+    payload = {"records": [asdict(r) for r in records], "stats": stats}
+    (directory / f".healing-shard-{worker_id}.json").write_text(
+        json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def _read_shards(directory):
+    """T21：合并全部 worker 分片 → (records, stats)；无分片返回空（单进程行为不变）。"""
+    import json
+    from pathlib import Path as _Path
+
+    from selfheal.reporting.hooks import HealingRecord
+
+    records: list = []
+    stats: dict[str, int] = {}
+    if not _Path(directory).exists():
+        return records, stats
+    for shard in sorted(_Path(directory).glob(".healing-shard-*.json")):
+        try:
+            data = json.loads(shard.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001 - 单个分片损坏不阻塞聚合
+            continue
+        records.extend(HealingRecord(**d) for d in data.get("records", []))
+        for key, value in data.get("stats", {}).items():
+            stats[key] = stats.get(key, 0) + value
+    return records, stats
+
+
+def _cleanup_shards(directory) -> None:
+    """T21：聚合完成后清理分片临时文件（best-effort）。"""
+    from pathlib import Path as _Path
+
+    for shard in _Path(directory).glob(".healing-shard-*.json"):
+        with contextlib.suppress(Exception):
+            shard.unlink()
+
+
+def _finalize_healing_reports(config, records: list, stats: dict) -> None:
+    """T21：看板 / 通知摘要的统一出口（xdist 感知）。
+
+    - worker 进程：仅写分片（记录不丢，dashboard 由 controller 统一生成）；
+    - controller / 单进程：合并 worker 分片 + 本进程记录 → 写 dashboard + healing-records.json
+      → 清理分片。无 xdist 时无分片，行为与既有单进程路径完全一致（零回归）。
+    """
+    from pathlib import Path
+
+    reports_dir = Path("reports")
+    if is_xdist_worker(config):
+        if records:
+            _write_shard(reports_dir, config.workerinput["workerid"], records, stats)
+        return
+    shard_records, shard_stats = _read_shards(reports_dir)
+    all_records = list(records) + shard_records
+    merged_stats = dict(stats)
+    for key, value in shard_stats.items():
+        merged_stats[key] = merged_stats.get(key, 0) + value
+    if not all_records:
+        return
+    try:
+        from selfheal.reporting.dashboard import write_dashboard
+        from selfheal.reporting.fix_proposals import estimate_cost
+
+        cost = estimate_cost(merged_stats.get("llm_calls", 0), merged_stats.get("vlm_calls", 0))
+        write_dashboard(all_records, "reports/dashboard.html", cost=cost)
+        _write_healing_records_json(all_records, cost)  # T19：通知摘要数据源（CI artifact）
+    except Exception:  # noqa: BLE001 - 看板生成失败不影响测试结果
+        pass
+    finally:
+        _cleanup_shards(reports_dir)
+
+
 def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 - pytest 钩子签名固定
-    """会话结束（B3）：把全部自愈记录聚合写入 HTML 看板（运行时生成路径）。
+    """会话结束（B3）：聚合全部自愈记录写入 HTML 看板（T21：xdist 分片聚合感知）。
 
     此前看板只能手工导出；本钩子让 CI / 本地跑完测试即产出 reports/dashboard.html。
     """
@@ -186,17 +268,7 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 - pytest 钩子�
         records.extend(reporter.records)
         for key, value in reporter.stats.items():
             stats[key] = stats.get(key, 0) + value
-    if not records:
-        return
-    try:
-        from selfheal.reporting.dashboard import write_dashboard
-        from selfheal.reporting.fix_proposals import estimate_cost
-
-        cost = estimate_cost(stats.get("llm_calls", 0), stats.get("vlm_calls", 0))
-        write_dashboard(records, "reports/dashboard.html", cost=cost)
-        _write_healing_records_json(records, cost)  # T19：通知摘要数据源（CI artifact）
-    except Exception:  # noqa: BLE001 - 看板生成失败不影响测试结果
-        pass
+    _finalize_healing_reports(session.config, records, stats)
 
 
 def _write_healing_records_json(records: list, cost: dict) -> None:

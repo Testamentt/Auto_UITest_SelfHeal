@@ -55,8 +55,13 @@ class SqliteKnowledgeStore:
     def __init__(self, path: str):
         self._path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(path)
+        # T21 并行兼容：多进程共享同一知识库文件时（如 xdist 并行 / 多项目共用），
+        # 写冲突以 busy_timeout 排队等待（30s 上限）而非立即抛 "database is locked"；
+        # WAL 允许读写并发（默认 DELETE 模式整库锁）。临时库 / 单进程下同样无害。
+        self._conn = sqlite3.connect(path, timeout=30)
         self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA busy_timeout = 30000")
+        self._conn.execute("PRAGMA journal_mode = WAL")
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
 
