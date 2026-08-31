@@ -154,7 +154,17 @@
   - 内容：`-n 2` 全量验证 → 修 SQLite（WAL / 写冲突重试）+ 会话聚合策略（xdist worker 协议）
     → pyproject 显式声明依赖
   - 验收：`pytest -m unit -n 2` 与 `pytest -m e2e -n 2` 全绿且看板/Allure 产物完整
-- [ ] **T22 · 修复建议自动开草稿 PR**（难度 ★★☆ / 回报 ★★★）
+- [x] **T22 · 修复建议自动开草稿 PR**（难度 ★★☆ / 回报 ★★★）✅ 2026-08-31
+  - ✅ `scripts/propose_pr.py`：`load_proposals`（读 T15 产物 JSON，坏文件跳过）+
+    `build_pr_body`（人审 checklist 头 + 摘要表，竖线转义与 T15 同款）+
+    `has_open_pr`（label 查重防重复开）+ `create_draft_pr`（gh CLI best-effort）；
+    标准库零项目依赖（propose-pr job 不装包），全链路安全降级 exit 0
+  - ✅ CI：e2e 步骤注入 `healing.fix_proposals=true`（config/settings.yaml 单键覆盖）产出建议 →
+    上传 artifact → `propose-pr` job（main 且 e2e 成功时）：产物提交到 `selfheal/proposals`
+    分支（git add -f，reports 在 gitignore）→ gh 开**草稿** PR（人审 checklist 内置，
+    绝不自动合并，守 T15 边界）
+  - 验收：`test_propose_pr.py` 10 项单测（产物加载/body 组装与转义/查重降级/gh mock）；
+    全量 unit 292 passed、ruff 全绿；真实开 PR 需仓库 GITHUB_TOKEN 权限（CI 首跑验证）
   - CI 读 fix-proposals JSON → 自动开**草稿** PR（body 含人审 checklist）；仍不自动合并
     （守 T15 人审边界）
   - 验收：PR body 生成逻辑 unit；实际开 PR 在 feature 分支验证后合入
