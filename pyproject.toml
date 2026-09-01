@@ -43,6 +43,7 @@ markers = [
     "unit: 单元测试（不依赖浏览器与网络）",
     "e2e: 端到端测试（需要 Playwright 浏览器内核）",
     "healing: 自愈闭环相关测试",
+    "erp: 管伊佳 ERP 被测系统用例（需本地 ERP 环境，CI 不跑；T23）",
 ]
 
 [tool.ruff]

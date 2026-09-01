@@ -68,7 +68,8 @@ jobs:
           printf 'healing:\n  fix_proposals: true\n' > config/settings.yaml
 
       - name: Integration / e2e tests (-m e2e)
-        run: pytest -m e2e --trace-healing --alluredir=allure-results
+        run: pytest -m "e2e and not erp" --trace-healing --alluredir=allure-results
+        # erp 用例（T23 管伊佳 ERP）需本地被测环境，CI 排除（本地/演示环境运行）
 
       - name: Upload fix proposals (T22 草稿 PR 数据源)
         if: always()

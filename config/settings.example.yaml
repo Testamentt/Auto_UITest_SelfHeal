@@ -66,5 +66,17 @@ embedding:
   method: ngram
   dim: 512
 
+# T23 被测系统（管伊佳 ERP）：UI 测试目标为前端；后端 API 仅用于测试数据造数/清理（非被测对象）。
+# 凭证经 *_env 指定的环境变量读取（.env 配 ERP_UI_USERNAME/ERP_UI_PASSWORD/ERP_API_USERNAME/
+# ERP_API_PASSWORD，明文绝不入库）；被测环境需关闭登录验证码。
+sut:
+  name: jshERP
+  base_url: http://localhost:3001                          # 前端（Vue + Ant Design Vue）
+  api_base_url: http://192.168.1.3:9999/jshERP-boot        # 后端（Spring Boot）
+  ui_username_env: ERP_UI_USERNAME                         # UI 测试账号（jsh）
+  ui_password_env: ERP_UI_PASSWORD
+  api_username_env: ERP_API_USERNAME                       # API 造数账号（admin）
+  api_password_env: ERP_API_PASSWORD
+
 # execution / reporting 段：规划中（见 docs/TODO.md T9），Settings 尚未建模，
 # 请勿在此添加相关键（Settings 已设 extra='forbid'，未建模字段会导致加载报错）。

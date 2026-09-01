@@ -168,6 +168,51 @@ def disabled_page(settings, context):
     yield HealingPage(context.new_page(), settings, enabled_override=False)
 
 
+# --- T23：管伊佳 ERP 被测系统（marker erp；需本地 ERP 环境，CI 不跑） ---
+
+
+@pytest.fixture(scope="session")
+def erp_admin(settings):
+    """ERP 管理员 API 客户端（测试数据造数/清理；凭证缺失时 skip 整组用例）。"""
+    import pytest as _pytest
+
+    from tests.e2e.api.erp_client import ErpApiError, ErpClient, ErpCredentials
+
+    sut = settings.sut
+    try:
+        credentials = ErpCredentials.from_env(sut.api_username_env, sut.api_password_env)
+    except ErpApiError as exc:
+        _pytest.skip(f"ERP 造数凭证未配置：{exc}")
+    client = ErpClient(sut.api_base_url, credentials)
+    client.login()
+    yield client
+
+
+@pytest.fixture
+def erp_page(settings, knowledge, context):
+    """ERP 被测页面：HealingPage（自愈开）+ UI 登录态（测试账号，.env 凭证）。"""
+    import os
+
+    from selfheal.engine.healing_locator import HealingPage  # 惰性导入
+    from tests.e2e.pages.erp.home_page import ErpHomePage
+    from tests.e2e.pages.erp.login_page import ErpLoginPage
+
+    sut = settings.sut
+    username = os.getenv(sut.ui_username_env, "")
+    password = os.getenv(sut.ui_password_env, "")
+    if not username or not password:
+        import pytest as _pytest
+
+        _pytest.skip(f"ERP UI 凭证未配置（{sut.ui_username_env}/{sut.ui_password_env}）")
+
+    page = HealingPage(context.new_page(), settings, knowledge=knowledge)
+    login = ErpLoginPage(page, sut.base_url).open_login()
+    login.login(username, password)
+    home = ErpHomePage(page, sut.base_url)
+    assert home.is_logged_in(), f"ERP UI 登录未成功（url={page.url}）"
+    yield page
+
+
 def is_xdist_worker(config) -> bool:
     """T21：xdist worker 进程判定（仅 worker 有 workerinput；controller / 单进程均无）。"""
     return getattr(config, "workerinput", None) is not None

@@ -180,6 +180,24 @@ class EmbeddingConfig(BaseModel):
     dim: int = 512
 
 
+class SutConfig(BaseModel):
+    """被测系统（system under test）配置（T23：管伊佳 ERP 迁移）。
+
+    - base_url: 前端地址（UI 自动化打开的入口，jshERP 前端独立部署于 3001 端口）。
+    - api_base_url: 后端 API 地址——**非被测对象**，仅用于测试数据造数/清理（勘测确认）。
+    - *_env: 凭证环境变量名（与 LLMConfig.api_key_env 同款参数化约定，明文绝不入库；
+      UI=测试账号 jsh，API=管理员 admin 造数账号）。
+    """
+
+    name: str = "jshERP"
+    base_url: str = "http://localhost:3001"
+    api_base_url: str = "http://192.168.1.3:9999/jshERP-boot"
+    ui_username_env: str = "ERP_UI_USERNAME"
+    ui_password_env: str = "ERP_UI_PASSWORD"
+    api_username_env: str = "ERP_API_USERNAME"
+    api_password_env: str = "ERP_API_PASSWORD"
+
+
 class Settings(BaseModel):
     """顶层配置模型。
 
@@ -196,6 +214,7 @@ class Settings(BaseModel):
     knowledge: KnowledgeConfig = KnowledgeConfig()
     vision: VisionConfig = VisionConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
+    sut: SutConfig = SutConfig()  # T23：被测系统（管伊佳 ERP）
 
 
 def load_settings(path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
