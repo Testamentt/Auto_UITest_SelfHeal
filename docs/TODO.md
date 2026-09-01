@@ -107,7 +107,27 @@
 ## 🚀 后续规划（T19+，2026-08-31 性价比评估立项）
 
 > 评估口径：**难度**（工作量+技术风险）× **回报**（价值/使用频次），仅收录高性价比项。
-> 实现顺序即编号顺序：**T19 → T20 → T21 → T22**；候补与落选记录见本节末尾。
+> 实现顺序即编号顺序：**T19 → T20 → T21 → T22 → T23**；候补与落选记录见本节末尾。
+
+- [x] **T23 · 被测系统迁移：管伊佳 ERP（jshERP）**（难度 ★★★ / 回报 ★★★★★）🟠 P1+P2 完成 2026-08-31
+  - **P0 勘测**（实测结论沉淀于 `tests/e2e/api/erp_client.py` docstring）：
+    前端为 **Ant Design Vue**（非 Element-UI）；登录 `POST /user/login` **password 需 MD5** 后提交；
+    鉴权头 **X-Access-Token**；登录输入框稳定 id（#loginName/#password）；内容区不在 iframe；
+    **验证码已被用户关闭**；商品弹窗表单全带稳定 id + placeholder（heuristic 语义匹配依据）
+  - **P1 基建**：`SutConfig`（前端/后端/凭证 env 参数化）+ `tests/e2e/api/erp_client.py`
+    （标准库客户端：登录 + 商品/供应商造数清理，删除走 deleteBatch 实测可用）+
+    conftest `erp_page`（测试账号 UI 登录态 + HealingPage 自愈开）/`erp_admin`（admin 造数）
+    fixtures（凭证缺失自动 skip）+ marker `erp`（CI 门禁 `-m "e2e and not erp"`）；
+    登录冒烟 1 passed（3.88s）
+  - **P2 自愈场景**：`test_erp_material_add_with_healing`——商品新增弹窗内**前端改版注入**
+    （#name → #name-v2，与真实"前端升级改 id"同构）→ 旧定位器失效 → 自愈凭
+    description="商品名称" 重定位 → 保存落库 → API 断言 + 自愈记录 + 数据清理。
+    **实测 PASSED（22.96s）**，且知识库 L1 命中实锤（二次失效 `knowledge 1.0` 直达）
+  - 踩坑记录：antd 弹窗默认不销毁（DOM 残留污染定位与自愈候选）→ 单弹窗内完成改版演示；
+    intro.js 新手引导遮罩全页遮挡（covered）→ `dismiss_intro` DOM 移除（display:none 有
+    可见性判定副作用）；vue-router 异步跳转需 `wait_for_url`
+  - ⏸ **供应商场景下轮补**：jsh 测试账号无供应商菜单权限、admin 直达路由渲染空白
+    （需菜单点击导航 POM，菜单为 JS 动态无 href）；API 造数/清理已就绪
 
 - [ ] **T19 · 自愈回归通知 + 定时回归挂点**（难度 ★★☆ / 回报 ★★★★）🟠 部分完成 2026-08-31
   - ✅ 通知基建：`scripts/notify.py`——`build_summary`（成功率/真自愈率/策略分布/成本统计）

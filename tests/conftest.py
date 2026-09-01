@@ -206,8 +206,14 @@ def erp_page(settings, knowledge, context):
         _pytest.skip(f"ERP UI 凭证未配置（{sut.ui_username_env}/{sut.ui_password_env}）")
 
     page = HealingPage(context.new_page(), settings, knowledge=knowledge)
+    page.set_default_timeout(8_000)  # T23：失效定位器较快进入自愈（默认 30s 过长）
     login = ErpLoginPage(page, sut.base_url).open_login()
     login.login(username, password)
+    from tests.e2e.pages.erp import (
+        dismiss_intro,  # T23 勘测：intro.js 引导层遮挡操作，登录后先清一次
+    )
+
+    dismiss_intro(page)
     home = ErpHomePage(page, sut.base_url)
     assert home.is_logged_in(), f"ERP UI 登录未成功（url={page.url}）"
     yield page
