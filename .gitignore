@@ -44,3 +44,4 @@ chromedriver-win64/
 coverage.json
 cov.json
 *.coverage
+allure-results*/
