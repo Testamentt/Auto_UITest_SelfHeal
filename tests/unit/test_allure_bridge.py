@@ -27,7 +27,7 @@ def _settings():
     )
 
 
-# --- 标签优先级：healing > e2e > unit，多 marker 只取最高一个 ---
+# --- 标签优先级：erp > healing > e2e > unit，多 marker 只取最高一个 ---
 
 
 def test_feature_single_unit_marker():
@@ -38,6 +38,9 @@ def test_feature_priority_order():
     assert bridge.feature_label_for(_item("unit", "healing")) == "AI 自愈"
     assert bridge.feature_label_for(_item("unit", "e2e", "healing")) == "AI 自愈"
     assert bridge.feature_label_for(_item("unit", "e2e")) == "端到端"
+    # T23：erp（被测系统维度）优先于能力维度（healing/e2e）
+    assert bridge.feature_label_for(_item("unit", "e2e", "erp")) == "ERP 被测系统"
+    assert bridge.feature_label_for(_item("e2e", "erp", "healing")) == "ERP 被测系统"
 
 
 def test_feature_no_matching_marker_returns_none():

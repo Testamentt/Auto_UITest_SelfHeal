@@ -2,6 +2,23 @@
 
 AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」的智能自愈闭环，架设在 Playwright 执行引擎之上。
 
+## 被测系统（T23：管伊佳 ERP）
+
+自愈框架的**正式被测对象**是 [jshERP](https://github.com/jishenghua/jshERP)（管伊佳 ERP，
+Vue3 + Ant Design Vue 前端 + Spring Boot 后端），替换早期自建静态演示页（demo 页保留为
+自愈机制单测/最小演示）。**框架四层零改动**——迁移只发生在测试层，验证了 D5 插件化架构：
+
+- **配置**：`config.py::SutConfig`（前端 `sut.base_url` / 后端 `sut.api_base_url` /
+  凭证经 `*_env` 环境变量名参数化，明文不入库）；marker `erp`（CI 门禁排除，本地演示环境运行）。
+- **登录与数据**：`tests/e2e/api/erp_client.py` 标准库客户端（登录 password **MD5** 后提交、
+  鉴权头 `X-Access-Token`、商品/供应商造数与清理）——UI 用例经 `erp_page` fixture
+  （测试账号 UI 登录态 + HealingPage 自愈开）获得被测页面。
+- **自愈演示**：商品管理真实页面上注入"前端改版"（运行时改输入框 id，与真实前端升级同构）→
+  旧定位器失效 → 多策略自愈重定位 → 保存落库 → API 断言 + 数据清理（数据隔离约定）。
+- **勘测结论**（2026-08-31）：验证码已关闭（被测环境配置）；ERP 自带 intro.js 新手引导
+  遮罩会遮挡操作（测试基建 `dismiss_intro` 移除）；antd 弹窗不销毁（DOM 残留）——
+  详见 `docs/TODO.md` T23 踩坑记录。
+
 ## 分层
 
 ```
@@ -15,7 +32,7 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 ├─────────────────────────────────────────────────────────────┤
 │  数据采集层 collect/                                          │
 │  页面截图 │ DOM 快照 │ 网络日志（C5，限长缓存）                │
-│  trace 采集内联：规划中（录制已由 conftest --trace-healing 完成）│
+│  现场内联 trace（T11：录制中导出 Scene.trace_path 可回放）      │
 ├─────────────────────────────────────────────────────────────┤
 │  能力建设层（执行引擎）engine/                                 │
 │  Playwright 封装 │ 自愈定位器 │ 智能等待 │ 弹窗处理            │

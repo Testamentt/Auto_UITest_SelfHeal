@@ -46,6 +46,8 @@ ruff check .          # 代码检查
 
 > 📊 **自愈价值实证（T20 · 本地实测 2026-08-31）**：同一组 3 个失效场景双轮对比——**关闭自愈 0/3 通过（需人工修复 3 次）vs 开启自愈 3/3 通过（0 干预）**，自愈成本约 ¥0.09（LLM 2 次 / VLM 1 次）。复现：`python scripts/ab_compare.py`（产出 `reports/ab-compare.md`）。
 
+> 🏭 **正式被测系统：管伊佳 ERP（T23）**：自愈闭环已在真实 ERP（Vue3 + Ant Design Vue）上跑通——商品管理页面注入"前端改版"（运行时改输入框 id）→ 旧定位器失效 → 自愈重定位 → 保存落库（知识库 L1 二次命中 `confidence 1.0`）。运行：`pytest tests/e2e/test_erp_healing.py -m erp -v`（前置：`.env` 配 `ERP_UI_USERNAME/ERP_UI_PASSWORD`、ERP 前后端已启动且验证码关闭；CI 自动排除 erp 用例）。
+
 > 🧠 **Phase 5 · 知识库语义化「越用越聪明」**：修复知识经本地确定性向量（零 API 费用）检索复用——L1 精确命中（`repair_key` 硬短路，ID 变了文本/结构不变仍命中）→ L3 语义向量检索（相似场景直接复用）。演示：`python scripts/demo_semantic_reuse.py`。
 
 > 🛡️ **Phase 5 · 风险控制**（`config/settings.yaml` `healing` 段）：高风险页豁免（`exclude_url_patterns`）、dry-run 仅报告不执行（`dry_run`）、修复写回人审清单（`fix_proposals`，不自动改库）、看板区分真自愈 vs flaky、多模态成本看板（T13–T17）。
