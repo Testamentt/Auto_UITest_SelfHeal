@@ -33,8 +33,9 @@ except ImportError:  # pragma: no cover - 无 allure 环境（降级为纯 HTML 
     _HAS_ALLURE = False
 
 # marker → feature 映射；优先级从高到低（多 marker 只取最高，避免标签爆炸）
-_FEATURE_PRIORITY: tuple[str, ...] = ("healing", "e2e", "unit")
+_FEATURE_PRIORITY: tuple[str, ...] = ("erp", "healing", "e2e", "unit")
 _FEATURE_BY_MARKER: dict[str, str] = {
+    "erp": "ERP 被测系统",  # T23：管伊佳 ERP 用例（被测系统维度优先于能力维度）
     "healing": "AI 自愈",
     "e2e": "端到端",
     "unit": "单元测试",
