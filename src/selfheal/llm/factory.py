@@ -50,6 +50,8 @@ def get_vision_for_settings(settings: Settings) -> VisionClient | None:
             api_key=api_key,
             model=vcfg.model,
             base_url=vcfg.base_url,
+            timeout_s=vcfg.timeout_s,  # T23：plus 级模型响应慢，超时/上限可配置
+            max_tokens=vcfg.max_tokens,
         )
     except KeyError:  # provider 未注册
         return None
