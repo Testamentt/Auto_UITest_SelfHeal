@@ -157,15 +157,22 @@ class KnowledgeConfig(BaseModel):
 class VisionConfig(BaseModel):
     """视觉模型配置（VLM）。
 
-    qwen3-vl-flash 走 DashScope 的 OpenAI 兼容端点；key 从 api_key_env 指定的
-    环境变量读取（参数化，绝不硬编码 / 提交 git）。
+    qwen3-vl-plus 走阿里云百炼（MaaS）专属端点的 OpenAI 兼容接口；key 从 api_key_env
+    指定的环境变量读取（参数化，绝不硬编码 / 提交 git）。
+    模型更替只改配置：首选 qwen3-vl-plus，备选 qwen3.8-flash（2026-09-01 用户确认）。
+    - timeout_s / max_tokens: plus 级模型响应慢于 flash、视觉描述更长，默认放宽
+      （2026-09-01：20s/500 曾导致 ERP 场景 VLM 调用超时/截断而自愈失败）。
     """
 
     enabled: bool = True
     provider: str = "openai"
-    model: str = "qwen3-vl-flash"
+    model: str = "qwen3-vl-plus"
     api_key_env: str = "DASHSCOPE_API_KEY"
-    base_url: str | None = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    base_url: str | None = (
+        "https://ws-rgkuic58ghmqbq8a.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+    )
+    timeout_s: float = 60.0
+    max_tokens: int = 1000
 
 
 class EmbeddingConfig(BaseModel):

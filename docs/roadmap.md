@@ -58,7 +58,7 @@ Phase 4 展示包装（视频回放 / CI 产物 / README）、Phase 1–3 均已
 | D10 | 知识库后端形态 | KnowledgeBackend 接口 + 内存/SQLite 双实现 + factory 按配置选择；DOM 指纹（可交互元素稳定定位器排序哈希）参与检索择优 | 可切换、可持久化、同结构页面复用更可靠 |
 | D11 | 弹窗处理 | PopupGuard 知识优先（弹窗特征库）+ 关闭按钮启发式识别，成功后沉淀特征；动作超时先清弹窗再走自愈 | 直击"被遮挡"类失败，通过率卖点 |
 | D12 | 智能等待 | wait_until_stable 先可见后要求 bounding_box 连续 stable_ms 不变；POM 显式调用（可选增强） | 减少加载抖动误判，不改变默认行为 |
-| D13 | 视觉定位 | OpenAICompatibleVLM 走 DashScope 兼容端点（qwen3-vl-flash）；候选集护栏（VLM 只能从真实候选中选）；key 走 `DASHSCOPE_API_KEY` 环境变量 | 复用 OpenAI 兼容机制；防幻觉；密钥参数化不入库 |
+| D13 | 视觉定位 | OpenAICompatibleVLM 走阿里云百炼（MaaS）专属端点（首选 qwen3-vl-plus，备选 qwen3.8-flash，2026-09-01 更新）；候选集护栏（VLM 只能从真实候选中选）；key 走 `DASHSCOPE_API_KEY` 环境变量；timeout/max_tokens 可配置（plus 响应慢需放宽） | 复用 OpenAI 兼容机制；防幻觉；密钥参数化不入库 |
 | D14 | 知识库语义化 | 本地确定性 n-gram 哈希 TF 向量（v1，零 API 费用）+ numpy 余弦；L1 `repair_key` 精确命中硬短路 → L2 启发式 → L3 语义向量检索 → L4 VLM；存储 BLOB；按 page_fingerprint 分桶防跨页误配；采纳规则（sim>0.92 且 verified / 7 天新鲜 sim>0.80 自动，其余写人审清单）；v2 可升级 fastembed 本地模型 | 热路径不调 API embedding（延迟+成本失控）；ID 变化但文本/结构不变仍可命中；防污染 + 冷启动免人审 |
 | D15 | Allure 报告增强 | **轻量桥**模式（`reporting/allure_bridge.py`，零侵入核心同 D5）：`_HAS_ALLURE` 单点依赖探测（未装全 API no-op）；环境页（environment.properties）+ marker→标签（优先级 healing>e2e>unit 取唯一 feature，dynamic API 于 autouse fixture 打点）+ 证据附件（自愈记录含 `verified_by_selector_exists`=复用 T16 布尔、trace zip）；CI `publish` job 合并 unit/e2e results → GitHub Pages 发布 + 历史趋势（gh-pages 分支，仅 main 触发）；不引入 allure.step 步骤树（避免核心感知 allure） | 报告是展示层插件不该侵入 agent；标签单 feature 防爆炸；历史趋势需要持久化分支；闭环过程以结构化附件呈现够用 |
 

@@ -18,13 +18,13 @@ llm:
   base_url: https://api.deepseek.com
   temperature: 0.0
 
-# VLM（已定选型）：通义 qwen3-vl-flash，DashScope OpenAI 兼容端点
+# VLM（已定选型）：通义 qwen3-vl-plus，阿里云百炼（MaaS）专属端点 OpenAI 兼容接口
 vision:
   enabled: true             # 视觉能力总开关；False 或缺少 key 时视觉策略被跳过
   provider: openai
-  model: qwen3-vl-flash
+  model: qwen3-vl-plus      # 首选；备选 qwen3.8-flash（模型更替只改此配置）
   api_key_env: DASHSCOPE_API_KEY   # 从环境变量名读取密钥，勿写明文
-  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  base_url: https://ws-rgkuic58ghmqbq8a.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
 
 healing:
   enabled: true            # 插件总开关；false 时透传为原生 Playwright 行为

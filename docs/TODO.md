@@ -128,6 +128,14 @@
     可见性判定副作用）；vue-router 异步跳转需 `wait_for_url`
   - ⏸ **供应商场景下轮补**：jsh 测试账号无供应商菜单权限、admin 直达路由渲染空白
     （需菜单点击导航 POM，菜单为 JS 动态无 href）；API 造数/清理已就绪
+  - **角色语义修正（专家确认 2026-09-01）**：admin = 平台运维用户（仅平台菜单配置/创建
+    租户，不能编辑任何业务数据，测试基建不得使用——此前误用 admin 造数已纠正）；租户
+    （jsh）= 业务数据管理员，UI 测试与 API 造数/清理统一租户凭证
+    （SutConfig 简化为 username_env/password_env，erp_admin → erp_api）
+  - **VLM 配置修正（2026-09-01）**：端点迁至阿里云百炼 MaaS 专属端点 + 模型升级
+    qwen3-vl-flash → **qwen3-vl-plus**（备选 qwen3.8-flash）；`VisionConfig` 增
+    `timeout_s=60` / `max_tokens=1000` 可配置（plus 响应慢于 flash，原 20s/500 曾致
+    VLM 调用超时/截断而自愈失败）——修正后 ERP 自愈场景恢复 PASSED（23.51s）
 
 - [ ] **T19 · 自愈回归通知 + 定时回归挂点**（难度 ★★☆ / 回报 ★★★★）🟠 部分完成 2026-08-31
   - ✅ 通知基建：`scripts/notify.py`——`build_summary`（成功率/真自愈率/策略分布/成本统计）
