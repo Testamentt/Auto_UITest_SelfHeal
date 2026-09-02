@@ -1,0 +1,16 @@
+WARNING  selfheal.collect.collector:collector.py:194 现场截图采集失败
+Traceback (most recent call last):
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/collect/collector.py", line 192, in _safe_screenshot
+    return self._page.screenshot(full_page=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/tests/unit/test_collector.py", line 62, in screenshot
+    raise RuntimeError("closed")
+RuntimeError: closed
+WARNING  selfheal.collect.collector:collector.py:201 DOM 快照采集失败
+Traceback (most recent call last):
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/collect/collector.py", line 199, in _safe_dom
+    return self._page.content()
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/tests/unit/test_collector.py", line 65, in content
+    raise RuntimeError("closed")
+RuntimeError: closed

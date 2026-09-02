@@ -1,0 +1,8 @@
+WARNING  selfheal.propose_pr:propose_pr.py:89 gh pr list 失败（按无 open PR 处理）
+Traceback (most recent call last):
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/scripts/propose_pr.py", line 87, in has_open_pr
+    result = _run_gh(["pr", "list", "--label", label, "--state", "open", "--json", "number"])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/tests/unit/test_propose_pr.py", line 86, in boom
+    raise FileNotFoundError("gh not installed")
+FileNotFoundError: gh not installed

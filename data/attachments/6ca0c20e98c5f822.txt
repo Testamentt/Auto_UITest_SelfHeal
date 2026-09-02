@@ -1,0 +1,1 @@
+WARNING  selfheal.agent.fix_generator:fix_generator.py:183 strategy_order 含未知策略名 'nope'，已跳过（可用: ['heuristic', 'semantic', 'visual']）

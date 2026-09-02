@@ -1,0 +1,10 @@
+{
+  "original_selector": "#old",
+  "new_selector": "#cached",
+  "strategy": "knowledge",
+  "confidence": 0.9,
+  "root_cause": "cached",
+  "success": true,
+  "verified": false,
+  "verified_by_selector_exists": false
+}

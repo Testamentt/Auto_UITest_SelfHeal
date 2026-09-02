@@ -1,0 +1,10 @@
+{
+  "original_selector": "#user-field-old",
+  "new_selector": "[data-testid=\"username\"]",
+  "strategy": "heuristic",
+  "confidence": 0.95,
+  "root_cause": "not_found",
+  "success": true,
+  "verified": true,
+  "verified_by_selector_exists": true
+}
