@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 开发规则（强制）
 
-本项目遵循 `RULE.md` 中的 R1–R7 规则（先计划后写入、测试覆盖、临时方案管理、代码质量与文档、变更沉淀、先收敛计划、文档双轨制），冲突时以 RULE.md 为准。
+本项目遵循 `RULE.md` 中的 R1–R8 规则（先计划后写入、测试覆盖、临时方案管理、代码质量与文档、变更沉淀、先收敛计划、文档双轨制、敏感文件与不可逆操作纪律），冲突时以 RULE.md 为准。
 
 ### 规则索引
 
@@ -17,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 变更沉淀 | R5 | 多轮推进的任务收尾时 |
 | 先收敛计划 | R6 | 复杂任务开工前 |
 | 文档双轨（铁律/双准则/同步SOP） | R7 | 改技术文档或同步学习文档时 |
+| 敏感文件与不可逆操作纪律 | R8 | 修改 .env / 密钥 / 任何含用户数据的文件前（先读后改、增量优先、事故即报） |
 
 @RULE.md
 
@@ -45,11 +46,11 @@ AutoAiSelfHeal 是一个**带 AI 自愈能力的 UI 自动化测试框架**。�
 | 测试框架 | pytest + pytest-playwright | 用例组织与 fixture |
 | 自愈定位器 | 自研 LLM 定位器 + 开源库辅助 | 灵活可控 |
 | 大语言模型 | DeepSeek（`deepseek-v4-flash`，OpenAI 兼容端点），经 `llm/` 抽象层接入 | 支持 API 付费调用、可切换 provider |
-| 视觉模型 | 通义 `qwen3-vl-flash`（DashScope 兼容端点），经 `llm/` 抽象层接入 | 多模态，视觉定位与控件画像 |
+| 视觉模型 | 通义 `qwen3-vl-plus`（阿里云百炼 MaaS 专属端点），经 `llm/` 抽象层接入 | 多模态，视觉定位与控件画像 |
 | 报告 | Allure + 自研 HTML | 自愈看板、视频回放 |
 | CI/CD | GitHub Actions | 演示自动化流水线 |
 
-> **provider 已定**（见 `docs/roadmap.md` D7/D13）：LLM=DeepSeek（OpenAI 兼容端点）、VLM=通义 qwen3-vl-flash（DashScope 兼容端点）。
+> **provider 已定**（见 `docs/roadmap.md` D7/D13）：LLM=DeepSeek（OpenAI 兼容端点）、VLM=通义 qwen3-vl-plus（阿里云百炼 MaaS 专属端点，备选 qwen3.8-flash）。
 > 所有模型调用**必须**经过 `src/selfheal/llm/` 的抽象接口（`llm/factory.py` 统一构建、`registry` 注册），禁止在业务代码里直接 import 某个 SDK，切换 provider 只改 `config/settings.yaml`。
 
 ## 架构（大局）
