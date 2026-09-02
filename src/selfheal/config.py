@@ -185,17 +185,21 @@ class SutConfig(BaseModel):
 
     - base_url: 前端地址（UI 自动化打开的入口，jshERP 前端独立部署于 3001 端口）。
     - api_base_url: 后端 API 地址——**非被测对象**，仅用于测试数据造数/清理（勘测确认）。
-    - *_env: 凭证环境变量名（与 LLMConfig.api_key_env 同款参数化约定，明文绝不入库；
-      UI=测试账号 jsh，API=管理员 admin 造数账号）。
+    - username_env / password_env: **租户账号**凭证的环境变量名（与 LLMConfig.api_key_env
+      同款参数化约定，明文绝不入库）。
+
+    角色语义（专家确认，2026-09-01）：
+    - **租户 = 业务数据的管理员**（如测试租户 jsh）——UI 测试与 API 造数/清理都应使用
+      租户账号（业务数据的合法所有者）；
+    - **admin = 平台运维用户**——仅能配置平台菜单/创建租户，**不能编辑任何业务数据**，
+      测试基建不得使用（此前误用 admin 造数已纠正）。
     """
 
     name: str = "jshERP"
     base_url: str = "http://localhost:3001"
     api_base_url: str = "http://192.168.1.3:9999/jshERP-boot"
-    ui_username_env: str = "ERP_UI_USERNAME"
-    ui_password_env: str = "ERP_UI_PASSWORD"
-    api_username_env: str = "ERP_API_USERNAME"
-    api_password_env: str = "ERP_API_PASSWORD"
+    username_env: str = "ERP_USERNAME"
+    password_env: str = "ERP_PASSWORD"
 
 
 class Settings(BaseModel):

@@ -29,7 +29,11 @@ class ErpApiError(RuntimeError):
 
 @dataclass
 class ErpCredentials:
-    """ERP 登录凭证（password 为明文，提交前 MD5——勘测确认前端同款处理）。"""
+    """ERP 登录凭证（**租户账号**——业务数据的管理员；password 为明文，提交前 MD5）。
+
+    角色语义（专家确认）：租户 = 业务数据所有者，UI 测试与 API 造数/清理共用；
+    admin 是平台运维用户（不能编辑业务数据），测试基建不得使用。
+    """
 
     username: str
     password: str
