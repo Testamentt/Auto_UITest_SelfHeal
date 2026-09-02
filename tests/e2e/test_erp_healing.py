@@ -19,7 +19,7 @@ import pytest
 pytestmark = [pytest.mark.e2e, pytest.mark.erp]
 
 
-def test_erp_material_add_with_healing(erp_page, erp_admin, settings):
+def test_erp_material_add_with_healing(erp_page, erp_api, settings):
     """商品新增弹窗内经历"前端改版"→ 自愈重定位完成填名 → 落库断言 → 清理。"""
     page = erp_page
     from tests.e2e.pages.erp.material_page import MaterialPage
@@ -44,10 +44,10 @@ def test_erp_material_add_with_healing(erp_page, erp_admin, settings):
 
         # 断言：列表可见 + API 确认真实落库 + 自愈记录产生
         assert mp.row_visible(name), f"商品未出现在列表：{name}"
-        assert erp_admin.find_material_id(name), f"商品未落库（自愈保存失败）：{name}"
+        assert erp_api.find_material_id(name), f"商品未落库（自愈保存失败）：{name}"
         assert any(r.success for r in page.reporter.records), "未产生自愈成功记录"
     finally:
         # 数据清理（数据隔离约定：演示环境不留测试垃圾）
-        material_id = erp_admin.find_material_id(name)
+        material_id = erp_api.find_material_id(name)
         if material_id:
-            erp_admin.delete_material(material_id)
+            erp_api.delete_material(material_id)
