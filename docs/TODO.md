@@ -1,6 +1,6 @@
 # TODO — 优化与待办清单
 
-> 来源：`docs/reviews/2026-08-04-phase3-retrospective.md` · 全量评审 `docs/reviews/2026-08-15-code-review.md` · 随进展勾选/更新（R5 活文档）
+> 来源：`docs/reviews/2026-08-04-phase3-retrospective.md` · 全量评审 `docs/reviews/2026-08-15-code-review.md` · 全量评审 `docs/reviews/2026-09-03-code-review.md` · 随进展勾选/更新（R5 活文档）
 > T1–T4 具体实现方案：`docs/plans/2026-08-04-phase4-t1-t4-implementation.md`
 > 图例：⬜ 待办 · 🟡 进行中 · ✅ 完成 · 🔴 阻断项 · 🟠 部分完成
 
@@ -25,6 +25,27 @@
   - `_healing_action` 重试仍失败 → 二次自愈（`use_knowledge=False` 跳过缓存，有界一次防循环）
   - 位置：`engine/healing_locator.py`、`agent/orchestrator.py`
   - 验收：`test_secondary_healing.py` 5 项单测 + 核心 e2e 回归通过
+
+## 🔴 2026-09-03 Code Review 待修复项（评审 `docs/reviews/2026-09-03-code-review.md`）
+
+- [ ] **R1 · settings.example.yaml 顶层 `action_wait` 段致配置加载崩溃**（Critical，实证）
+  - `action_wait` 实为 `healing.action_wait` 子字段（config.py `HealingConfig`），example 写成顶层段 →
+    `extra='forbid'` 下 `Settings.model_validate` 直接 ValidationError，复制模板即启动崩溃
+  - 修复：四行移入 `healing:` 段（缩进一级）；验收：example 经 `model_validate` 加载成功
+- [ ] **R2 · propose_pr.py `build_pr_body` 残片 → ruff 门禁红**（High，实证）
+  - L51-59 为残缺首定义（F841+F811 共 2 errors），CI unit job `ruff check .` 失败
+  - 修复：删除残片保留完整版（L68 起）
+- [ ] **R3 · 环境特定端点硬编码入 git 默认值**（Major）
+  - `VisionConfig.base_url` 默认 = 专属百炼 MaaS 实例端点（含实例 ID）；`SutConfig.api_base_url`
+    默认 = 内网 IP `192.168.1.3`——均同时出现在 example 模板（会提交）
+  - 修复：默认值改公共端点/占位，专属值放 gitignore 的 `settings.yaml`
+- [ ] **R4 · erp_page fixture 未登记 `_session_reporters`**（Major）
+  - ERP 用例自愈记录缺失于 dashboard / healing-records.json / T19 通知（聚合审计缺口）
+  - 修复：conftest erp_page 内补一行登记（对比 healing_page 同款）
+- [ ] **R5 · Minor 批**：llm/io.py 反向依赖 agent.dom（分层倒置）· allure_bridge docstring 优先级漂移 ·
+  notify 策略分布把 None 计为 "None"（与 metrics 口径不一致）· agent/llm_io.py 兼容壳按 R3 回收删除 ·
+  example 尾部过时注释（T9 已决策不建模）· 内联 trace 恢复录制参数与 conftest 重复 ·
+  interactive_candidates 空列表语义
 
 ## 🟡 中优先级
 
