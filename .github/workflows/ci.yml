@@ -4,17 +4,17 @@ on:
   push:
     branches: [main]
   pull_request:
-  # 瀹氭椂鍥炲綊锛圱19锛夛細褰撳墠鏈惎鐢ㄢ€斺€旂敤鎴峰喅绛栵紙2026-08-31锛?鐩墠涓嶉渶瑕佽繘琛屽洖褰?銆?
-  # 鍚敤鏂瑰紡锛氬彇娑堜笅鏂逛袱琛屾敞閲婂嵆鍙紝notify job 灏嗚嚜鍔ㄤ粠"浠呭け璐ュ憡璀?鍒囨崲涓?
-  # "鎴愬姛鍙戞憳瑕?+ 澶辫触鍙戝憡璀?锛堣Е鍙戞潯浠跺凡棰勭暀 github.event_name == 'schedule'锛夈€?
+  # 定时回归（T19）：当前未启用——用户决策（2026-08-31）"目前不需要进行回归"。
+  # 启用方式：取消下方两行注释即可，notify job 将自动从"仅失败告警"切换为
+  # "成功发摘要 + 失败发告警"（触发条件已预留 github.event_name == 'schedule'）。
   # schedule:
-  #   - cron: "0 22 * * *"   # UTC 22:00 = 鍖椾含 06:00
+  #   - cron: "0 22 * * *"   # UTC 22:00 = 北京 06:00
 
-# 涓ら樁娈碉紙瑙?RULE.md R2 閰嶅绾﹀畾锛夛細unit 闂ㄧ 鈫?e2e 闆嗘垚
+# 两阶段（见 RULE.md R2 配套约定）：unit 门禁 → e2e 集成
 
 jobs:
   unit:
-    name: 鍗曞厓娴嬭瘯锛堥棬绂侊級
+    name: 单元测试（门禁）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -44,9 +44,9 @@ jobs:
           if-no-files-found: ignore
 
   e2e:
-    name: 闆嗘垚 / 绔埌绔祴璇?
+    name: 集成 / 端到端测试
     runs-on: ubuntu-latest
-    needs: unit # 鍗曟祴闂ㄧ鍏ㄧ豢鍚庢墠杩愯
+    needs: unit # 单测门禁全绿后才运行
     steps:
       - uses: actions/checkout@v5
 
@@ -61,17 +61,17 @@ jobs:
           pip install -e ".[dev]"
           playwright install --with-deps chromium
 
-      # T22锛欳I 涓婂紑鍚慨澶嶅缓璁骇鍑猴紙settings.yaml 浠呭惈璇ュ紑鍏筹紝鍏朵綑瀛楁璧?pydantic 榛樿锛?
-      # 鏈湴榛樿鍏抽棴瀹?涓嶈嚜鍔ㄤ贡鍚堝簱"锛孋I 浜х墿浠呯敤浜庝汉宸ュ闃咃級
-      - name: Enable fix proposals (T22 浜х墿寮€鍏?
+      # T22：CI 上开启修复建议产出（settings.yaml 仅含该开关，其余字段走 pydantic 默认；
+      # 本地默认关闭守"不自动乱合库"，CI 产物仅用于人工审阅）
+      - name: Enable fix proposals (T22 产物开关)
         run: |
           printf 'healing:\n  fix_proposals: true\n' > config/settings.yaml
 
       - name: Integration / e2e tests (-m e2e)
         run: pytest -m "e2e and not erp" --trace-healing --alluredir=allure-results
-        # erp 鐢ㄤ緥锛圱23 绠′紛浣?ERP锛夐渶鏈湴琚祴鐜锛孋I 鎺掗櫎锛堟湰鍦?婕旂ず鐜杩愯锛?
+        # erp 用例（T23 管伊佳 ERP）需本地被测环境，CI 排除（本地/演示环境运行）
 
-      - name: Upload fix proposals (T22 鑽夌 PR 鏁版嵁婧?
+      - name: Upload fix proposals (T22 草稿 PR 数据源)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -87,7 +87,7 @@ jobs:
           path: allure-results
           if-no-files-found: ignore
 
-      - name: Upload e2e traces (Playwright Trace 鍥炴斁)
+      - name: Upload e2e traces (Playwright Trace 回放)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -95,7 +95,7 @@ jobs:
           path: reports/traces
           if-no-files-found: ignore
 
-      - name: Upload self-heal dashboard (B3 杩愯鏃剁敓鎴?
+      - name: Upload self-heal dashboard (B3 运行时生成)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -103,7 +103,7 @@ jobs:
           path: reports/dashboard.html
           if-no-files-found: ignore
 
-      - name: Upload healing records (T19 閫氱煡鎽樿鏁版嵁婧?
+      - name: Upload healing records (T19 通知摘要数据源)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -112,11 +112,11 @@ jobs:
           if-no-files-found: ignore
 
   notify:
-    name: 鍥炲綊閫氱煡锛坵ebhook锛?
+    name: 回归通知（webhook）
     runs-on: ubuntu-latest
     needs: [unit, e2e]
-    # 瑙﹀彂鑼冨洿锛氬け璐ュ繀鍛婅锛堜粎 main锛孭R 涓嶆墦鎵帮級锛涘畾鏃跺洖褰掑惎鐢ㄥ悗鎴愬姛涔熷彂鎽樿
-    # 锛坓ithub.event_name == 'schedule' 鍒嗘敮宸查鐣欙級銆俉EBHOOK_URL 鏈厤缃?鈫?鑴氭湰鑷烦杩囥€?
+    # 触发范围：失败必告警（仅 main，PR 不打扰）；定时回归启用后成功也发摘要
+    # （github.event_name == 'schedule' 分支已预留）。WEBHOOK_URL 未配置 → 脚本自跳过。
     if: >-
       always() &&
       (failure() || github.event_name == 'schedule') &&
@@ -129,12 +129,12 @@ jobs:
         with:
           name: healing-records
           path: reports
-        continue-on-error: true # 鎽樿缂哄け锛堝 unit 闃舵鎸傦級涓嶉樆濉炲憡璀?
+        continue-on-error: true # 摘要缺失（如 unit 阶段挂）不阻塞告警
 
       - name: Send notification
         env:
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          # 缁勮澶辫触 job 鍚嶅崟锛坣eeds 缁撴灉 -> 閫楀彿涓诧級
+          # 组装失败 job 名单（needs 结果 -> 逗号串）
           FAILED_JOBS: >-
             ${{
               needs.unit.result == 'failure' && 'unit' || ''
@@ -151,10 +151,10 @@ jobs:
             --failed-jobs "$FAILED_JOBS"
 
   propose-pr:
-    name: 淇寤鸿鑽夌 PR锛圱22锛屼汉瀹★級
+    name: 修复建议草稿 PR（T22，人审）
     runs-on: ubuntu-latest
     needs: [unit, e2e]
-    # 浠?main 鎴愬姛鍚庡紑鑽夌 PR锛堝畧 T15 浜哄杈圭晫锛氬彧寮€鑽夌銆佺粷涓嶅悎骞讹級
+    # 仅 main 成功后开草稿 PR（守 T15 人审边界：只开草稿、绝不合并）
     if: always() && needs.e2e.result == 'success' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
@@ -169,7 +169,7 @@ jobs:
           path: reports/fix-proposals
         continue-on-error: true
 
-      # 鏃犱骇鐗╋紙鏈疆鏃犺嚜鎰堟垚鍔?/ 鏈 key锛夋椂鑴氭湰鑷烦杩?
+      # 无产物（本轮无自愈成功 / 未装 key）时脚本自跳过
       - name: Skip check (no proposals)
         id: check
         run: |
@@ -186,7 +186,7 @@ jobs:
           git config user.email "selfheal-bot@users.noreply.github.com"
           git checkout -B selfheal/proposals origin/main
           git add -f reports/fix-proposals
-          git commit -m "chore: 鑷剤淇寤鸿浜х墿锛圱22 浜哄娓呭崟锛宺un ${{ github.run_id }}锛? || echo "nothing to commit"
+          git commit -m "chore: 自愈修复建议产物（T22 人审清单，run ${{ github.run_id }}）" || echo "nothing to commit"
           git push --force origin selfheal/proposals
 
       - name: Create draft PR (dedup by label)
@@ -201,17 +201,17 @@ jobs:
             --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
   publish:
-    name: 鍙戝竷 Allure 鎶ュ憡锛圙itHub Pages + 鍘嗗彶瓒嬪娍锛?
+    name: 发布 Allure 报告（GitHub Pages + 历史趋势）
     runs-on: ubuntu-latest
     needs: [unit, e2e]
-    # 浠?main 鍒嗘敮鍙戝竷鎶ュ憡锛圥R 鍙笂浼?results 浜х墿锛屼笉鍐?Pages锛?
+    # 仅 main 分支发布报告（PR 只上传 results 产物，不写 Pages）
     if: always() && github.ref == 'refs/heads/main'
     permissions:
-      contents: write # peaceiris 鎺?gh-pages 蹇呴渶鈥斺€旀柊浠撳簱 GITHUB_TOKEN 榛樿 read-only锛岀己瀹?git push 鍗?128
+      contents: write # peaceiris 推 gh-pages 必需——新仓库 GITHUB_TOKEN 默认 read-only，缺它 git push 即 128
     steps:
       - uses: actions/checkout@v5
 
-      # 鍚堝苟 unit + e2e 涓ら樁娈?results 鍒板悓涓€鐩綍锛坅llure 鍗曟姤鍛婏級
+      # 合并 unit + e2e 两阶段 results 到同一目录（allure 单报告）
       - name: Download allure results
         uses: actions/download-artifact@v5
         with:
@@ -219,9 +219,9 @@ jobs:
           path: allure-results
           merge-multiple: true
 
-      # 鍙?gh-pages 涓婄殑鍘嗗彶锛坅llure-history锛変緵瓒嬪娍鍥炬嫾鎺ャ€?
-      # 棣栨鍙戝竷 gh-pages 鍒嗘敮灏氫笉瀛樺湪 鈫?checkout 蹇呭け璐ワ紙exit 128锛夛細
-      # continue-on-error 瀹归敊璺宠繃锛堟湰娆℃棤鍘嗗彶鎷兼帴锛宲eaceiris 浼氳嚜鍔ㄥ垱寤?gh-pages锛屼笅娆¤捣瓒嬪娍姝ｅ父锛?
+      # 取 gh-pages 上的历史（allure-history）供趋势图拼接。
+      # 首次发布 gh-pages 分支尚不存在 → checkout 必失败（exit 128）：
+      # continue-on-error 容错跳过（本次无历史拼接，peaceiris 会自动创建 gh-pages，下次起趋势正常）
       - name: Checkout gh-pages (history)
         uses: actions/checkout@v5
         with:
