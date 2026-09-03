@@ -18,13 +18,14 @@ llm:
   base_url: https://api.deepseek.com
   temperature: 0.0
 
-# VLM（已定选型）：通义 qwen3-vl-plus，阿里云百炼（MaaS）专属端点 OpenAI 兼容接口
+# VLM（已定选型）：通义 qwen3-vl-plus；base_url 默认 DashScope 公共 compatible-mode 端点
+# （可移植默认）。如用专属百炼 MaaS 实例端点，请在本机 settings.yaml 覆盖（勿写进模板/代码）
 vision:
   enabled: true             # 视觉能力总开关；False 或缺少 key 时视觉策略被跳过
   provider: openai
   model: qwen3-vl-plus      # 首选；备选 qwen3.8-flash（模型更替只改此配置）
   api_key_env: DASHSCOPE_API_KEY   # 从环境变量名读取密钥，勿写明文
-  base_url: https://ws-rgkuic58ghmqbq8a.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
 
 healing:
   enabled: true            # 插件总开关；false 时透传为原生 Playwright 行为
@@ -47,18 +48,17 @@ healing:
   dry_run: false
   # T15 修复写回人审清单：成功后输出「原→新」PR 化建议（不自动改库），人确认后合入
   fix_proposals: false
+  # T6 动作前置智能等待（healing.action_wait 子配置）：动作（click/fill 等）执行前先做一次短稳等待，
+  # 缓解"元素正在加载/抖动就执行动作"的误报超时。默认关闭=保持 POM 显式调用
+  # wait_until_stable 的既有行为（决策 D12）；best-effort，等待失败不阻塞动作。
+  action_wait:
+    enabled: false
+    timeout_ms: 2000           # 短稳等待总超时（毫秒）
+    stable_ms: 300             # 元素 bounding_box 需保持不变的时长（毫秒）
 
 knowledge:
   backend: sqlite          # sqlite=持久化（默认）/ memory=进程内
   path: .cache/knowledge.db
-
-# T6 动作前置智能等待：动作（click/fill 等）执行前先做一次短稳等待，
-# 缓解"元素正在加载/抖动就执行动作"的误报超时。默认关闭=保持 POM 显式调用
-# wait_until_stable 的既有行为（决策 D12）；best-effort，等待失败不阻塞动作。
-action_wait:
-  enabled: false
-  timeout_ms: 2000           # 短稳等待总超时（毫秒）
-  stable_ms: 300             # 元素 bounding_box 需保持不变的时长（毫秒）
 
 # 本地确定性 Embedding（知识库语义化 A）：n-gram，零网络/零费用/<10ms；v2 fastembed 见文档
 embedding:
@@ -74,9 +74,9 @@ embedding:
 sut:
   name: jshERP
   base_url: http://localhost:3001            # 前端（Vue3 + Ant Design Vue）
-  api_base_url: http://192.168.1.3:9999/jshERP-boot   # 后端（Spring Boot）
+  api_base_url: http://localhost:9999/jshERP-boot   # 后端（Spring Boot）；实际内网地址写本机 settings.yaml
   username_env: ERP_USERNAME                 # 租户账号（UI 登录 + API 造数共用）
   password_env: ERP_PASSWORD
 
-# execution / reporting 段：规划中（见 docs/TODO.md T9），Settings 尚未建模，
-# 请勿在此添加相关键（Settings 已设 extra='forbid'，未建模字段会导致加载报错）。
+# execution / reporting 段：经 T9 决策不建模（无对应运行时需求），Settings 已设 extra='forbid'，
+# 在此添加未建模键会导致加载报错——请勿添加。

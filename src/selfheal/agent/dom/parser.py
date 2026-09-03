@@ -186,10 +186,13 @@ def cross_validate_interactive(static: list[Element], native: list[Element]) -> 
 def interactive_candidates(scene) -> list[Element]:
     """策略链候选入口（T8）：有原生解析结果（page 采集时）优先，否则回退静态 DOM 快照解析。
 
+    评审 m7（2026-09-03）：原生解析**成功即优先**（含空结果——原生对真实 DOM 更可信，
+    空列表说明页面确无可交互候选，不回退静态）；仅原生不可用（字段为 None，如 page
+    不可用的纯逻辑场景）才回退静态解析。
     刻意不 import Scene 类型（duck typing），避免 collect ↔ dom 包循环导入。
     返回列表直接供 heuristic / visual / semantic 复用（含 build_stable_selector 护栏逻辑）。
     """
     native = getattr(scene, "native_elements", None)
-    if native:
+    if native is not None:
         return native
     return parse_interactive_elements(getattr(scene, "dom_snapshot", None))

@@ -1,6 +1,6 @@
 # TODO — 优化与待办清单
 
-> 来源：`docs/reviews/2026-08-04-phase3-retrospective.md` · 全量评审 `docs/reviews/2026-08-15-code-review.md` · 随进展勾选/更新（R5 活文档）
+> 来源：`docs/reviews/2026-08-04-phase3-retrospective.md` · 全量评审 `docs/reviews/2026-08-15-code-review.md` · 全量评审 `docs/reviews/2026-09-03-code-review.md` · 随进展勾选/更新（R5 活文档）
 > T1–T4 具体实现方案：`docs/plans/2026-08-04-phase4-t1-t4-implementation.md`
 > 图例：⬜ 待办 · 🟡 进行中 · ✅ 完成 · 🔴 阻断项 · 🟠 部分完成
 
@@ -25,6 +25,28 @@
   - `_healing_action` 重试仍失败 → 二次自愈（`use_knowledge=False` 跳过缓存，有界一次防循环）
   - 位置：`engine/healing_locator.py`、`agent/orchestrator.py`
   - 验收：`test_secondary_healing.py` 5 项单测 + 核心 e2e 回归通过
+
+## 🔴 2026-09-03 Code Review 待修复项（评审 `docs/reviews/2026-09-03-code-review.md`）✅ 全部修复（2026-09-03）
+
+- [x] **R1 · settings.example.yaml 顶层 `action_wait` 段致配置加载崩溃**（Critical，实证）✅
+  - `action_wait` 实为 `healing.action_wait` 子字段（config.py `HealingConfig`），example 写成顶层段 →
+    `extra='forbid'` 下 `Settings.model_validate` 直接 ValidationError，复制模板即启动崩溃
+  - 修复：段移入 `healing:` 内；验收：example 经 `model_validate` 加载成功（实证）
+- [x] **R2 · propose_pr.py `build_pr_body` 残片 → ruff 门禁红**（High，实证）✅
+  - L51-59 残缺首定义（F841+F811 共 2 errors）已删除；验收：`ruff check .` 0 errors
+- [x] **R3 · 环境特定端点硬编码入 git 默认值**（Major）✅
+  - `VisionConfig.base_url` 默认改 DashScope 公共端点、`SutConfig.api_base_url` 默认改 localhost 占位；
+    专属 MaaS 端点与内网地址迁入 gitignore 的 `config/settings.yaml`（本机行为不变，双路径实证）
+- [x] **R4 · erp_page fixture 未登记 `_session_reporters`**（Major）✅
+  - conftest erp_page 内补登记，ERP 自愈记录进 dashboard / healing-records.json / T19 通知
+- [x] **R5 · Minor 批** ✅
+  - m2 allure_bridge docstring 优先级补 erp；m3 notify 策略分布过滤 None（对齐 metrics 口径）；
+    m4 agent/llm_io.py 兼容壳按 R3 回收删除（grep 确认无引用）；m5 example 尾注更新（T9 已决策
+    不建模）；m6 trace 录制参数抽 `TRACE_RECORDING_KWARGS` 常量（collector/conftest 同源）；
+    m7 `interactive_candidates` 改 `is not None`（原生成功即优先，含空结果）；Scene 注解精确化
+  - 遗留：m1 `llm/io.py` 反向依赖 `agent.dom`（分层倒置）**单独立项**（dom 工具下沉 utils/ 方向）；
+    nit 批（ab_compare 口径 / attach_file 类型 / erp_client pageSize / CI PR body 快照注释）未动
+  - 验收：ruff 0 errors + unit 293 passed + 配置双路径加载实证
 
 ## 🟡 中优先级
 
