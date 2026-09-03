@@ -1,19 +1,45 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html dir="ltr" lang="en">
 <head>
-<meta charset="UTF-8">
-<title>AutoAiSelfHeal · Allure 报告</title>
-<style>
-  body { font-family: system-ui, "Microsoft YaHei", sans-serif; max-width: 640px; margin: 80px auto; color: #333; }
-  h1 { font-size: 22px; } code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
-  .tip { color: #666; line-height: 1.8; }
-</style>
+    <meta charset="utf-8">
+    <meta name="allure-report-uuid" content="a792c516-a78b-45d9-988e-77dc51a37fa0">
+    <title>Allure Report</title>
+    <link rel="icon" href="assets/favicon-BDLHVmV7.ico">
+    <!-- allure-core-head:start -->
+    <!-- allure-core-head:end -->
 </head>
 <body>
-<h1>AutoAiSelfHeal · Allure 报告占位页</h1>
-<p class="tip">
-  报告由 CI 在每次 <code>main</code> 分支测试通过后自动生成并覆盖本页（含历史趋势）。<br>
-  当前尚无 CI 发布记录 —— 请在 GitHub Actions 中查看 <code>publish</code> job 运行状态。
-</p>
+    <div id="alert"></div>
+    <div id="content">
+        <span class="spinner">
+            <span class="spinner__circle"></span>
+        </span>
+    </div>
+    <div id="popup"></div>
+    <!-- allure-core-body:start -->
+    <script>
+        window.__allureCoreLoaded = new Promise(function (resolve, reject) {
+        window.__allureResolveCoreLoaded = resolve;
+        window.__allureRejectCoreLoaded = reject;
+    });
+    </script>
+    <script src="assets/index-TNctPo69.js"></script>
+    <script>
+        if (typeof window.__allureResolveCoreLoaded === "function") {
+            window.__allureResolveCoreLoaded([]);
+        }
+    </script>
+    <!-- allure-core-body:end -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-FVWC4GKEYS"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-FVWC4GKEYS', {
+          'allureVersion': '2.44.0',
+          'reportUuid': 'a792c516-a78b-45d9-988e-77dc51a37fa0',
+          'single_file': false
+        });
+    </script>
 </body>
 </html>

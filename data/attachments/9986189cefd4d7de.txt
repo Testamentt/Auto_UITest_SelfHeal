@@ -1,0 +1,7 @@
+WARNING  selfheal.agent.persistence:persistence.py:155 知识沉淀失败（自愈本身已成功）
+Traceback (most recent call last):
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/agent/persistence.py", line 123, in _persist
+    self._knowledge.add_repair(
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/tests/unit/test_persist_failure.py", line 51, in add_repair
+    raise RuntimeError("disk full")
+RuntimeError: disk full

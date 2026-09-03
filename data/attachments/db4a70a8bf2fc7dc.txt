@@ -1,0 +1,7 @@
+WARNING  selfheal.collect.collector:collector.py:152 恢复整用例 trace 录制失败（现场 trace 已单独保存）
+Traceback (most recent call last):
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/collect/collector.py", line 150, in _try_inline_trace
+    tracing.start(**TRACE_RECORDING_KWARGS)
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/tests/unit/test_collector.py", line 173, in start
+    raise self.start_error
+RuntimeError: driver restart failed

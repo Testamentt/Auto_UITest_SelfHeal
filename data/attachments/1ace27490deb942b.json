@@ -1,0 +1,10 @@
+{
+  "original_selector": "#submit-btn-old",
+  "new_selector": "[data-testid=\"submit-btn\"]",
+  "strategy": "knowledge",
+  "confidence": 0.95,
+  "root_cause": "cached",
+  "success": true,
+  "verified": true,
+  "verified_by_selector_exists": true
+}

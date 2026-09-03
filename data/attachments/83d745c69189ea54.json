@@ -1,0 +1,10 @@
+{
+  "original_selector": "#old",
+  "new_selector": "#new",
+  "strategy": "knowledge",
+  "confidence": 0.9,
+  "root_cause": "not_found",
+  "success": true,
+  "verified": true,
+  "verified_by_selector_exists": true
+}
