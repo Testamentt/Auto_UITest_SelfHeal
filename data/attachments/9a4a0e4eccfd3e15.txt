@@ -1,0 +1,7 @@
+WARNING  selfheal.agent.strategies.semantic:semantic.py:166 知识热度更新失败（repair_key=rk-1）
+Traceback (most recent call last):
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/agent/strategies/semantic.py", line 164, in _bump
+    self._knowledge.bump_hit(case.repair_key)
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/tests/unit/test_review_hardening.py", line 131, in bump_hit
+    raise RuntimeError("database is locked")
+RuntimeError: database is locked
