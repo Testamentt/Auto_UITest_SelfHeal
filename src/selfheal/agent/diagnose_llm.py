@@ -9,9 +9,10 @@
 from __future__ import annotations
 
 from selfheal.agent.diagnose import Diagnoser, FailureContext
+from selfheal.agent.dom import build_compact_dom  # m1：自 llm.io 归位（llm 层不得依赖 agent）
 from selfheal.collect.collector import Scene
 from selfheal.llm.base import ChatMessage, LLMClient
-from selfheal.llm.io import build_compact_dom, extract_json, safe_str
+from selfheal.llm.io import extract_json, safe_str
 
 # 允许的根因白名单
 _ALLOWED_CAUSES = frozenset({"not_found", "not_visible", "covered", "timeout", "unknown"})

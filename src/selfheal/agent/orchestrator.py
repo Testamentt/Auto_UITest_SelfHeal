@@ -11,7 +11,6 @@ ContextAssembler 组装上下文 → FixGenerator 生成提案 → PersistenceHa
 
 from __future__ import annotations
 
-import contextlib
 import logging
 from typing import TYPE_CHECKING
 
@@ -42,11 +41,14 @@ logger = logging.getLogger(__name__)
 
 
 def _safe_close(obj) -> None:
-    """best-effort 关闭带 close() 的对象（无 close / 关闭失败均静默，不掩盖业务）。"""
+    """best-effort 关闭带 close() 的对象；失败记 warning（V4 复核：关闭故障不再完全不可见）。"""
     close = getattr(obj, "close", None)
-    if close is not None:
-        with contextlib.suppress(Exception):
-            close()
+    if close is None:
+        return
+    try:
+        close()
+    except Exception as exc:  # noqa: BLE001 - 资源释放失败不阻断业务收口
+        logger.warning("best-effort 关闭 %s 失败: %s", type(obj).__name__, exc)
 
 
 # 策略注册表：名字 → 策略类。新增策略在此登记即可被调度（注入 FixGenerator，测试 monkeypatch 仍生效）。
@@ -74,44 +76,56 @@ class SelfHealOrchestrator:
     ):
         self._page = page
         self._settings = settings
-        self._knowledge = knowledge or build_knowledge_store(settings)
-        self._owns_knowledge = knowledge is None  # 注入的资源由注入方负责关闭
-        self._reporter = reporter or HealingReporter()
-        # LLM 可用才构建；缺省时按配置判定，不可用则 None（降级回规则式 / 跳过语义策略）
-        self._llm_client = llm_client if llm_client is not None else get_llm_for_settings(settings)
-        self._owns_llm = llm_client is None
-        # VLM 可用才构建；不可用则 None（视觉策略返回 None 被跳过）
-        self._vision_client = (
-            vision_client if vision_client is not None else get_vision_for_settings(settings)
-        )
-        self._owns_vision = vision_client is None
-        # Embedding 可用才构建；不可用则 None（L1/L3 语义检索被跳过，零回归）
-        self._embedding = get_embedding_for_settings(settings)
-        # 规则式诊断：零成本恒跑，为成功路径提供根因归因（不触发 LLM，省 Token）
-        rule_diagnoser = Diagnoser()
-        # LLM 诊断：仅失败/低置信路径触发；client 包计数代理（B2：诊断调用计入成本统计）
-        llm_diagnoser = (
-            LLMDiagnoser(counting_proxy(self._llm_client, "llm_calls", self._reporter.stats))
-            if self._llm_client
-            else None
-        )
-        # 三个协作者（A1）：上下文组装 / 修复提案 / 持久化审计
-        self._assembler = ContextAssembler(page, settings)
-        self._fix_gen = FixGenerator(
-            settings,
-            self._knowledge,
-            self._reporter,
-            rule_diagnoser,
-            llm_diagnoser,
-            self._llm_client,
-            self._vision_client,
-            self._embedding,
-            page,
-            _STRATEGY_REGISTRY,
-        )
-        self._persister = PersistenceHandler(
-            settings, self._knowledge, self._reporter, self._embedding, page
-        )
+        # 先置安全空值：构造中途失败时 close() 能安全清理"已建成的自有资源"（V4 复核：防泄漏）
+        self._knowledge = None
+        self._llm_client = None
+        self._vision_client = None
+        self._owns_knowledge = self._owns_llm = self._owns_vision = False
+        try:
+            self._knowledge = knowledge or build_knowledge_store(settings)
+            self._owns_knowledge = knowledge is None  # 注入的资源由注入方负责关闭
+            self._reporter = reporter or HealingReporter()
+            # LLM 可用才构建；缺省时按配置判定，不可用则 None（降级回规则式 / 跳过语义策略）
+            self._llm_client = (
+                llm_client if llm_client is not None else get_llm_for_settings(settings)
+            )
+            self._owns_llm = llm_client is None
+            # VLM 可用才构建；不可用则 None（视觉策略返回 None 被跳过）
+            self._vision_client = (
+                vision_client if vision_client is not None else get_vision_for_settings(settings)
+            )
+            self._owns_vision = vision_client is None
+            # Embedding 可用才构建；不可用则 None（L1/L3 语义检索被跳过，零回归）
+            self._embedding = get_embedding_for_settings(settings)
+            # 规则式诊断：零成本恒跑，为成功路径提供根因归因（不触发 LLM，省 Token）
+            rule_diagnoser = Diagnoser()
+            # LLM 诊断：仅失败/低置信路径触发；client 包计数代理（B2：诊断调用计入成本统计）
+            llm_diagnoser = (
+                LLMDiagnoser(counting_proxy(self._llm_client, "llm_calls", self._reporter.stats))
+                if self._llm_client
+                else None
+            )
+            # 三个协作者（A1）：上下文组装 / 修复提案 / 持久化审计
+            self._assembler = ContextAssembler(page, settings)
+            self._fix_gen = FixGenerator(
+                settings,
+                self._knowledge,
+                self._reporter,
+                rule_diagnoser,
+                llm_diagnoser,
+                self._llm_client,
+                self._vision_client,
+                self._embedding,
+                page,
+                _STRATEGY_REGISTRY,
+            )
+            self._persister = PersistenceHandler(
+                settings, self._knowledge, self._reporter, self._embedding, page
+            )
+        except Exception:
+            # 只清理 owns 标记为 True 的已建资源（幂等），随后原样上抛构造异常
+            self.close()
+            raise
 
     def run(
         self,
@@ -133,6 +147,7 @@ class SelfHealOrchestrator:
                     confidence=0.0,
                     root_cause="high_risk_page_excluded",
                     success=False,
+                    verified=False,  # V4 复核：豁免不是修复，勿计入"真自愈"指标
                 )
             )
             return HealOutcome(success=False, root_cause="high_risk_page_excluded")

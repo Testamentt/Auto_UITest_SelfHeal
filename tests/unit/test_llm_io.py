@@ -2,7 +2,8 @@
 
 import pytest
 
-from selfheal.llm.io import build_compact_dom, extract_json, safe_float, safe_str
+from selfheal.agent.dom import build_compact_dom  # m1：自 llm.io 归位（V5 复核）
+from selfheal.llm.io import extract_json, safe_float, safe_str
 
 pytestmark = pytest.mark.unit
 
