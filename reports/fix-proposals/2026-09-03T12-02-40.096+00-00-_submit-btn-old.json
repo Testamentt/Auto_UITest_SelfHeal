@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-09-03T12:02:40+00:00",
+  "original_selector": "#submit-btn-old",
+  "new_selector": "[data-testid=\"submit-btn\"]",
+  "strategy": "heuristic",
+  "confidence": 0.95,
+  "page_url": "file:///home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/tests/e2e/pages/demo_page.html",
+  "root_cause": "not_found",
+  "verified": true,
+  "applied": false
+}
