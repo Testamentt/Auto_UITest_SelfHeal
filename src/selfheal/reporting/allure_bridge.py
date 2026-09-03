@@ -6,7 +6,7 @@
   无需各自 try-import allure。
 - write_environment：`--alluredir` 启用时写 environment.properties（报告环境页）。
 - feature_label_for / apply_dynamic_labels：pytest marker → allure 标签映射
-  （优先级 healing > e2e > unit，多 marker 只取最高一个，避免标签爆炸）。
+  （优先级 erp > healing > e2e > unit，多 marker 只取最高一个，避免标签爆炸）。
 - attach_json / attach_file：best-effort 证据附件（自愈记录 / Playwright trace）。
 
 Allure 标签使用 **dynamic API**（须在测试上下文中调用，见 conftest autouse fixture）：
@@ -43,7 +43,7 @@ _FEATURE_BY_MARKER: dict[str, str] = {
 
 
 def feature_label_for(item: Any) -> str | None:
-    """按优先级（healing > e2e > unit）返回该测试的唯一 feature 名；无匹配返回 None。"""
+    """按优先级（erp > healing > e2e > unit）返回该测试的唯一 feature 名；无匹配返回 None。"""
     markers = {marker.name for marker in item.iter_markers()}
     for name in _FEATURE_PRIORITY:
         if name in markers:

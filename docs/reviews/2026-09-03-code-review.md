@@ -1,5 +1,9 @@
 # Code Review — T5–T23 演进审查（2026-09-03）
 
+> **修复状态：✅ 已全部修复（2026-09-03 同日）**——C1（example 移位）/ H1（删残片）/ M1（默认值
+> 外移 + 本地 settings.yaml 承载专属端点）/ M2（erp_page 登记聚合）/ m2–m7+nit 批；m1（llm/io.py
+> 分层倒置）单独立项未动。验收：ruff 0 errors、unit 293 passed、example 与 load_settings 双路径实证。
+
 > 审查范围：自上轮审查（`2026-08-15-code-review.md`，提交 2d65417）以来的全部演进——
 > 24 个提交、82 文件（+4,501/−289）：T5–T12 收官、T18–T23 新特性（Allure 桥 / 通知 / A/B 对比 /
 > xdist 兼容 / 草稿 PR / 管伊佳 ERP 被测系统迁移）、R7/R8 规则引入。

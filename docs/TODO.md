@@ -26,26 +26,27 @@
   - 位置：`engine/healing_locator.py`、`agent/orchestrator.py`
   - 验收：`test_secondary_healing.py` 5 项单测 + 核心 e2e 回归通过
 
-## 🔴 2026-09-03 Code Review 待修复项（评审 `docs/reviews/2026-09-03-code-review.md`）
+## 🔴 2026-09-03 Code Review 待修复项（评审 `docs/reviews/2026-09-03-code-review.md`）✅ 全部修复（2026-09-03）
 
-- [ ] **R1 · settings.example.yaml 顶层 `action_wait` 段致配置加载崩溃**（Critical，实证）
+- [x] **R1 · settings.example.yaml 顶层 `action_wait` 段致配置加载崩溃**（Critical，实证）✅
   - `action_wait` 实为 `healing.action_wait` 子字段（config.py `HealingConfig`），example 写成顶层段 →
     `extra='forbid'` 下 `Settings.model_validate` 直接 ValidationError，复制模板即启动崩溃
-  - 修复：四行移入 `healing:` 段（缩进一级）；验收：example 经 `model_validate` 加载成功
-- [ ] **R2 · propose_pr.py `build_pr_body` 残片 → ruff 门禁红**（High，实证）
-  - L51-59 为残缺首定义（F841+F811 共 2 errors），CI unit job `ruff check .` 失败
-  - 修复：删除残片保留完整版（L68 起）
-- [ ] **R3 · 环境特定端点硬编码入 git 默认值**（Major）
-  - `VisionConfig.base_url` 默认 = 专属百炼 MaaS 实例端点（含实例 ID）；`SutConfig.api_base_url`
-    默认 = 内网 IP `192.168.1.3`——均同时出现在 example 模板（会提交）
-  - 修复：默认值改公共端点/占位，专属值放 gitignore 的 `settings.yaml`
-- [ ] **R4 · erp_page fixture 未登记 `_session_reporters`**（Major）
-  - ERP 用例自愈记录缺失于 dashboard / healing-records.json / T19 通知（聚合审计缺口）
-  - 修复：conftest erp_page 内补一行登记（对比 healing_page 同款）
-- [ ] **R5 · Minor 批**：llm/io.py 反向依赖 agent.dom（分层倒置）· allure_bridge docstring 优先级漂移 ·
-  notify 策略分布把 None 计为 "None"（与 metrics 口径不一致）· agent/llm_io.py 兼容壳按 R3 回收删除 ·
-  example 尾部过时注释（T9 已决策不建模）· 内联 trace 恢复录制参数与 conftest 重复 ·
-  interactive_candidates 空列表语义
+  - 修复：段移入 `healing:` 内；验收：example 经 `model_validate` 加载成功（实证）
+- [x] **R2 · propose_pr.py `build_pr_body` 残片 → ruff 门禁红**（High，实证）✅
+  - L51-59 残缺首定义（F841+F811 共 2 errors）已删除；验收：`ruff check .` 0 errors
+- [x] **R3 · 环境特定端点硬编码入 git 默认值**（Major）✅
+  - `VisionConfig.base_url` 默认改 DashScope 公共端点、`SutConfig.api_base_url` 默认改 localhost 占位；
+    专属 MaaS 端点与内网地址迁入 gitignore 的 `config/settings.yaml`（本机行为不变，双路径实证）
+- [x] **R4 · erp_page fixture 未登记 `_session_reporters`**（Major）✅
+  - conftest erp_page 内补登记，ERP 自愈记录进 dashboard / healing-records.json / T19 通知
+- [x] **R5 · Minor 批** ✅
+  - m2 allure_bridge docstring 优先级补 erp；m3 notify 策略分布过滤 None（对齐 metrics 口径）；
+    m4 agent/llm_io.py 兼容壳按 R3 回收删除（grep 确认无引用）；m5 example 尾注更新（T9 已决策
+    不建模）；m6 trace 录制参数抽 `TRACE_RECORDING_KWARGS` 常量（collector/conftest 同源）；
+    m7 `interactive_candidates` 改 `is not None`（原生成功即优先，含空结果）；Scene 注解精确化
+  - 遗留：m1 `llm/io.py` 反向依赖 `agent.dom`（分层倒置）**单独立项**（dom 工具下沉 utils/ 方向）；
+    nit 批（ab_compare 口径 / attach_file 类型 / erp_client pageSize / CI PR body 快照注释）未动
+  - 验收：ruff 0 errors + unit 293 passed + 配置双路径加载实证
 
 ## 🟡 中优先级
 

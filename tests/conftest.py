@@ -13,6 +13,7 @@ import contextlib
 
 import pytest
 
+from selfheal.collect.collector import TRACE_RECORDING_KWARGS
 from selfheal.config import Settings, load_settings
 from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.reporting.allure_bridge import (
@@ -106,7 +107,7 @@ def context(browser_manager, settings, request):
     trace_enabled = settings.browser.trace if cli is None else cli
     ctx = browser_manager.new_context()
     if trace_enabled:
-        ctx.tracing.start(screenshots=True, snapshots=True)
+        ctx.tracing.start(**TRACE_RECORDING_KWARGS)  # 与 collector 内联 trace 恢复参数同源（评审 m6）
     yield ctx
     if trace_enabled:
         trace_dir = Path(settings.browser.trace_dir)
@@ -208,6 +209,9 @@ def erp_page(settings, knowledge, context):
         _pytest.skip(f"ERP 租户凭证未配置（{sut.username_env}/{sut.password_env}）")
 
     page = HealingPage(context.new_page(), settings, knowledge=knowledge)
+    # 评审 R4（2026-09-03）：与 healing_page 同款——ERP 用例自愈记录进会话聚合
+    # （dashboard / healing-records.json / T19 通知），否则审计看板缺 ERP 数据。
+    _session_reporters.append(page.reporter)
     page.set_default_timeout(8_000)  # T23：失效定位器较快进入自愈（默认 30s 过长）
     login = ErpLoginPage(page, sut.base_url).open_login()
     login.login(username, password)
