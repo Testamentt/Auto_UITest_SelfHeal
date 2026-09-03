@@ -42,11 +42,11 @@ ruff check .          # 代码检查
 
 > 🔔 **回归通知（T19）**：main 分支回归失败时经 webhook 告警（支持钉钉/企微/Slack，`vars.NOTIFY_PROVIDER` 选格式、`secrets.WEBHOOK_URL` 配置地址，未配置自动跳过）；夜间定时回归的 cron 已预留注释（见 `.github/workflows/ci.yml`，按需取消注释启用，启用后成功也发自愈摘要）。
 
-> ✅ **核心自愈闭环已跑通**：启发式 + 语义（DeepSeek）+ 视觉（qwen3-vl-flash）多策略、SQLite 知识沉淀、弹窗处理、智能等待；真实模型已验证（见 `docs/roadmap.md`）。
+> ✅ **核心自愈闭环已跑通**：启发式 + 语义（DeepSeek）+ 视觉（qwen3-vl-plus）多策略、SQLite 知识沉淀、弹窗处理、智能等待；真实模型已验证（见 `docs/roadmap.md`）。
 
 > 📊 **自愈价值实证（T20 · 本地实测 2026-08-31）**：同一组 3 个失效场景双轮对比——**关闭自愈 0/3 通过（需人工修复 3 次）vs 开启自愈 3/3 通过（0 干预）**，自愈成本约 ¥0.09（LLM 2 次 / VLM 1 次）。复现：`python scripts/ab_compare.py`（产出 `reports/ab-compare.md`）。
 
-> 🏭 **正式被测系统：管伊佳 ERP（T23）**：自愈闭环已在真实 ERP（Vue3 + Ant Design Vue）上跑通——商品管理页面注入"前端改版"（运行时改输入框 id）→ 旧定位器失效 → 自愈重定位 → 保存落库（知识库 L1 二次命中 `confidence 1.0`）。运行：`pytest tests/e2e/test_erp_healing.py -m erp -v`（前置：`.env` 配 `ERP_UI_USERNAME/ERP_UI_PASSWORD`、ERP 前后端已启动且验证码关闭；CI 自动排除 erp 用例）。
+> 🏭 **正式被测系统：管伊佳 ERP（T23）**：自愈闭环已在真实 ERP（Vue3 + Ant Design Vue）上跑通——商品管理页面注入"前端改版"（运行时改输入框 id）→ 旧定位器失效 → 自愈重定位 → 保存落库（知识库 L1 二次命中 `confidence 1.0`）。运行：`pytest tests/e2e/test_erp_healing.py -m erp -v`（前置：`.env` 配 `ERP_USERNAME/ERP_PASSWORD`（租户账号，与 `SutConfig.username_env/password_env` 对应）、ERP 前后端已启动且验证码关闭；CI 自动排除 erp 用例）。
 
 > 🧠 **Phase 5 · 知识库语义化「越用越聪明」**：修复知识经本地确定性向量（零 API 费用）检索复用——L1 精确命中（`repair_key` 硬短路，ID 变了文本/结构不变仍命中）→ L3 语义向量检索（相似场景直接复用）。演示：`python scripts/demo_semantic_reuse.py`。
 

@@ -56,6 +56,10 @@ Vue3 + Ant Design Vue 前端 + Spring Boot 后端），替换早期自建静态�
 - **provider 无关**：所有模型调用经 `llm/base.py` 抽象 + `llm/registry.py` 注册，业务代码不直接依赖具体 SDK。
 - **策略可插拔**：修复策略继承 `strategies/base.py`，由 orchestrator 按置信度/成本调度，顺序可配置。
 - **策略短路（T1）**：某策略置信度达 `early_accept_threshold` 即采纳，不再调用后续更贵的策略（省 LLM/VLM）。
+- **置信度归一化（T5）**：`agent/confidence.py` 可插拔校准注册表（`CALIBRATORS`），各策略产出统一到
+  "采纳概率"标尺；按策略独立阈值（`strategy_thresholds` / `strategy_early_accept`）裁决，缺省回退全局。
+- **原生解析交叉校验（T8）**：`agent/dom/parser.py` 双来源（HTMLParser 静态 + Playwright 原生查询），
+  策略链经 `interactive_candidates` 优先原生候选、静态兜底；两来源口径漂移记 warning 进 Scene。
 - **护栏与隔离（2026-08-15 Code Review 加固）**：知识复用（L1/L3）均验证候选 selector 仍真实存在（失效转人审清单，不白用缓存）；单个策略内部异常不中断策略链（跳过 + 记日志）；`HealingPage.close()` / `SelfHealOrchestrator.close()` 释放自建资源（注入的资源由注入方负责）。
 - **配置集中**：`config.py` 用 pydantic 统一加载校验；密钥仅存环境变量名（`.env` 已 gitignore，绝不入库）。
 
@@ -80,16 +84,19 @@ Vue3 + Ant Design Vue 前端 + Spring Boot 后端），替换早期自建静态�
 
 ### 已落地 vs 仍规划（见 `docs/TODO.md`）
 
-**已落地（Phase 4/5）**：视频回放（Playwright Trace：`context.tracing` 录制 → `playwright show-trace` 回放，`--trace-healing` 触发）、风险控制 T13–T17（高风险页豁免 / dry-run / 修复写回人审 / flaky 区分 / 成本看板）、知识库语义化（L1 精确命中 + L3 向量检索）、**Allure 报告增强（T18，决策 D15）**：`reporting/allure_bridge.py` 轻量桥（`_HAS_ALLURE` 单点依赖探测，未装全 API no-op）——环境页（environment.properties）+ marker→标签（healing>e2e>unit 取唯一 feature）+ 证据附件（自愈记录 JSON 含 `verified_by_selector_exists`、trace zip）；CI `publish` job 合并 unit/e2e results 发布 **GitHub Pages**（gh-pages 分支，含历史趋势，仅 main 触发）。
+**已落地（Phase 4/5 + T18–T23）**：视频回放（Playwright Trace：`context.tracing` 录制 → `playwright show-trace` 回放，`--trace-healing` 触发）、风险控制 T13–T17（高风险页豁免 / dry-run / 修复写回人审 / flaky 区分 / 成本看板）、知识库语义化（L1 精确命中 + L3 向量检索）、**Allure 报告增强（T18，决策 D15）**：`reporting/allure_bridge.py` 轻量桥（`_HAS_ALLURE` 单点依赖探测，未装全 API no-op）——环境页（environment.properties）+ marker→标签（erp>healing>e2e>unit 取唯一 feature）+ 证据附件（自愈记录 JSON 含 `verified_by_selector_exists`、trace zip）；CI `publish` job 合并 unit/e2e results 发布 **GitHub Pages**（gh-pages 分支，含历史趋势，仅 main 触发）；**现场内联 trace（T11，2026-08-28）**：`SceneCollector._try_inline_trace` 在外层录制中把当前片段导出为独立现场 trace（`trace_dir/inline-trace-<uuid>.zip`，可 `playwright show-trace` 回放），填入 `Scene.trace_path` 并恢复录制，与 conftest 整用例录制互补；网络日志（C5）随现场带出（限长 200 条）；**xdist 并行兼容（T21）**：conftest 分片聚合协议（worker 分片 → controller 聚合）+ SQLite `busy_timeout`/`WAL`；**回归通知（T19）**：`scripts/notify.py` 四 provider webhook + 失败告警（定时 cron 预留未启用）；**A/B 对比演示（T20）**：`scripts/ab_compare.py` 双变体同源场景量化自愈价值；**修复建议草稿 PR（T22）**：`scripts/propose_pr.py` gh 草稿 PR + label 查重（守 T15 人审边界，绝不自动合并）。
 
-**仍规划**：
-- **trace 现场内联已落地（T11，2026-08-28）**：采集器 `SceneCollector._try_inline_trace` 在外层录制中（`--trace-healing` / `browser.trace`）把当前片段导出为独立现场 trace（`trace_dir/inline-trace-<uuid>.zip`，可 `playwright show-trace` 回放），填入 `Scene.trace_path` 并恢复录制；未录制不擅自启动（占位为空）。conftest 整用例录制（`context.tracing` → `reports/traces/trace-<test>.zip`）与现场 trace 职责互补、互不冲突。网络日志（C5）已实现：`Scene.network_logs` 随现场带出近期请求/响应（限长 200 条防膨胀）。
+**仍规划**（详见 `docs/TODO.md`「候补池 / 后续规划」）：
+- iframe / Shadow DOM 自愈评估 spike；自愈指标跨运行历史（dashboard 时间序列）；知识库运维 CLI；
+- T19 定时回归 cron（用户决策暂缓，workflow 挂点已留）；T20 A/B 实证报告与 T21 e2e `-n 2` 实跑收官。
 
 ## 已定选型与遗留 TBD
 
 **已定**：
 - LLM：DeepSeek（OpenAI 兼容端点，`deepseek-v4-flash`），key 走 `OPENAI_API_KEY`。
-- VLM：通义 `qwen3-vl-flash`（DashScope 兼容端点），key 走 `DASHSCOPE_API_KEY`；候选护栏防幻觉。
+- VLM：通义 `qwen3-vl-plus`（备选 qwen3.8-flash，2026-09-01 更新）；默认走 DashScope **公共** compatible-mode
+  端点，专属百炼 MaaS 实例端点经本机 `config/settings.yaml` 覆盖（2026-09-03 评审 R3：环境端点不入代码默认值）；
+  key 走 `DASHSCOPE_API_KEY`；候选护栏防幻觉；timeout/max_tokens 可配置（plus 响应慢需放宽）。
 - 知识库后端：SQLite（`knowledge/sqlite_store.py`），DOM 指纹 + 页面指纹（page_fingerprint）参与检索择优。
 - 知识库语义化（Phase 5 A）：本地确定性 n-gram 哈希 TF 向量（`llm/embedding.py::NgramEmbedding`，零 API 费用）+ numpy 余弦；L1 `repair_key` 精确命中 + L3 语义向量检索；`embedding_version` 含维度（如 `v1-ngram-512`，调整 dim 自动换桶防维度错配）平滑迁移；升级路径 v2 = fastembed 本地模型（如 bge-small-zh）。
 
