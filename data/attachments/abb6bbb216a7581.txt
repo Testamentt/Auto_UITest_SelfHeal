@@ -1,0 +1,1 @@
+WARNING  selfheal.knowledge.factory:factory.py:30 sqlite 知识库构建失败（path=/tmp/pytest-of-runner/pytest-0/test_factory_degrades_to_memor0/bad.db），降级 memory 后端: file is not a database
