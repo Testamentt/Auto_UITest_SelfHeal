@@ -50,6 +50,19 @@
 
 ## 🟡 中优先级
 
+### ⚠️ 踩坑记录（事故沉淀，R8.5）
+
+- **2026-09-03 · PowerShell 5.1 编码事故（CI workflow 乱码）**：
+  - 事故：用 PS5.1 `Get-Content -Raw` / `Set-Content -Encoding utf8` 往返处理无 BOM 的 UTF-8
+    `.github/workflows/ci.yml` → PS5.1 按 ANSI(GBK) 误读，**全部中文变乱码字节**（BOM 去除后仍乱），
+    推送后 CI 注解 job 名呈 GBK 乱码（"修复建议草稿 PR" → "淇寤鸿鑽夌 PR"）
+  - 修复：以安全编辑工具全量重写 ci.yml（字节级验证正确中文 / 乱码字节不存在 / 无 BOM）
+  - **教训（对所有协作者生效）**：①含中文文件禁用 PS5.1 `Get-Content`/`Set-Content`/`Out-File` 往返，
+    改用编辑工具或 `[System.Text.UTF8Encoding]::new($false)` 显式无 BOM 写出；②PS5.1 传**复杂中文
+    commit message**（含全角括号/引号嵌套）会被拆参（`fatal: Invalid path`），改用 `git commit -F <file>`；
+    ③写后必做字节级断言（如 `"目标串".encode() in data`），控制台显示编码不可信（GBK 终端显示 UTF-8 恒乱码）
+
+
 - [x] **T5 · 置信度归一化 / 按策略阈值**（P5）✅ 2026-08-28
   - 方案 C（计划确认）：`agent/confidence.py` 归一化层——`CALIBRATORS` 可插拔注册表 + `calibrate`，
     默认恒等（与 T4 后行为零回归）；`shrink_self_reported` 开启时对 LLM 自报段做 raw² 保守收缩，
