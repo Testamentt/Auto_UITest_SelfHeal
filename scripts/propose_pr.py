@@ -48,17 +48,6 @@ def load_proposals(proposals_dir: str | Path) -> list[dict[str, Any]]:
     return proposals
 
 
-def build_pr_body(proposals: list[dict[str, Any]]) -> str:
-    """建议列表 → PR body（人审 checklist 头 + 摘要表；纯函数可快照）。"""
-    lines = [
-        CHECKLIST,
-        "## 建议摘要",
-        "",
-        "| 时间 | 原定位器 | 新定位器 | 策略 | 置信度 | 验证 |",
-        "| --- | --- | --- | --- | --- | --- |",
-    ]
-
-
 def _escape(text: str) -> str:
     """转义 Markdown 表格中的竖线/换行（与 T15 fix_proposals.html_escape 同款约定；
     本地实现保持脚本零 selfheal 依赖——propose-pr CI job 不安装项目包）。"""

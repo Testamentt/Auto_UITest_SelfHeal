@@ -1,8 +1,8 @@
 # 项目路线图（Roadmap）
 
 > **活文档**：随进展同步更新，不是快照（见 `RULE.md` R5）。
-> 最后更新：2026-08-31 · 当前阶段：**T19–T22 落地并经 e2e 验证**；**T23 被测系统迁移（管伊佳 ERP）P1+P2 完成**——真实 ERP 上的自愈闭环跑通（改版注入 → 知识库 L1 命中实锤）；供应商场景下轮补
-> 关联文档：评审 `docs/reviews/2026-08-15-code-review.md`（全量审查）· 优化 TODO `docs/TODO.md`
+> 最后更新：2026-09-03 · 当前阶段：**T19–T23 完成（ERP 被测闭环跑通）+ 2026-09-03 Code Review（T5–T23 演进审查：1 Critical / 1 High / 2 Major 待修复，见 TODO「R1–R5」）**
+> 关联文档：评审 `docs/reviews/2026-09-03-code-review.md` · `docs/reviews/2026-08-15-code-review.md` · 优化 TODO `docs/TODO.md`
 
 ## 当前目标
 

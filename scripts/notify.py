@@ -49,7 +49,9 @@ def build_summary(
     total = len(records)
     success = sum(1 for r in records if r.get("success"))
     verified = sum(1 for r in records if r.get("verified"))
-    strategies = dict(Counter(str(r.get("strategy")) for r in records))
+    # 评审 m3（2026-09-03）：strategy=None（如 T13 豁免记录）不计入分布——与 metrics.compute_metrics
+    # 的 `if r.strategy:` 口径对齐，避免通知里出现 "None" 键。
+    strategies = dict(Counter(r["strategy"] for r in records if r.get("strategy")))
     return {
         "conclusion": conclusion,
         "run_url": run_url,

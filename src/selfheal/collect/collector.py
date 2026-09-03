@@ -24,6 +24,7 @@ from uuid import uuid4
 
 from selfheal.agent.dom import (
     CrossCheck,
+    Element,
     cross_validate_interactive,
     parse_interactive_elements,
     parse_interactive_elements_native,
@@ -37,6 +38,10 @@ logger = logging.getLogger(__name__)
 # 网络日志缓存上限（页面加载请求较多，防内存膨胀）
 _NETWORK_LOG_LIMIT = 200
 
+# trace 录制参数（T11）：内联 trace 恢复录制与 conftest context fixture 的 tracing.start
+# 必须同参数（评审 m6：两处硬编码会漂移）——改动任一侧需同步另一侧（或都改用本常量）。
+TRACE_RECORDING_KWARGS: dict = {"screenshots": True, "snapshots": True}
+
 
 @dataclass
 class Scene:
@@ -48,7 +53,7 @@ class Scene:
     network_logs: list[dict] = field(default_factory=list)
     trace_path: str | None = None
     # T8：Playwright 原生解析的可交互候选 + 与静态解析的交叉校验结果（page 可用时填充，否则 None）
-    native_elements: list | None = None
+    native_elements: list[Element] | None = None
     dom_cross_check: CrossCheck | None = None
 
 
@@ -139,10 +144,10 @@ class SceneCollector:
                 exc_info=True,
             )
             return None
-        # stop 成功：现场 trace 已保存；尽力恢复外层录制（与 conftest 同参数），
-        # 恢复失败不丢已保存的现场 trace（仅整用例 trace 后半段缺失，不阻塞）
+        # stop 成功：现场 trace 已保存；尽力恢复外层录制（参数与 conftest 同源，见
+        # TRACE_RECORDING_KWARGS），恢复失败不丢已保存的现场 trace（仅整用例 trace 后半段缺失）
         try:
-            tracing.start(screenshots=True, snapshots=True)
+            tracing.start(**TRACE_RECORDING_KWARGS)
         except Exception:  # noqa: BLE001 - 恢复录制失败不阻塞
             logger.warning("恢复整用例 trace 录制失败（现场 trace 已单独保存）", exc_info=True)
         return str(path)
