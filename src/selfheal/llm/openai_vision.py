@@ -8,6 +8,7 @@ openai SDK 惰性导入，缺失时抛 UnavailableError，由上层优雅降级�
 from __future__ import annotations
 
 import base64
+import contextlib
 from typing import Any
 
 from selfheal.llm._exceptions import UnavailableError
@@ -81,6 +82,15 @@ class OpenAICompatibleVLM(VisionClient):
         if content is None:
             raise UnavailableError("模型返回了空内容")
         return content
+
+    def close(self) -> None:
+        """幂等释放底层 client（V5 复核：与 OpenAICompatibleLLM 对齐——orchestrator.close()
+        的 _safe_close 对 VLM 不再是静默 no-op，httpx/openai 连接池随自愈收口释放）。"""
+        if self._client is not None:
+            # 释放失败不掩盖业务异常（suppress 等价于 try-except-pass）
+            with contextlib.suppress(Exception):
+                self._client.close()
+            self._client = None
 
 
 @register_vision("openai")

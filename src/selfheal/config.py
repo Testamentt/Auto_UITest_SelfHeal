@@ -24,7 +24,18 @@ except ImportError:  # pragma: no cover - 取决于是否安装 python-dotenv
     pass
 
 
-class BrowserConfig(BaseModel):
+class _StrictModel(BaseModel):
+    """配置模型基类：extra='forbid'（V4 复核：由顶层下发到全部子模型）。
+
+    此前只有顶层 Settings 拒绝未建模字段，嵌套段（如 healing:）里拼错/多余的键
+    被 pydantic 默认静默丢弃（extra='ignore'）——恰是"死配置"漂移的温床（如
+    dry_run 安全开关拼错后静默失效）。统一基类后，任何层级出现未建模键都在加载期报错。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class BrowserConfig(_StrictModel):
     """浏览器配置。
 
     - channel: 传给 launch 的浏览器渠道。"chrome" 使用系统已装的 Chrome（无需下载 Chromium），
@@ -41,7 +52,7 @@ class BrowserConfig(BaseModel):
     trace_dir: str = "reports/traces"
 
 
-class LLMConfig(BaseModel):
+class LLMConfig(_StrictModel):
     """LLM 配置。
 
     - enabled: 模型能力总开关。False 或缺少 API key 时，诊断退回规则式、语义策略被跳过（等价 Phase 1）。
@@ -57,7 +68,7 @@ class LLMConfig(BaseModel):
     temperature: float = 0.0
 
 
-class ActionWaitConfig(BaseModel):
+class ActionWaitConfig(_StrictModel):
     """动作前置智能等待（T6）。
 
     - enabled: 动作（click/fill 等 HEALABLE）执行前是否先做一次短稳等待。
@@ -72,7 +83,7 @@ class ActionWaitConfig(BaseModel):
     stable_ms: int = 300
 
 
-class HealingConfig(BaseModel):
+class HealingConfig(_StrictModel):
     """自愈行为配置。
 
     - enabled: 插件总开关。False 时 HealingPage 透传为原生行为，不触发任何修复。
@@ -122,7 +133,13 @@ class HealingConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_thresholds(self) -> HealingConfig:
-        """阈值层级约束：early_accept > confidence、llm_diagnose > confidence、按策略同构（防配置倒挂）。"""
+        """阈值层级约束：值域 [0,1]、early_accept > confidence、llm_diagnose > confidence、按策略同构（防配置倒挂）。"""
+        # V4 复核：全局三阈值补 [0,1] 值域校验——confidence_threshold 配成负数会使所有
+        # 候选（含 0 置信度垃圾修复）被无条件采纳，>1 则自愈永不采纳，均为静默错误门控。
+        for name in ("confidence_threshold", "early_accept_threshold", "llm_diagnose_threshold"):
+            value = getattr(self, name)
+            if not (0.0 <= value <= 1.0):
+                raise ValueError(f"{name} 超出 [0, 1] 值域: {value}")
         if self.early_accept_threshold <= self.confidence_threshold:
             raise ValueError("early_accept_threshold 应 > confidence_threshold")
         if self.llm_diagnose_threshold <= self.confidence_threshold:
@@ -143,7 +160,7 @@ class HealingConfig(BaseModel):
         return self
 
 
-class KnowledgeConfig(BaseModel):
+class KnowledgeConfig(_StrictModel):
     """知识库配置。
 
     - backend: memory=进程内（测试/临时）；sqlite=持久化（默认，重启后仍可命中复用）。
@@ -154,7 +171,7 @@ class KnowledgeConfig(BaseModel):
     path: str = ".cache/knowledge.db"
 
 
-class VisionConfig(BaseModel):
+class VisionConfig(_StrictModel):
     """视觉模型配置（VLM）。
 
     model=qwen3-vl-plus（备选 qwen3.8-flash，2026-09-01 用户确认）；key 从 api_key_env
@@ -174,7 +191,7 @@ class VisionConfig(BaseModel):
     max_tokens: int = 1000
 
 
-class EmbeddingConfig(BaseModel):
+class EmbeddingConfig(_StrictModel):
     """Embedding 配置（知识库语义化 A）。
 
     - method: ngram=本地确定性向量（v1，零网络/零费用/<10ms）；fastembed=本地模型（v2，见文档）。
@@ -185,8 +202,15 @@ class EmbeddingConfig(BaseModel):
     method: str = "ngram"
     dim: int = 512
 
+    @model_validator(mode="after")
+    def _validate_dim(self) -> EmbeddingConfig:
+        """dim 必须为正整数（V4 复核）：0 在 NgramEmbedding 取模处除零崩溃，负数产生负索引错向量。"""
+        if self.dim < 1:
+            raise ValueError(f"embedding.dim 必须为正整数: {self.dim}")
+        return self
 
-class SutConfig(BaseModel):
+
+class SutConfig(_StrictModel):
     """被测系统（system under test）配置（T23：管伊佳 ERP 迁移）。
 
     - base_url: 前端地址（UI 自动化打开的入口，jshERP 前端独立部署于 3001 端口）。
@@ -210,7 +234,7 @@ class SutConfig(BaseModel):
     password_env: str = "ERP_PASSWORD"
 
 
-class Settings(BaseModel):
+class Settings(_StrictModel):
     """顶层配置模型。
 
     extra='forbid'（#16/T9）：yaml 里有但 Settings 未建模的字段会在加载期报错，
@@ -218,8 +242,7 @@ class Settings(BaseModel):
     决策**不建模**（无对应运行时需求），配置示例中也不得出现相关键。
     """
 
-    model_config = ConfigDict(extra="forbid")
-
+    # extra='forbid' 继承自 _StrictModel（#16/T9 → V4 复核全层下发）
     browser: BrowserConfig = BrowserConfig()
     llm: LLMConfig = LLMConfig()
     healing: HealingConfig = HealingConfig()
