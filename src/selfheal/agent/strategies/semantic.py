@@ -14,13 +14,14 @@ Phase 5 A 语义化后，本策略成为调度链的 **L3 语义向量检索**�
 
 from __future__ import annotations
 
-import contextlib
+import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
 
 from selfheal.agent.confidence import KEY_SEMANTIC_L3, KEY_SEMANTIC_LLM, calibrate
 from selfheal.agent.dom import (
     ElementContext,
+    build_compact_dom,
     build_stable_selector,
     interactive_candidates,
 )
@@ -29,13 +30,15 @@ from selfheal.collect.collector import Scene
 from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.llm.base import ChatMessage, LLMClient
 from selfheal.llm.embedding import EmbeddingClient
-from selfheal.llm.io import build_compact_dom, extract_json, safe_float, safe_str
+from selfheal.llm.io import extract_json, safe_float, safe_str
 
 # L3 语义检索：最低相似度 / 自动采纳阈值 / 新鲜窗口
 L3_MIN_SIM = 0.75
 L3_VERIFIED_SIM = 0.92
 L3_FRESH_SIM = 0.80
 L3_FRESH_DAYS = 7
+
+logger = logging.getLogger(__name__)
 
 _PROMPT_TEMPLATE = """你是 Web UI 自动化测试专家。原定位器已失效，请根据描述在页面中重新定位目标元素。
 已失效的原始选择器: {selector}
@@ -156,9 +159,11 @@ class SemanticStrategy(RepairStrategy):
         )
 
     def _bump(self, case) -> None:
-        """命中递增（热度 / 衰减用）；失败不阻塞采纳。"""
-        with contextlib.suppress(Exception):
+        """命中递增（热度 / 衰减用）；失败记 warning 不阻塞采纳（V5 复核：不再静默吞错）。"""
+        try:
             self._knowledge.bump_hit(case.repair_key)
+        except Exception:  # noqa: BLE001 - 热度更新失败不影响已成功的采纳
+            logger.warning("知识热度更新失败（repair_key=%s）", case.repair_key, exc_info=True)
 
     def _llm_semantic(
         self, scene: Scene, original_selector: str, description: str | None = None

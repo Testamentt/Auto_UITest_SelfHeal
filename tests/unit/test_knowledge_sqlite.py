@@ -1,5 +1,8 @@
 """单元测试：知识库 SQLite 持久化 + DOM 指纹 + 工厂（不依赖浏览器）。"""
 
+import logging
+import sqlite3
+
 import pytest
 
 from selfheal.agent.dom import dom_fingerprint
@@ -119,3 +122,110 @@ def test_dom_fingerprint_stable_and_distinct():
     assert fa != fb  # 不同结构指纹不同
     assert dom_fingerprint(None) is None
     assert dom_fingerprint("<html><body><div>text</div></body></html>") is None
+
+
+# --- 2026-09-03 子代理复核（V5）修复点回归 ---
+
+
+def test_add_repair_preserves_verified_on_upsert(tmp_path):
+    """V5 复核：再次沉淀同一 (原,新,指纹) 不覆盖人工审核标记 is_verified。"""
+    store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
+    case = RepairCase(
+        original_selector="#old",
+        new_selector='[data-testid="x"]',
+        strategy="heuristic",
+        confidence=0.9,
+        page_url="file:///demo",
+        dom_fingerprint="fp",
+        repair_key="rk-1",
+    )
+    store.add_repair(case)
+    store.set_verified("rk-1", True)
+    store.add_repair(case)  # 再次沉淀（新案例 is_verified 默认 False）
+    found = store.find_by_repair_key("rk-1")
+    assert found is not None and found.is_verified is True  # 人审标记保留
+    store.close()
+
+
+def test_legacy_db_missing_columns_migrated(tmp_path):
+    """V5 复核：Phase 5 A 前的旧库（缺语义化列）打开时自动补列，不炸、旧数据保留。"""
+    db = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE repairs (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " original_selector TEXT NOT NULL, new_selector TEXT NOT NULL)"
+    )
+    conn.execute("INSERT INTO repairs (original_selector, new_selector) VALUES ('#old', '#new')")
+    conn.execute(
+        "CREATE TABLE popups (id INTEGER PRIMARY KEY AUTOINCREMENT, signature TEXT NOT NULL)"
+    )
+    conn.execute("INSERT INTO popups (signature) VALUES ('sig')")
+    conn.commit()
+    conn.close()
+
+    store = SqliteKnowledgeStore(str(db))
+    assert store.count_repairs() == 1
+    found = store.find_repair("#old")
+    assert found is not None and found.new_selector == "#new"
+    assert found.hit_count == 0  # 补列默认值生效
+    assert store.find_popup("sig") is not None  # popups 补列后可读
+    store.add_popup(PopupFeature(signature="sig", dismiss_selector="#ok"))  # upsert 不炸
+    assert store.count_popups() == 1
+    store.close()
+
+
+def test_legacy_duplicate_rows_deduped_on_migrate(tmp_path):
+    """V5 复核：旧库历史重复行在建唯一索引前清除（repairs 同键、popups 同签名）。"""
+    db = tmp_path / "dup.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE repairs (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " original_selector TEXT NOT NULL, new_selector TEXT NOT NULL, dom_fingerprint TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO repairs (original_selector, new_selector, dom_fingerprint)"
+        " VALUES ('#a', '#n1', 'fp')"
+    )
+    conn.execute(
+        "INSERT INTO repairs (original_selector, new_selector, dom_fingerprint)"
+        " VALUES ('#a', '#n1', 'fp')"
+    )
+    conn.execute(
+        "INSERT INTO repairs (original_selector, new_selector, dom_fingerprint)"
+        " VALUES ('#a', '#n2', 'fp')"
+    )
+    conn.execute(
+        "CREATE TABLE popups (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " signature TEXT NOT NULL, dismiss_selector TEXT NOT NULL)"
+    )
+    conn.execute("INSERT INTO popups (signature, dismiss_selector) VALUES ('s', '#x1')")
+    conn.execute("INSERT INTO popups (signature, dismiss_selector) VALUES ('s', '#x2')")
+    conn.commit()
+    conn.close()
+
+    store = SqliteKnowledgeStore(str(db))
+    assert store.count_repairs() == 2  # 同键重复行清 1，不同 new_selector 保留
+    assert store.count_popups() == 1
+    store.close()
+
+
+def test_add_popup_upsert_latest_wins(tmp_path):
+    """V5 复核：同 signature 弹窗 upsert（最新观察胜出），复现弹窗不再无界追加。"""
+    store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
+    store.add_popup(PopupFeature(signature="cookie", dismiss_selector="#c1"))
+    store.add_popup(PopupFeature(signature="cookie", dismiss_selector="#c2"))
+    assert store.count_popups() == 1
+    assert store.find_popup("cookie").dismiss_selector == "#c2"
+    store.close()
+
+
+def test_factory_degrades_to_memory_when_sqlite_broken(tmp_path, caplog):
+    """V5 复核：sqlite 库文件损坏 → 记 warning 并降级 memory 后端，不炸 fixture。"""
+    bad = tmp_path / "bad.db"
+    bad.write_bytes(b"not a sqlite database at all")
+    settings = Settings()
+    settings.knowledge.backend = "sqlite"
+    settings.knowledge.path = str(bad)
+    with caplog.at_level(logging.WARNING):
+        store = build_knowledge_store(settings)
+    assert isinstance(store, KnowledgeStore)

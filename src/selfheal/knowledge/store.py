@@ -20,6 +20,11 @@ class KnowledgeStore:
         self._repairs.append(case)
 
     def add_popup(self, feature: PopupFeature) -> None:
+        """按 signature upsert（V5 复核：与 SQLite 后端语义对齐，已存在则更新为最新观察）。"""
+        for idx, existing in enumerate(self._popups):
+            if existing.signature == feature.signature:
+                self._popups[idx] = feature
+                return
         self._popups.append(feature)
 
     def find_repair(self, original_selector: str, dom_fingerprint: str | None = None):

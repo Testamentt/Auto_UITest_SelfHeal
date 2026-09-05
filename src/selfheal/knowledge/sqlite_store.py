@@ -9,10 +9,13 @@ Phase 5 A 语义化：
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from pathlib import Path
 
 from selfheal.knowledge.schema import PopupFeature, RepairCase, RepairQuery
+
+logger = logging.getLogger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS repairs (
@@ -32,6 +35,16 @@ CREATE TABLE IF NOT EXISTS repairs (
     is_verified INTEGER DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS popups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    signature TEXT NOT NULL,
+    dismiss_selector TEXT NOT NULL,
+    category TEXT DEFAULT 'generic'
+);
+"""
+
+# 索引在迁移之后统一创建：旧库缺列时 CREATE INDEX 会直接抛 OperationalError（V5 复核）
+_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_repairs_selector ON repairs(original_selector);
 CREATE INDEX IF NOT EXISTS idx_repairs_key ON repairs(repair_key);
 CREATE INDEX IF NOT EXISTS idx_repairs_semantic
@@ -39,14 +52,65 @@ CREATE INDEX IF NOT EXISTS idx_repairs_semantic
 -- #10：同 (原选择器, 新选择器, 指纹) 去重，避免记录无界增长
 CREATE UNIQUE INDEX IF NOT EXISTS idx_repairs_unique
     ON repairs(original_selector, new_selector, dom_fingerprint);
-CREATE TABLE IF NOT EXISTS popups (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    signature TEXT NOT NULL,
-    dismiss_selector TEXT NOT NULL,
-    category TEXT DEFAULT 'generic'
-);
-CREATE INDEX IF NOT EXISTS idx_popups_signature ON popups(signature);
+-- V5 复核：signature 唯一（add_popup 走 upsert），复现弹窗不再无界追加重复行
+CREATE UNIQUE INDEX IF NOT EXISTS idx_popups_signature ON popups(signature);
 """
+
+# V5 复核：旧库平滑迁移——Phase 5 A 前创建的持久库缺列时逐列补齐（ALTER TABLE ADD COLUMN），
+# 而不是让建索引直接炸掉整个会话（fixture 阶段报错且无降级）。补列后旧数据原样保留。
+_REPAIR_COLUMNS: dict[str, str] = {
+    "strategy": "TEXT",
+    "confidence": "REAL",
+    "page_url": "TEXT",
+    "dom_fingerprint": "TEXT",
+    "page_fingerprint": "TEXT",
+    "repair_key": "TEXT",
+    "embedding": "BLOB",
+    "embedding_version": "TEXT",
+    "hit_count": "INTEGER DEFAULT 0",
+    "last_hit_at": "TEXT",
+    "is_verified": "INTEGER DEFAULT 0",
+    "created_at": "TEXT",
+}
+_POPUP_COLUMNS: dict[str, str] = {
+    "dismiss_selector": "TEXT",
+    "category": "TEXT DEFAULT 'generic'",
+}
+
+
+def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """读表现有列名（PRAGMA table_info）。"""
+    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _migrate_legacy_tables(conn: sqlite3.Connection) -> list[str]:
+    """旧库缺列补齐；返回实际补上的列（table.column），供日志/测试断言。"""
+    added: list[str] = []
+    for table, wanted in (("repairs", _REPAIR_COLUMNS), ("popups", _POPUP_COLUMNS)):
+        existing = _existing_columns(conn, table)
+        for name, decl in wanted.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+                added.append(f"{table}.{name}")
+    return added
+
+
+def _dedupe_legacy_rows(conn: sqlite3.Connection) -> int:
+    """建 UNIQUE 索引前清除历史重复行（保留最小 rowid）；返回清除的行数。
+
+    仅历史库需要：新库写入路径本身按唯一键 upsert，不会产生重复行。
+    """
+    removed = 0
+    for table, keys in (
+        ("repairs", "original_selector, new_selector, dom_fingerprint"),
+        ("popups", "signature"),
+    ):
+        cur = conn.execute(
+            f"DELETE FROM {table} WHERE rowid NOT IN"
+            f" (SELECT MIN(rowid) FROM {table} GROUP BY {keys})"
+        )
+        removed += max(cur.rowcount, 0)
+    return removed
 
 
 class SqliteKnowledgeStore:
@@ -63,7 +127,19 @@ class SqliteKnowledgeStore:
         self._conn.execute("PRAGMA busy_timeout = 30000")
         self._conn.execute("PRAGMA journal_mode = WAL")
         self._conn.executescript(_SCHEMA)
+        # V5 复核：先迁移（补列 + 清历史重复行），再建索引——顺序反了旧库直接 OperationalError
+        added = _migrate_legacy_tables(self._conn)
+        deduped = _dedupe_legacy_rows(self._conn)
+        # 旧库的 idx_popups_signature 可能是非唯一索引：先删再建（幂等），
+        # 否则 add_popup 的 ON CONFLICT(signature) 找不到唯一约束会运行时报错。
+        self._conn.execute("DROP INDEX IF EXISTS idx_popups_signature")
+        self._conn.executescript(_INDEXES)
         self._conn.commit()
+        if added or deduped:
+            # R4：迁移不是静默行为，留下审计日志（补了哪些列、清了几行重复）
+            logger.warning(
+                "知识库 schema 迁移完成 path=%s 补列=%s 去重行=%s", path, added or "无", deduped
+            )
 
     def add_repair(self, case: RepairCase) -> None:
         # #10 upsert：同 (原,新,指纹) 已存在则更新，不重复插入。
@@ -76,10 +152,12 @@ class SqliteKnowledgeStore:
             "  page_fingerprint, repair_key, embedding, embedding_version, is_verified)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT(original_selector, new_selector, dom_fingerprint)"
+            # V5 复核：is_verified 刻意不进 DO UPDATE 列——再次沉淀不覆盖人工审核标记，
+            # 否则 L3 防污染自动采纳（sim>0.92 且 is_verified）依赖的信任状态被静默清除。
             " DO UPDATE SET strategy=excluded.strategy, confidence=excluded.confidence,"
             "               page_url=excluded.page_url, page_fingerprint=excluded.page_fingerprint,"
             "               repair_key=excluded.repair_key, embedding=excluded.embedding,"
-            "               embedding_version=excluded.embedding_version, is_verified=excluded.is_verified",
+            "               embedding_version=excluded.embedding_version",
             (
                 case.original_selector,
                 case.new_selector,
@@ -97,8 +175,14 @@ class SqliteKnowledgeStore:
         self._conn.commit()
 
     def add_popup(self, feature: PopupFeature) -> None:
+        """V5 复核：按 signature upsert——复现弹窗每次成功关闭不再无界追加重复行。
+
+        最新观察胜出（站点改版后关闭定位器随之更新）；依赖 idx_popups_signature 唯一索引。
+        """
         self._conn.execute(
-            "INSERT INTO popups (signature, dismiss_selector, category) VALUES (?, ?, ?)",
+            "INSERT INTO popups (signature, dismiss_selector, category) VALUES (?, ?, ?)"
+            " ON CONFLICT(signature) DO UPDATE SET"
+            " dismiss_selector=excluded.dismiss_selector, category=excluded.category",
             (feature.signature, feature.dismiss_selector, feature.category),
         )
         self._conn.commit()

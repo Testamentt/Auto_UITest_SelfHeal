@@ -2,7 +2,10 @@
 
 > **修复状态：✅ 已全部修复（2026-09-03 同日）**——C1（example 移位）/ H1（删残片）/ M1（默认值
 > 外移 + 本地 settings.yaml 承载专属端点）/ M2（erp_page 登记聚合）/ m2–m7+nit 批；m1（llm/io.py
-> 分层倒置）单独立项未动。验收：ruff 0 errors、unit 293 passed、example 与 load_settings 双路径实证。
+> 分层倒置）亦于同日子代理复核轮修复（`build_compact_dom` 上移 `agent/dom/compact.py`）。
+> 验收：ruff 0 errors、unit 312 passed（含复核加固 +19 回归）、example 与 load_settings 双路径实证。
+> 独立复核：5 个子代理（opencode-custom/glm-5.3-flash）确认 10 项结论全部成立，fresh-eyes 新增
+> 12 条发现（0 high / 4 medium / 8 low）已全部修复——清单见 `docs/TODO.md` 复核加固节。
 
 > 审查范围：自上轮审查（`2026-08-15-code-review.md`，提交 2d65417）以来的全部演进——
 > 24 个提交、82 文件（+4,501/−289）：T5–T12 收官、T18–T23 新特性（Allure 桥 / 通知 / A/B 对比 /

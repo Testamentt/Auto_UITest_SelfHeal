@@ -44,9 +44,51 @@
     m4 agent/llm_io.py 兼容壳按 R3 回收删除（grep 确认无引用）；m5 example 尾注更新（T9 已决策
     不建模）；m6 trace 录制参数抽 `TRACE_RECORDING_KWARGS` 常量（collector/conftest 同源）；
     m7 `interactive_candidates` 改 `is not None`（原生成功即优先，含空结果）；Scene 注解精确化
-  - 遗留：m1 `llm/io.py` 反向依赖 `agent.dom`（分层倒置）**单独立项**（dom 工具下沉 utils/ 方向）；
-    nit 批（ab_compare 口径 / attach_file 类型 / erp_client pageSize / CI PR body 快照注释）未动
+  - 遗留：m1 已于同日子代理复核轮修复（`build_compact_dom` 上移 `agent/dom/compact.py`，
+    见下节 V5-⑪）；nit 批（ab_compare 口径 / attach_file 类型 / erp_client pageSize /
+    CI PR body 快照注释）未动
   - 验收：ruff 0 errors + unit 293 passed + 配置双路径加载实证
+
+## 🟠 2026-09-03 子代理复核加固项 ✅ 全部修复（2026-09-03 同日）
+
+> 背景：两轮 review 完成后，以 5 个子代理（opencode-custom/glm-5.3-flash）对全部修复做独立复核
+> （V1–V5），10 项结论全部 confirmed；fresh-eyes 扫描新增 12 条发现（0 high / 4 medium / 8 low）。
+> 本轮全部修复：**ruff 0 errors、unit 312 passed（+19 回归测试）**。
+
+- [x] **V4-① 嵌套配置模型未设 extra='forbid'**（Medium）✅
+  - 只有顶层 Settings 拒绝未建模字段，healing: 等嵌套段拼错键被静默丢弃（dry_run 类安全
+    开关静默失效）→ 新增 `_StrictModel` 基类下发全部 8 个子模型；
+    回归：`test_config_strict.py`（example 可加载 / 嵌套未知键拒绝）
+- [x] **V4-② 全局阈值无 [0,1] 值域校验**（Medium）✅
+  - `confidence_threshold` 配负数=无条件全采纳垃圾修复、>1=自愈永不采纳 →
+    `_validate_thresholds` 补三全局阈值值域校验；回归：`test_config_strict.py`
+- [x] **V4-③ `embedding.dim` 无正整数校验**（Low）✅
+  - dim=0 在 NgramEmbedding 取模处除零崩溃、负数产生负索引错向量 → 加载期拒绝
+- [x] **V4-④ orchestrator 构造失败泄漏已建资源**（Low）✅
+  - `__init__` 包 try/except：失败即 `close()` 已建自有资源再原样上抛；注入资源不代关；
+    回归：`test_review_hardening.py`（自有清理 / 注入不代关）
+- [x] **V4-⑤ 豁免审计记录虚增"真自愈"指标**（Low）✅
+  - 高风险页豁免 HealingRecord 补 `verified=False`（豁免不是修复）
+- [x] **V4-⑥ `_safe_close` 零日志吞关闭失败**（Low）✅
+  - 失败记 warning（best-effort 语义不变，关闭故障不再完全不可见）
+- [x] **V5-⑦ sqlite 旧库无 schema 迁移，fixture 直接炸**（Medium）✅
+  - `PRAGMA table_info` 探测缺列 → `ALTER TABLE ADD COLUMN` 补齐 + 历史重复行去重
+    （建唯一索引前）+ 迁移审计日志；`build_knowledge_store` 对 `sqlite3.Error` 降级
+    memory 后端（warning，不炸会话）；
+    回归：`test_knowledge_sqlite.py`（旧库补列 / 重复行清理 / 坏库降级）
+- [x] **V5-⑧ add_repair upsert 覆盖人审 is_verified**（Low）✅
+  - DO UPDATE 列剔除 is_verified：再次沉淀不覆盖 `set_verified(True)`（L3 防污染
+    自动采纳 sim>0.92 且 is_verified 依赖该信任状态）；回归：preserves_verified 用例
+- [x] **V5-⑨ add_popup 无去重无界增长**（Low）✅
+  - signature 唯一索引 + upsert（最新观察胜出；旧库先删非唯一同名索引再建，
+    保证 ON CONFLICT(signature) 生效）；memory 后端语义对齐
+- [x] **V5-⑩ OpenAICompatibleVLM 缺 close()**（Low）✅
+  - 补幂等 close（与 OpenAICompatibleLLM 对齐），orchestrator.close() 对 VLM 不再静默 no-op
+- [x] **V5-⑪ m1 `llm/io.py` 反向依赖 `agent.dom`（分层倒置，上轮遗留立项）**（Medium）✅
+  - `build_compact_dom` 上移 `agent/dom/compact.py`（llm/ 只留纯 I/O 编解码）；
+    `test_layering.py` 静态守卫固化"llm/、knowledge/ 禁止 import selfheal.agent"
+- [x] **V5-⑫ `semantic._bump` 静默吞错**（Low）✅
+  - suppress → except + warning 日志（R4"不静默吞错"对齐），失败仍不阻塞采纳
 
 ## 🟡 中优先级
 
