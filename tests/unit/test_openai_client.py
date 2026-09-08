@@ -72,3 +72,64 @@ def test_factory_registered():
 
     client = get_llm("openai", api_key="sk-test", model="m")
     assert isinstance(client, OpenAICompatibleLLM)
+
+
+# --- M1（2026-10-08 审查）：异常分级 + 显式重试 ---
+
+
+def test_client_passes_explicit_max_retries(monkeypatch):
+    """M1：重试次数显式传给 SDK，不再静默继承默认值。"""
+    captured = {}
+
+    class _FakeOpenAI:
+        def __init__(self, **kw):
+            captured.update(kw)
+
+    import sys
+    import types
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=_FakeOpenAI))
+    OpenAICompatibleLLM(api_key="sk-test", model="m", max_retries=0, timeout_s=9.0)._ensure_client()
+    assert captured["max_retries"] == 0
+    assert captured["timeout"] == 9.0
+
+
+def test_auth_error_is_fatal_and_reports_where(monkeypatch):
+    """M1：401 归为 Fatal（重试无用），信息带 provider/model/端点主机且不含密钥。"""
+    from selfheal.llm._exceptions import FatalUnavailableError
+
+    class AuthenticationError(Exception):
+        status_code = 401
+
+    def _create(**kw):
+        raise AuthenticationError("bad key")
+
+    _inject_fake_openai(monkeypatch, _create)
+    client = OpenAICompatibleLLM(
+        api_key="sk-secret", model="m", base_url="https://api.example.com/v1", provider="openai"
+    )
+    with pytest.raises(FatalUnavailableError) as excinfo:
+        client.chat([ChatMessage("user", "hi")])
+    message = str(excinfo.value)
+    assert "api.example.com" in message and "model='m'" in message
+    assert "sk-secret" not in message
+
+
+def test_timeout_error_is_transient(monkeypatch):
+    from selfheal.llm._exceptions import TransientUnavailableError
+
+    class APITimeoutError(Exception):
+        status_code = 408
+
+    _inject_fake_openai(monkeypatch, lambda **kw: (_ for _ in ()).throw(APITimeoutError("slow")))
+    client = OpenAICompatibleLLM(api_key="sk-test", model="m")
+    with pytest.raises(TransientUnavailableError):
+        client.chat([ChatMessage("user", "hi")])
+
+
+def test_unknown_error_stays_base_class(monkeypatch):
+    """未归类异常仍抛 UnavailableError 基类：既有 `except UnavailableError` 契约不破。"""
+    _inject_fake_openai(monkeypatch, lambda **kw: (_ for _ in ()).throw(KeyError("odd")))
+    client = OpenAICompatibleLLM(api_key="sk-test", model="m")
+    with pytest.raises(UnavailableError):
+        client.chat([ChatMessage("user", "hi")])
