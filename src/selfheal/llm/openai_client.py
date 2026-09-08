@@ -6,6 +6,12 @@ OpenAI 兼容接口，provider 切换只改配置、不改代码。
 关键设计：openai SDK 在 chat() 内**惰性导入**——本模块顶层不依赖 openai，
 未安装该包的纯逻辑环境（如 CI 单测）也能 import；SDK 缺失时抛 UnavailableError，
 由上层（诊断 / 语义策略）捕获后优雅降级。
+
+2026-10-08 审查修复：
+- M1：异常按可恢复性分级（见 llm/_exceptions.py），错误信息带 provider/model/端点主机；
+  `max_retries` 显式设置并可配置（此前静默继承 SDK 默认 2，一次失败最多 3 次付费调用）。
+- H3：`timeout_s` / `max_tokens` / `max_retries` 由 config.LLMConfig 透传（此前写死在签名里，
+  且 `extra='forbid'` 让用户无法在 llm: 段配置它们）。
 """
 
 from __future__ import annotations
@@ -14,7 +20,7 @@ import contextlib
 import os
 from typing import Any
 
-from selfheal.llm._exceptions import UnavailableError
+from selfheal.llm._exceptions import UnavailableError, classify_sdk_error
 from selfheal.llm.base import ChatMessage, LLMClient
 from selfheal.llm.registry import register_llm
 
@@ -37,6 +43,8 @@ class OpenAICompatibleLLM(LLMClient):
         temperature: float = 0.0,
         timeout_s: float = 15.0,
         max_tokens: int = 2000,
+        max_retries: int = 2,
+        provider: str = "openai",
     ):
         self._api_key = api_key
         self._model = model
@@ -44,6 +52,8 @@ class OpenAICompatibleLLM(LLMClient):
         self._temperature = temperature
         self._timeout_s = timeout_s
         self._max_tokens = max_tokens
+        self._max_retries = max_retries
+        self._provider = provider
         self._client: Any | None = None
 
     def _ensure_client(self) -> Any:
@@ -53,7 +63,12 @@ class OpenAICompatibleLLM(LLMClient):
                 from openai import OpenAI  # 惰性导入：避免顶层强依赖
             except ImportError as exc:
                 raise UnavailableError("未安装 openai 包，无法使用 LLM 能力") from exc
-            kwargs: dict[str, Any] = {"api_key": self._api_key, "timeout": self._timeout_s}
+            kwargs: dict[str, Any] = {
+                "api_key": self._api_key,
+                "timeout": self._timeout_s,
+                # 显式重试策略：不写死依赖 SDK 默认值（审查 M1：默认重试不可见也不可控）
+                "max_retries": self._max_retries,
+            }
             if self._base_url:
                 kwargs["base_url"] = self._base_url
             self._client = OpenAI(**kwargs)
@@ -64,6 +79,7 @@ class OpenAICompatibleLLM(LLMClient):
 
         #11 降级契约收敛：SDK 调用统一捕获并转抛 UnavailableError（from exc 保留原因），
         调用方只需捕获 UnavailableError 即可完成降级，不依赖裸 except Exception。
+        M1：转抛的是**分级**子类（Fatal / Transient），信息含 provider/model/端点主机。
         """
         client = self._ensure_client()
         try:
@@ -76,7 +92,9 @@ class OpenAICompatibleLLM(LLMClient):
         except UnavailableError:
             raise
         except Exception as exc:  # noqa: BLE001 - SDK 网络/鉴权/限流异常归一化
-            raise UnavailableError(f"模型调用失败: {type(exc).__name__}") from exc
+            raise classify_sdk_error(
+                exc, provider=self._provider, model=self._model, base_url=self._base_url
+            ) from exc
         if not resp.choices:
             raise UnavailableError("模型返回了空 choices")
         content = resp.choices[0].message.content
