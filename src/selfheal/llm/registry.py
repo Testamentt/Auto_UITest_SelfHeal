@@ -43,3 +43,13 @@ def get_vision(name: str, **kwargs) -> VisionClient:
     if name not in _VISION_FACTORIES:
         raise KeyError(f"未注册的 Vision provider: {name}（可用: {list(_VISION_FACTORIES)}）")
     return _VISION_FACTORIES[name](**kwargs)
+
+
+def llm_provider_names() -> list[str]:
+    """已注册的 LLM provider 名（供工厂做"配置笔误"预检，避免用 KeyError 做控制流）。"""
+    return list(_LLM_FACTORIES)
+
+
+def vision_provider_names() -> list[str]:
+    """已注册的 VLM provider 名。"""
+    return list(_VISION_FACTORIES)
