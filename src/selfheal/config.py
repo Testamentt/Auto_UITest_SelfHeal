@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "settings.yaml"
 
@@ -57,7 +57,13 @@ class LLMConfig(_StrictModel):
 
     - enabled: 模型能力总开关。False 或缺少 API key 时，诊断退回规则式、语义策略被跳过（等价 Phase 1）。
     - provider / model / base_url: OpenAI 兼容接口，可指向 OpenAI / DeepSeek / Qwen / 智谱等。
+      **base_url 与 model 必须与 api_key_env 指向的密钥属同一平台**，否则一律 401/404
+      （2026-10-08 实证：把 CommandCode 的 key 指向 api.deepseek.com 会得到
+      `模型调用失败: AuthenticationError`）。
     - api_key_env: 从环境变量名读取密钥（如 OPENAI_API_KEY），不写明文。
+    - timeout_s / max_tokens / max_retries（2026-10-08 审查 H3/M1）: 此前写死在客户端签名里，
+      且本模型 `extra='forbid'` 使用户无法在 `llm:` 段配置它们。VLM 侧早已因同类问题（T23
+      的 20s/500 超时/截断）放宽过，LLM 侧对齐配置入口。
     """
 
     enabled: bool = True
@@ -66,6 +72,9 @@ class LLMConfig(_StrictModel):
     api_key_env: str = "OPENAI_API_KEY"
     base_url: str | None = "https://api.deepseek.com"
     temperature: float = 0.0
+    timeout_s: float = Field(default=15.0, gt=0)
+    max_tokens: int = Field(default=2000, gt=0)
+    max_retries: int = Field(default=2, ge=0)
 
 
 class ActionWaitConfig(_StrictModel):
@@ -76,11 +85,13 @@ class ActionWaitConfig(_StrictModel):
       不改变默认动作语义），零侵入；需要"默认融入"的团队开启即可。
     - timeout_ms / stable_ms: 短稳等待参数，复用 engine/smart_wait.py 的 wait_until_stable。
       等待是增强而非正确性前提：失败仅记 debug、不阻塞动作（避免把等待变成新的超时源）。
+      值域在加载期校验（2026-10-08 审查 M6）：`timeout_ms=0` 会被 Playwright 当作"不超时"，
+      让等待失去上界；`poll_ms<=0` 会变成忙等。
     """
 
     enabled: bool = False
-    timeout_ms: int = 2000
-    stable_ms: int = 300
+    timeout_ms: int = Field(default=2000, gt=0)
+    stable_ms: int = Field(default=300, ge=0)
 
 
 class HealingConfig(_StrictModel):
@@ -180,6 +191,11 @@ class VisionConfig(_StrictModel):
       实例端点属环境特定配置，放 gitignore 的 `config/settings.yaml`（勿写进代码默认值）。
     - timeout_s / max_tokens: plus 级模型响应慢于 flash、视觉描述更长，默认放宽
       （2026-09-01：20s/500 曾导致 ERP 场景 VLM 调用超时/截断而自愈失败）。
+    - max_retries（2026-10-08 审查 M1）: 显式重试次数，0 表示不重试；此前静默继承
+      openai SDK 默认值（2 → 一次失败最多 3 次付费调用）。
+    - max_image_bytes（2026-10-08 审查 H5）: 单次请求图片体积护栏。`full_page` 长截图可达数 MB，
+      base64 再 ×1.33，超服务端上限即 400 → 视觉策略"永不生效"。超限时经 Pillow 降质/缩放转 JPEG
+      （Pillow 未安装则记 warning 后按原图发送）。
     """
 
     enabled: bool = True
@@ -187,8 +203,10 @@ class VisionConfig(_StrictModel):
     model: str = "qwen3-vl-plus"
     api_key_env: str = "DASHSCOPE_API_KEY"
     base_url: str | None = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    timeout_s: float = 60.0
-    max_tokens: int = 1000
+    timeout_s: float = Field(default=60.0, gt=0)
+    max_tokens: int = Field(default=1000, gt=0)
+    max_retries: int = Field(default=2, ge=0)
+    max_image_bytes: int = Field(default=1_500_000, gt=0)
 
 
 class EmbeddingConfig(_StrictModel):
