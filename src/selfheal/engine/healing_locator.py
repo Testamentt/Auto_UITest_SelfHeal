@@ -43,8 +43,29 @@ except ImportError:  # pragma: no cover
     _PWTimeoutError = None
 
 
-class HealingFailedError(Exception):
-    """自愈失败且无可用兜底时抛出，携带诊断报告。"""
+# 自愈失败的兜底基类（M2）：同时继承 Playwright 的 TimeoutError 与内置 TimeoutError——
+# 开启自愈前，同一调用抛的是 Playwright TimeoutError（POM 通常 catch 它），smart_wait 等
+# 路径抛的是内置 TimeoutError。若这里退化成裸 Exception，`except TimeoutError` 会在
+# 开/关自愈两种模式下表现不一致；两者都继承后，两种写法都能捕获，
+# 原始异常仍经 `raise ... from`/`__context__` 保留因果。
+_HealingFailedBases: tuple[type[BaseException], ...] = (
+    (_PWTimeoutError, TimeoutError) if _PWTimeoutError is not None else (TimeoutError,)
+)
+
+
+class HealingFailedError(*_HealingFailedBases):  # type: ignore[misc]
+    """自愈失败且无可用兜底时抛出，携带诊断报告（M2：兼容 TimeoutError 语义）。"""
+
+
+def _safe_close(obj) -> None:
+    """best-effort 关闭带 close() 的对象（engine 层自持，避免为释放资源反向依赖 agent 层）。"""
+    close = getattr(obj, "close", None)
+    if close is None:
+        return
+    try:
+        close()
+    except Exception as exc:  # noqa: BLE001 - 资源释放失败不阻断业务收口
+        logger.warning("best-effort 关闭 %s 失败: %s", type(obj).__name__, exc)
 
 
 def _is_timeout_error(exc: BaseException) -> bool:
@@ -284,7 +305,7 @@ class HealingLocator:
                     try:
                         return action(*args, **kwargs)
                     except Exception:  # noqa: BLE001 - 弹窗非根因，继续走自愈闭环
-                        pass
+                        logger.debug("清弹窗后重试仍失败，继续走自愈闭环", exc_info=True)
                 # 第一次自愈：修根（self._selector）+ 重放整条链，覆盖"根选择器断裂"
                 relocated = self._heal_and_resolve(exc)
                 try:
@@ -297,7 +318,16 @@ class HealingLocator:
                     # 第二次自愈（T4）：跳过知识缓存，直接修叶子（链意图拼入描述），
                     # 覆盖"中段/叶子选择器断裂"；重试用修复后的叶子、不再重放链；
                     # 上限一次、结果为裸调用不包裹，故不会死循环。
+                    stale_outcome = self._last_heal_outcome  # M9：下面会被第二次闭环覆盖
                     relocated2 = self._heal_and_resolve(retry_exc, use_knowledge=False, leaf=True)
+                    # M9：第一次闭环的暂存不会再收到 commit（本次改用叶子修复），显式丢弃并记日志，
+                    # 否则它一直占着 _pending 额度、且"这次修复没沉淀"这件事完全不可见。
+                    if (
+                        self._orch is not None
+                        and stale_outcome is not None
+                        and stale_outcome.attempt_id
+                    ):
+                        self._orch.discard_pending(stale_outcome.attempt_id)
                     result = getattr(relocated2, name)(*args, **kwargs)
                     self._commit_success()  # B1：二次重试成功 → 沉淀暂存的修复
                     return result
@@ -413,9 +443,14 @@ class HealingPage:
         self._settings = settings
         self._enabled = settings.healing.enabled if enabled_override is None else enabled_override
         self._reporter = reporter or HealingReporter()
+        # H2（2026-10-08 审查）：自建的知识库由本实例负责关闭——此前把同一个对象交给
+        # orchestrator 后，orchestrator 视其为"注入资源"（owns=False）而不关闭，
+        # HealingPage.close() 也只关 orchestrator → SQLite 连接随每个页面实例泄漏。
+        self._owns_knowledge = False
         if self._enabled:
             # 仅开启时构建知识库 / 闭环 / 弹窗处理（关闭时零开销、等同原生 Page，不产生文件副作用）
             self._knowledge = knowledge or build_knowledge_store(settings)
+            self._owns_knowledge = knowledge is None
             self._orchestrator = SelfHealOrchestrator(
                 page, settings, self._knowledge, self._reporter
             )
@@ -434,12 +469,15 @@ class HealingPage:
         return self._reporter
 
     def close(self) -> None:
-        """释放自愈资源（orchestrator 自建的知识库连接 / LLM 客户端，审查 M3）。
+        """释放自愈资源（orchestrator 自建的 LLM/VLM 客户端 + 本实例自建的知识库连接）。
 
-        注入的 knowledge 由注入方负责；关闭后本实例不可再用于自愈。
+        注入的 knowledge 由注入方负责；关闭后本实例不可再用于自愈。幂等。
         """
         if self._orchestrator is not None:
             self._orchestrator.close()
+        if self._owns_knowledge and self._knowledge is not None:
+            _safe_close(self._knowledge)
+            self._owns_knowledge = False
 
     def locator(
         self,
