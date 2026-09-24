@@ -7,6 +7,7 @@ B1 语义：run() 成功修复先 stage 暂存，引擎层重试成功后 commit
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from datetime import datetime, timezone
 
 from selfheal.agent.context import FixProposal, HealingContext, HealOutcome, selector_exists
@@ -20,9 +21,17 @@ logger = logging.getLogger(__name__)
 
 
 class PersistenceHandler:
-    """A1：专职持久化与审计（阈值路由 / dry-run 建议 / 暂存 → 验证后 commit / 写库 + 记录）。"""
+    """A1：专职持久化与审计（阈值路由 / dry-run 建议 / 暂存 → 验证后 commit / 写库 + 记录）。
+
+    2026-10-08 审查修复（M9）：
+    - 暂存超上限被淘汰、以及被显式丢弃（如二次自愈改修叶子）时记 warning，不再静默丢修复；
+    - `_committed` 改为有界（防长会话无界增长），幂等语义只对最近 N 次提交负责；
+    - 新增 `discard_pending()`：二次自愈会替换 `_last_heal_outcome`，被替换的那条暂存必须显式丢弃，
+      否则它会一直挂在 `_pending` 里等一个永不到来的 commit。
+    """
 
     _PENDING_LIMIT = 64  # 暂存上限，防引擎失败不 commit 时膨胀
+    _COMMITTED_LIMIT = 256  # 已提交 id 记忆上限（幂等窗口）
 
     def __init__(
         self,
@@ -39,7 +48,7 @@ class PersistenceHandler:
         self._page = page
         # B1：成功修复先暂存，引擎层重试成功后 commit_pending（幂等防重复提交）
         self._pending: dict[str, tuple] = {}
-        self._committed: set[str] = set()
+        self._committed: OrderedDict[str, None] = OrderedDict()
         self._attempt_counter = 0
 
     def resolve(self, context: HealingContext, proposal: FixProposal) -> HealOutcome:
@@ -85,10 +94,24 @@ class PersistenceHandler:
         self._attempt_counter += 1
         outcome.attempt_id = f"heal-{self._attempt_counter}"
         self._pending[outcome.attempt_id] = (outcome, context)
-        if (
-            len(self._pending) >= self._PENDING_LIMIT
-        ):  # 上限防膨胀（引擎失败不 commit 时，丢弃最旧暂存）
-            self._pending.pop(next(iter(self._pending)))
+        if len(self._pending) >= self._PENDING_LIMIT:
+            # 上限防膨胀（引擎失败不 commit 时丢弃最旧暂存）——M9：丢弃要可见，不能静默
+            dropped, _ = self._pending.pop(next(iter(self._pending)))
+            logger.warning(
+                "自愈暂存超过上限 %d，已丢弃最旧暂存（attempt_id=%s，该修复不会沉淀）",
+                self._PENDING_LIMIT,
+                getattr(dropped, "attempt_id", "?"),
+            )
+
+    def discard_pending(self, attempt_id: str | None) -> None:
+        """显式丢弃一条暂存（M9）：二次自愈替换 `_last_heal_outcome` 前调用。
+
+        被替换的暂存永远不会收到 commit；留在 `_pending` 里只会占额度并掩盖"这次修复没沉淀"。
+        """
+        if not attempt_id:
+            return
+        if self._pending.pop(attempt_id, None) is not None:
+            logger.warning("自愈暂存被显式丢弃（attempt_id=%s，改用后续修复尝试）", attempt_id)
 
     def commit_pending(self, attempt_id: str) -> None:
         """验证成功后沉淀知识 + 审计（B1）。按 attempt_id 幂等：已提交/未知 id → no-op。"""
@@ -99,7 +122,10 @@ class PersistenceHandler:
             return
         outcome, context = payload
         self._persist(context, outcome)  # 内部不抛异常（R4 记日志）
-        self._committed.add(attempt_id)
+        self._committed[attempt_id] = None
+        # M9：幂等窗口有界，防长会话/长跑用例无界增长（只影响极旧的重复提交判定）
+        while len(self._committed) > self._COMMITTED_LIMIT:
+            self._committed.popitem(last=False)
         self._pending.pop(attempt_id, None)
 
     def _persist(self, context: HealingContext, outcome: HealOutcome) -> None:

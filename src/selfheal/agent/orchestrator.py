@@ -158,6 +158,10 @@ class SelfHealOrchestrator:
         """B1：验证成功后沉淀知识 + 审计（委托 PersistenceHandler；幂等防重复提交）。"""
         self._persister.commit_pending(attempt_id)
 
+    def discard_pending(self, attempt_id: str | None) -> None:
+        """M9：显式丢弃一条不会被 commit 的暂存（委托 PersistenceHandler；未知 id 安全 no-op）。"""
+        self._persister.discard_pending(attempt_id)
+
     def close(self) -> None:
         """释放本实例**自建**的资源（知识库连接 / LLM / VLM 客户端，审查 M3）。
 
