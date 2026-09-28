@@ -7,9 +7,20 @@ SQLite 实现（sqlite_store.SqliteKnowledgeStore）均遵循该接口，由 fac
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Protocol
 
 from selfheal.knowledge.schema import PopupFeature, RepairCase, RepairQuery
+
+
+def utc_now_iso() -> str:
+    """知识库时间字段的统一格式：UTC ISO 8601、秒精度、带 ``+00:00`` 时区。
+
+    形如 ``2026-10-08T12:00:00+00:00``。内存后端与 SQLite 后端写 ``last_hit_at``
+    共用本函数（M4：此前两端分别用 ``isoformat`` 与 SQLite ``datetime('now')``，
+    格式不一致且注释与事实相反），保证读出值可被 ``datetime.fromisoformat`` 解析且 tz-aware。
+    """
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 class KnowledgeBackend(Protocol):
@@ -20,10 +31,12 @@ class KnowledgeBackend(Protocol):
     - find_semantic：L3 按 page_fingerprint 分桶 → numpy 余弦相似度。
     - bump_hit / set_verified：防污染衰减与人工审核（命中递增、verified 标记）。
     A3 门面：query(RepairQuery) 收敛「L1 精确 → 旧式检索」的择优（置信度/缓存验证留调用方）。
+    M4：补齐 count_repairs / close 声明——两端实现本就有，Protocol 缺声明会让
+    orchestrator._safe_close 的 getattr 探测静默跳过（资源不释放、无任何日志）。
     """
 
     def add_repair(self, case: RepairCase) -> None:
-        """沉淀一条修复案例。"""
+        """沉淀一条修复案例（按 (original_selector, new_selector, dom_fingerprint or "") upsert）。"""
         ...
 
     def add_popup(self, feature: PopupFeature) -> None:
@@ -72,4 +85,12 @@ class KnowledgeBackend(Protocol):
 
     def count_popups(self) -> int:
         """返回已沉淀的弹窗特征数量。"""
+        ...
+
+    def count_repairs(self) -> int:
+        """返回已沉淀的修复案例数量（指标统计 / 迁移断言用）。"""
+        ...
+
+    def close(self) -> None:
+        """释放后端资源（幂等；内存后端为 no-op），供生命周期收口统一调用。"""
         ...

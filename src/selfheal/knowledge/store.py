@@ -4,10 +4,17 @@
 - find_by_repair_key：L1 精确命中（确定性 repair_key）。
 - find_semantic：L3 按 page_fingerprint 分桶 → numpy 余弦。
 - bump_hit / set_verified：防污染衰减与人工审核。
+
+M4：与 SqliteKnowledgeStore 语义逐条对齐——add_repair 走 upsert（键与覆盖列清单一致）、
+find_repair 择优规则一致（指纹命中取置信度最高者，退化取置信度最高者）、last_hit_at 同格式
+（base.utc_now_iso）、补 close()。
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
+
+from selfheal.knowledge.base import utc_now_iso
 from selfheal.knowledge.schema import PopupFeature, RepairCase, RepairQuery
 
 
@@ -16,8 +23,37 @@ class KnowledgeStore:
         self._repairs: list[RepairCase] = []
         self._popups: list[PopupFeature] = []
 
+    @staticmethod
+    def _upsert_key(case: RepairCase) -> tuple[str, str, str]:
+        """upsert 键，与 SQLite 唯一索引 (original_selector, new_selector, dom_fingerprint) 对齐。
+
+        dom_fingerprint 归一化 None → ""：SQLite 端同样归一（UNIQUE 索引对 NULL 不生效，
+        见审查 C2），不归一化会让"无指纹"案例在两端落成不同条数。
+        """
+        return (case.original_selector, case.new_selector, case.dom_fingerprint or "")
+
     def add_repair(self, case: RepairCase) -> None:
-        self._repairs.append(case)
+        """沉淀一条修复案例：按键 upsert，已存在则更新（M4：对齐 SQLite 的 ON CONFLICT）。
+
+        覆盖列与 SQLite 的 DO UPDATE 清单完全一致：strategy / confidence / page_url /
+        page_fingerprint / repair_key / embedding / embedding_version；
+        hit_count / last_hit_at / is_verified / created_at 保留原值——尤其 is_verified 是
+        人工审核标记，再次沉淀不得静默清除（L3 防污染自动采纳依赖该信任状态）。
+        """
+        # 写侧归一化与 SQLite 一致：空指纹统一按 None 存储，读回也是 None（SQLite 端存 "" 但读侧还原）
+        stored = case if case.dom_fingerprint else replace(case, dom_fingerprint=None)
+        key = self._upsert_key(case)
+        for idx, existing in enumerate(self._repairs):
+            if self._upsert_key(existing) == key:
+                self._repairs[idx] = replace(
+                    stored,
+                    hit_count=existing.hit_count,
+                    last_hit_at=existing.last_hit_at,
+                    is_verified=existing.is_verified,
+                    created_at=existing.created_at,
+                )
+                return
+        self._repairs.append(stored)
 
     def add_popup(self, feature: PopupFeature) -> None:
         """按 signature upsert（V5 复核：与 SQLite 后端语义对齐，已存在则更新为最新观察）。"""
@@ -28,15 +64,21 @@ class KnowledgeStore:
         self._popups.append(feature)
 
     def find_repair(self, original_selector: str, dom_fingerprint: str | None = None):
-        """按原定位器检索；多条命中时优先指纹匹配者，否则取置信度最高（对齐 SQLite 语义）。"""
+        """按原定位器检索；择优规则与 SQLite 端逐条对齐（M4）。
+
+        对齐 SQLite 的 ``ORDER BY confidence DESC`` 后取首个指纹匹配者；无指纹匹配
+        （或未给指纹）时退化取置信度最高者。confidence 相同时按插入序取先写入者
+        （sorted 稳定 + SQLite 同分扫描顺序为 rowid 升序），保证两端同输入同结果。
+        """
         matches = [c for c in self._repairs if c.original_selector == original_selector]
         if not matches:
             return None
+        ordered = sorted(matches, key=lambda c: c.confidence, reverse=True)
         if dom_fingerprint:
-            for case in matches:
+            for case in ordered:
                 if case.dom_fingerprint == dom_fingerprint:
                     return case
-        return max(matches, key=lambda c: c.confidence)
+        return ordered[0]
 
     def find_by_repair_key(self, repair_key: str) -> RepairCase | None:
         """L1：按确定性 repair_key 精确命中。"""
@@ -98,13 +140,16 @@ class KnowledgeStore:
         return results
 
     def bump_hit(self, repair_key: str) -> None:
-        """命中递增（热度 / 衰减用）；last_hit_at 用真实 UTC 时间戳（与 SQLite 端一致，B6）。"""
-        from datetime import datetime, timezone
+        """命中递增（热度 / 衰减用）。
 
+        last_hit_at 统一写 UTC ISO 串（形如 ``2026-10-08T12:00:00+00:00``，见
+        base.utc_now_iso），与 SQLite 端同格式——修复前 SQLite 端写 ``datetime('now')``
+        （空格分隔、无时区），两端读出的字符串不可互认。
+        """
         for case in self._repairs:
             if case.repair_key == repair_key:
                 case.hit_count += 1
-                case.last_hit_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                case.last_hit_at = utc_now_iso()
                 return
 
     def set_verified(self, repair_key: str, verified: bool) -> None:
@@ -125,3 +170,11 @@ class KnowledgeStore:
 
     def count_repairs(self) -> int:
         return len(self._repairs)
+
+    def close(self) -> None:
+        """释放后端资源：内存后端无外部句柄，no-op 且幂等（M4，供生命周期统一收口）。
+
+        刻意不清空已沉淀数据：与 SQLite 的 close（断开连接、文件数据仍在）语义对齐；
+        关闭后不保证可继续使用，但重复调用不抛异常。
+        """
+        return None
