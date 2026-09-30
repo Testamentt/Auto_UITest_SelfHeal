@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
+from selfheal.knowledge.base import utc_now_iso
 from selfheal.knowledge.schema import PopupFeature, RepairCase, RepairQuery
 
 logger = logging.getLogger(__name__)
@@ -84,33 +86,81 @@ def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 
 
 def _migrate_legacy_tables(conn: sqlite3.Connection) -> list[str]:
-    """旧库缺列补齐；返回实际补上的列（table.column），供日志/测试断言。"""
+    """旧库缺列补齐；返回**本进程实际补上**的列（table.column），供日志/测试断言。
+
+    M5：ALTER 是 check-then-act，多进程首次升级会撞车（另一进程已补同名列）——
+    ``duplicate column name`` 视为竞态已解决，忽略该列继续；其它 OperationalError
+    原样上抛（真实迁移故障不得被吞掉，R4）。
+    """
     added: list[str] = []
     for table, wanted in (("repairs", _REPAIR_COLUMNS), ("popups", _POPUP_COLUMNS)):
         existing = _existing_columns(conn, table)
         for name, decl in wanted.items():
-            if name not in existing:
+            if name in existing:
+                continue
+            try:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
-                added.append(f"{table}.{name}")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column name" not in str(exc).lower():
+                    raise
+                # 竞态：另一进程在"读列 → ALTER"窗口内已补上该列；不计入 added（本进程没补）
+                logger.info("迁移竞态：%s.%s 已由其它进程补齐，跳过", table, name)
+                continue
+            added.append(f"{table}.{name}")
     return added
+
+
+def _has_duplicate_rows(conn: sqlite3.Connection, table: str, keys: str) -> bool:
+    """探测表内是否存在按键重复的行（GROUP BY … HAVING COUNT(*) > 1 LIMIT 1）。
+
+    M5：先探测再删除——新库 / 已去重库不执行全表 DELETE，避免每次构造都拿写锁。
+    """
+    row = conn.execute(
+        f"SELECT 1 FROM {table} GROUP BY {keys} HAVING COUNT(*) > 1 LIMIT 1"
+    ).fetchone()
+    return row is not None
 
 
 def _dedupe_legacy_rows(conn: sqlite3.Connection) -> int:
     """建 UNIQUE 索引前清除历史重复行（保留最小 rowid）；返回清除的行数。
 
-    仅历史库需要：新库写入路径本身按唯一键 upsert，不会产生重复行。
+    仅历史库需要：新库写入路径本身按唯一键 upsert，不会产生重复行，因此先用
+    ``_has_duplicate_rows`` 探测（M5），无重复直接返回 0、不执行 DELETE。
     """
     removed = 0
     for table, keys in (
         ("repairs", "original_selector, new_selector, dom_fingerprint"),
         ("popups", "signature"),
     ):
+        if not _has_duplicate_rows(conn, table, keys):
+            continue
         cur = conn.execute(
             f"DELETE FROM {table} WHERE rowid NOT IN"
             f" (SELECT MIN(rowid) FROM {table} GROUP BY {keys})"
         )
         removed += max(cur.rowcount, 0)
     return removed
+
+
+def _normalize_last_hit_at(raw: str | None) -> str | None:
+    """last_hit_at 归一为 UTC ISO 串（M4：读取兼容旧格式，不新增字段）。
+
+    新写入值已是 ``utc_now_iso()`` 格式（``2026-10-08T12:00:00+00:00``）；旧库里的
+    SQLite ``datetime('now')`` 值（``2026-10-08 12:00:00``，空格分隔、无时区）在此
+    补 UTC 时区并转 ISO，使两端读出的字符串可被 ``datetime.fromisoformat`` 解析且 tz-aware
+    （与 ``agent/strategies/semantic._is_fresh`` 同款容错思路）。无法解析时原样返回并记
+    warning（不静默丢数据）。
+    """
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace(" ", "T"))
+    except ValueError:
+        logger.warning("last_hit_at 无法解析为时间，原样返回: %r", raw)
+        return raw
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)  # 旧格式隐含 UTC（datetime('now') 即 UTC）
+    return dt.isoformat(timespec="seconds")
 
 
 class SqliteKnowledgeStore:
@@ -128,6 +178,7 @@ class SqliteKnowledgeStore:
         self._conn.execute("PRAGMA journal_mode = WAL")
         self._conn.executescript(_SCHEMA)
         # V5 复核：先迁移（补列 + 清历史重复行），再建索引——顺序反了旧库直接 OperationalError
+        # M5：迁移/去重都先探测后写入（无缺列、无重复行时不发写语句），新库打开不再白拿写锁
         added = _migrate_legacy_tables(self._conn)
         deduped = _dedupe_legacy_rows(self._conn)
         # 旧库的 idx_popups_signature 可能是非唯一索引：先删再建（幂等），
@@ -267,11 +318,15 @@ class SqliteKnowledgeStore:
         return results
 
     def bump_hit(self, repair_key: str) -> None:
-        """命中递增（热度 / 衰减用）。"""
+        """命中递增（热度 / 衰减用）。
+
+        last_hit_at 由 Python 侧生成 UTC ISO 串写入（``2026-10-08T12:00:00+00:00``，见
+        base.utc_now_iso），与内存后端同格式——M4：此前用 SQLite ``datetime('now')``
+        （空格分隔、无时区），两端读出的字符串不可互认。
+        """
         self._conn.execute(
-            "UPDATE repairs SET hit_count = hit_count + 1, last_hit_at = datetime('now')"
-            " WHERE repair_key = ?",
-            (repair_key,),
+            "UPDATE repairs SET hit_count = hit_count + 1, last_hit_at = ? WHERE repair_key = ?",
+            (utc_now_iso(), repair_key),
         )
         self._conn.commit()
 
@@ -307,11 +362,18 @@ class SqliteKnowledgeStore:
 
     @staticmethod
     def _row_to_repair(row: sqlite3.Row) -> RepairCase:
+        """行 → RepairCase（读侧归一，防旧库脏值直接进 dataclass）。
+
+        - dom_fingerprint：写侧把 None 归一成 ""（防 NULL 绕过唯一约束），读侧还原 None。
+        - confidence / hit_count：旧库 ALTER 补列的 NULL（或手改库）归一为 0.0 / 0
+          （M5：否则 None 会泄进指标计算与 dataclass）。
+        - last_hit_at：归一为 UTC ISO 串（旧库 ``datetime('now')`` 格式兼容读出）。
+        """
         return RepairCase(
             original_selector=row["original_selector"],
             new_selector=row["new_selector"],
             strategy=row["strategy"],
-            confidence=row["confidence"],
+            confidence=row["confidence"] or 0.0,
             page_url=row["page_url"],
             dom_fingerprint=row["dom_fingerprint"]
             or None,  # 写侧归一化 ""（None→"" 防 NULL 去重失效），读侧还原语义
@@ -319,8 +381,8 @@ class SqliteKnowledgeStore:
             repair_key=row["repair_key"],
             embedding=bytes(row["embedding"]) if row["embedding"] is not None else None,
             embedding_version=row["embedding_version"],
-            hit_count=row["hit_count"],
-            last_hit_at=row["last_hit_at"],
+            hit_count=row["hit_count"] or 0,
+            last_hit_at=_normalize_last_hit_at(row["last_hit_at"]),
             is_verified=bool(row["is_verified"]),
             created_at=row["created_at"],
         )
