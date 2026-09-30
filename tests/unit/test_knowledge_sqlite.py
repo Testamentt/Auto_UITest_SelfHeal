@@ -220,12 +220,132 @@ def test_add_popup_upsert_latest_wins(tmp_path):
 
 
 def test_factory_degrades_to_memory_when_sqlite_broken(tmp_path, caplog):
-    """V5 复核：sqlite 库文件损坏 → 记 warning 并降级 memory 后端，不炸 fixture。"""
+    """V5/M4：sqlite 库文件损坏 → error 级日志写明"已降级 memory、持久化不可用"，不炸 fixture。"""
     bad = tmp_path / "bad.db"
     bad.write_bytes(b"not a sqlite database at all")
     settings = Settings()
     settings.knowledge.backend = "sqlite"
     settings.knowledge.path = str(bad)
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.ERROR):
         store = build_knowledge_store(settings)
     assert isinstance(store, KnowledgeStore)
+    # M4：降级丢的是"跨重启持久化"这一核心能力，必须 error 级且消息自解释（此前只有 warning）
+    assert [r.levelno for r in caplog.records if r.name.endswith("knowledge.factory")] == [
+        logging.ERROR
+    ]
+    assert "降级 memory" in caplog.text and "持久化不可用" in caplog.text
+
+
+# --- 2026-10-09 修复任务 M5：打开期成本与迁移竞态 ---
+
+
+def test_new_db_open_executes_no_delete(tmp_path, monkeypatch):
+    """M5：新库（无重复行）打开不执行 DELETE——去重改为先探测后删除，避免每次构造拿写锁。"""
+    import selfheal.knowledge.sqlite_store as sqlite_store_module
+
+    statements: list[str] = []
+    real_connect = sqlite3.connect
+
+    def _recording_connect(*args, **kwargs):
+        conn = real_connect(*args, **kwargs)
+        conn.set_trace_callback(statements.append)  # 记录该连接实际执行的 SQL
+        return conn
+
+    monkeypatch.setattr(sqlite_store_module.sqlite3, "connect", _recording_connect)
+    store = SqliteKnowledgeStore(str(tmp_path / "fresh.db"))
+    try:
+        assert [s for s in statements if "DELETE" in s.upper()] == []
+        # 非空跑：确实做过重复探测（GROUP BY … HAVING），只是没重复行才不删
+        assert any("GROUP BY" in s.upper() for s in statements)
+    finally:
+        store.close()
+
+
+def test_duplicate_rows_still_deleted_on_migrate(tmp_path, monkeypatch):
+    """M5 正向对照：确有历史重复行时仍执行 DELETE 并清掉多余行（去重语义未退化）。"""
+    import selfheal.knowledge.sqlite_store as sqlite_store_module
+
+    db = tmp_path / "dup-trace.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        "CREATE TABLE repairs (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " original_selector TEXT NOT NULL, new_selector TEXT NOT NULL, dom_fingerprint TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO repairs (original_selector, new_selector, dom_fingerprint)"
+        " VALUES ('#a', '#n1', 'fp')"
+    )
+    conn.execute(
+        "INSERT INTO repairs (original_selector, new_selector, dom_fingerprint)"
+        " VALUES ('#a', '#n1', 'fp')"
+    )
+    conn.commit()
+    conn.close()
+
+    statements: list[str] = []
+    real_connect = sqlite3.connect
+
+    def _recording_connect(*args, **kwargs):
+        inner = real_connect(*args, **kwargs)
+        inner.set_trace_callback(statements.append)
+        return inner
+
+    monkeypatch.setattr(sqlite_store_module.sqlite3, "connect", _recording_connect)
+    store = SqliteKnowledgeStore(str(db))
+    try:
+        assert any(s.upper().lstrip().startswith("DELETE") for s in statements)
+        assert store.count_repairs() == 1  # 同键重复行清 1
+    finally:
+        store.close()
+
+
+def test_migrate_ignores_duplicate_column_race(tmp_path, monkeypatch):
+    """M5：迁移竞态（另一进程已补列）→ duplicate column name 被忽略，不炸整个会话。"""
+    import selfheal.knowledge.sqlite_store as sqlite_store_module
+
+    conn = sqlite3.connect(str(tmp_path / "race.db"))
+    conn.row_factory = sqlite3.Row
+    conn.executescript(sqlite_store_module._SCHEMA)  # 列已齐：等价于"另一进程刚补完"
+    # 把列快照强制为空 → 每个期望列都尝试 ALTER → 全部命中 duplicate column name
+    monkeypatch.setattr(sqlite_store_module, "_existing_columns", lambda c, t: set())
+    assert sqlite_store_module._migrate_legacy_tables(conn) == []  # 全部忽略，无异常、不计入 added
+    conn.close()
+
+
+def test_migrate_other_operational_error_propagates(tmp_path, monkeypatch):
+    """M5：非竞态的 OperationalError 原样上抛（真实迁移故障不得被静默吞掉，R4）。"""
+    import selfheal.knowledge.sqlite_store as sqlite_store_module
+
+    conn = sqlite3.connect(str(tmp_path / "view.db"))
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE base_t (id INTEGER PRIMARY KEY, a TEXT)")
+    conn.execute("CREATE VIEW repairs AS SELECT * FROM base_t")  # repairs 实为视图
+    monkeypatch.setattr(sqlite_store_module, "_existing_columns", lambda c, t: set())
+    with pytest.raises(sqlite3.OperationalError, match="Cannot add a column to a view"):
+        sqlite_store_module._migrate_legacy_tables(conn)
+    conn.close()
+
+
+def test_legacy_null_confidence_and_hit_count_read_as_zero(tmp_path):
+    """M5：旧库 ALTER 补列 / 手改库留下的 NULL confidence / hit_count 读出为 0.0 / 0。"""
+    db = tmp_path / "legacy-null.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE repairs (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " original_selector TEXT NOT NULL, new_selector TEXT NOT NULL)"
+    )
+    conn.execute("INSERT INTO repairs (original_selector, new_selector) VALUES ('#old', '#new')")
+    conn.commit()
+    conn.close()
+
+    store = SqliteKnowledgeStore(str(db))
+    try:
+        # 补列后 confidence 为 NULL；hit_count 显式置 NULL（模拟脏数据）
+        store._conn.execute("UPDATE repairs SET hit_count = NULL")
+        store._conn.commit()
+        found = store.find_repair("#old")
+        assert found is not None
+        assert found.confidence == 0.0
+        assert found.hit_count == 0
+    finally:
+        store.close()
