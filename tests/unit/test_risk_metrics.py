@@ -58,15 +58,33 @@ class _FakePage:
 
 
 def test_metrics_verified_stats():
+    """H6 口径：verified / flaky 只在**成功**记录里统计（分母 = 成功数）。"""
     records = [
         HealingRecord("#a", "#an", "heuristic", 0.9, "not_found", True, True),
         HealingRecord("#b", "#bn", "semantic", 0.8, "covered", True, False),
         HealingRecord("#c", None, "heuristic", 0.3, "not_found", False, False),
     ]
     m = compute_metrics(records)
+    assert m.success == 2
     assert m.verified == 1
-    assert m.flaky == 2
+    assert m.flaky == 1  # 失败的第 3 条不算"侥幸通过"
     assert m.verified_rate == 0.5  # 成功 2 条中 1 条真修复
+    assert 0.0 <= m.verified_rate <= 1.0
+
+
+def test_metrics_unsuccessful_record_excluded_from_flaky():
+    """H6：success=False 的记录（高风险页豁免 / dry_run / on_uncertain=fail）不计入 flaky。"""
+    records = [
+        HealingRecord("#a", "#an", "heuristic", 0.9, "not_found", True, True),
+        HealingRecord("#pay", None, None, 0.0, "high_risk_page_excluded", False, False),
+        HealingRecord("#x", None, None, 0.0, "dry_run", False, False),
+    ]
+    m = compute_metrics(records)
+    assert m.total == 3
+    assert m.success == 1
+    assert m.flaky == 0  # 两条失败记录都不进 flaky
+    assert m.verified == 1
+    assert m.verified_rate == 1.0  # 分母 = 成功数 1（旧口径会因分子含失败记录而失真）
 
 
 def test_record_verified_true_when_original_still_broken():
