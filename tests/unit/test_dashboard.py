@@ -43,6 +43,16 @@ def test_render_empty():
     assert "(暂无自愈记录)" in render_dashboard([])
 
 
+def test_render_failed_record_not_labeled_flaky():
+    """H6 口径对齐：success=False（豁免/dry_run）不显示为 flaky 侥幸通过，也不算进卡片。"""
+    rec = HealingRecord("#pay", None, None, 0.0, "high_risk_page_excluded", False, False)
+    html = render_dashboard([rec])
+    row = next(line for line in html.splitlines() if "#pay" in line)
+    assert "➖ 未成功" in row
+    assert "flaky" not in row
+    assert '<div class="num">0</div><div class="label">flaky 侥幸通过</div>' in html
+
+
 def test_write_dashboard(tmp_path):
     out = write_dashboard([_rec()], tmp_path / "nested" / "dash.html")
     assert out.exists()

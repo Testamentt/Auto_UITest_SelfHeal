@@ -64,7 +64,14 @@ def render_dashboard(records: list[HealingRecord], cost: dict | None = None) -> 
     metrics = compute_metrics(records)
     rows: list[str] = []
     for rec in records:
-        kind = "✅ 真自愈" if rec.verified else "⚠️ flaky"
+        # H6 口径对齐：未成功（豁免 / dry_run / on_uncertain=fail）既非真自愈也非 flaky，
+        # 只有成功的记录才按 verified 区分"真自愈 vs flaky 侥幸通过"。
+        if not rec.success:
+            kind = "➖ 未成功"
+        elif rec.verified:
+            kind = "✅ 真自愈"
+        else:
+            kind = "⚠️ flaky"
         rows.append(
             "<tr>"
             f"<td>{html.escape(rec.original_selector)}</td>"
