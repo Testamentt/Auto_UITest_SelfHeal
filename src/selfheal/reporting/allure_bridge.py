@@ -16,6 +16,7 @@ allure.label 的 hook 机制在收集期无 item 上下文，dynamic 在 setup �
 from __future__ import annotations
 
 import json
+import logging
 import os
 import platform
 import sys
@@ -24,6 +25,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # 仅类型检查，避免运行期依赖
     from selfheal.config import Settings
+
+logger = logging.getLogger(__name__)
 
 try:  # 一次性探测：未装 allure-pytest 时全部 API 为 no-op（[dev] extra 会安装）
     import allure
@@ -67,15 +70,25 @@ def apply_dynamic_labels(node: Any) -> bool:
     return True
 
 
-def write_environment(results_dir: str | os.PathLike | None, settings: Settings) -> bool:
+def write_environment(
+    results_dir: str | os.PathLike | None,
+    settings: Settings,
+    trace_enabled: bool | None = None,
+) -> bool:
     """写 environment.properties（Allure 报告环境页数据源）。
 
     `--alluredir` 未启用（results_dir 为空）或无 allure → False；写失败不抛
-    （best-effort）。须在测试会话**结束后**写：allure-pytest 不会清理既有
-    results 目录，晚写不丢。
+    （best-effort，仅记 warning）。须在测试会话**结束后**写：allure-pytest 不会清理
+    既有 results 目录，晚写不丢。
+
+    trace_enabled（M16）：`Browser.Trace` 应记录**实际生效值**，而实际生效值由
+    `tests/conftest.py` 的 `context` fixture 决定（CLI `--trace-healing/--no-trace-healing`
+    优先于 `settings.browser.trace`）。**调用方应传实际生效值**（如 pytest_sessionfinish
+    里的 trace 决策），不传（None）则回落到配置值 `settings.browser.trace`（兼容既有调用点）。
     """
     if not results_dir or not _HAS_ALLURE:
         return False
+    effective_trace = settings.browser.trace if trace_enabled is None else trace_enabled
     try:
         directory = Path(results_dir)
         directory.mkdir(parents=True, exist_ok=True)
@@ -83,7 +96,7 @@ def write_environment(results_dir: str | os.PathLike | None, settings: Settings)
             f"Python={sys.version.split()[0]}",
             f"Platform={platform.platform()}",
             f"Browser.Channel={settings.browser.channel}",
-            f"Browser.Trace={settings.browser.trace}",
+            f"Browser.Trace={effective_trace}",
             f"Healing.Enabled={settings.healing.enabled}",
             f"Healing.ConfidenceThreshold={settings.healing.confidence_threshold}",
             f"Healing.EarlyAcceptThreshold={settings.healing.early_accept_threshold}",
@@ -93,6 +106,8 @@ def write_environment(results_dir: str | os.PathLike | None, settings: Settings)
         (directory / "environment.properties").write_text("\n".join(lines) + "\n", encoding="utf-8")
         return True
     except Exception:  # noqa: BLE001 - 环境页失败不影响测试
+        # R4：不静默——环境页缺失在 CI 日志中要可见，但绝不打断测试
+        logger.warning("Allure 环境页写入失败（报告缺环境信息，测试不受影响）", exc_info=True)
         return False
 
 
@@ -108,6 +123,7 @@ def attach_json(payload: dict, name: str = "附件") -> bool:
         )
         return True
     except Exception:  # noqa: BLE001 - 附件失败不影响测试
+        logger.warning("自愈记录 JSON 附件失败（证据缺失，测试不受影响）", exc_info=True)
         return False
 
 
@@ -123,4 +139,5 @@ def attach_file(path: str | os.PathLike, name: str, type_name: str = "ZIP") -> b
         )
         return True
     except Exception:  # noqa: BLE001 - 附件失败不影响测试
+        logger.warning("文件证据附件失败：%s（测试不受影响）", path, exc_info=True)
         return False
