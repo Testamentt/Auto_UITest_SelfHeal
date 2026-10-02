@@ -21,9 +21,19 @@ REVIEW_QUEUE_PATH = REPORT_DIR / "review-queue.md"
 FIX_PROPOSALS_DIR = REPORT_DIR / "fix-proposals"
 FIX_PROPOSALS_MD = REPORT_DIR / "fix-proposals.md"
 
+# M16：Markdown 表头 + 分隔行（文件不存在/为空时先写，见 write_fix_proposal）
+FIX_PROPOSALS_HEADER = (
+    "| 时间 | 原定位器 | 新定位器 | 策略 | 置信度 | 校验 |\n|---|---|---|---|---|---|\n"
+)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _needs_header(path: Path) -> bool:
+    """M16：Markdown 目标文件不存在或为空 → 需要先写表头 + 分隔行。"""
+    return not path.exists() or path.stat().st_size == 0
 
 
 def append_review_proposal(
@@ -61,6 +71,9 @@ def write_fix_proposal(
     """T15：修复成功后输出 PR 化建议（Markdown 行 + JSON 独立文件）。
 
     只生成建议、**不自动改库/合入**（record["applied"]=False），供人确认后再落地。
+
+    Markdown 侧（M16）：文件不存在或为空时先写表头 + 分隔行，再追加数据行——
+    否则首行即数据行，Markdown 渲染器不认表格。整行字段（含 strategy）统一 html_escape。
     """
     try:
         FIX_PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
@@ -86,10 +99,13 @@ def write_fix_proposal(
         (FIX_PROPOSALS_DIR / f"{stamp}-{safe_name}.json").write_text(
             json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        FIX_PROPOSALS_MD.parent.mkdir(parents=True, exist_ok=True)
         with FIX_PROPOSALS_MD.open("a", encoding="utf-8") as f:
+            if _needs_header(FIX_PROPOSALS_MD):
+                f.write(FIX_PROPOSALS_HEADER)  # M16：首次写入补表头 + 分隔行
             f.write(
                 f"| {_now()} | {html_escape(original_selector)} | {html_escape(new_selector)} | "
-                f"{strategy} | {confidence:.2f} | {'✅ 真自愈' if verified else '⚠️ flaky'} |\n"
+                f"{html_escape(strategy)} | {confidence:.2f} | {'✅ 真自愈' if verified else '⚠️ flaky'} |\n"
             )
     except Exception:  # noqa: BLE001 - 写建议失败不阻塞流水线
         logger.warning("修复建议写入失败", exc_info=True)
