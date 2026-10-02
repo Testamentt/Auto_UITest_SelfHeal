@@ -90,7 +90,8 @@ class SceneCollector:
             )
             self._trim_network_logs()
         except Exception:  # noqa: BLE001 - 单条日志失败不影响
-            pass
+            # R4：不静默，但网络事件是高频路径 → debug 级（避免刷屏）
+            logger.debug("网络请求日志记录失败（忽略该条）", exc_info=True)
 
     def _on_response(self, resp: Any) -> None:
         try:
@@ -103,7 +104,8 @@ class SceneCollector:
             )
             self._trim_network_logs()
         except Exception:  # noqa: BLE001 - 单条日志失败不影响
-            pass
+            # R4：不静默，但网络事件是高频路径 → debug 级（避免刷屏）
+            logger.debug("网络响应日志记录失败（忽略该条）", exc_info=True)
 
     def _trim_network_logs(self) -> None:
         if len(self._network_logs) > _NETWORK_LOG_LIMIT:
