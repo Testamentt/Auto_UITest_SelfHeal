@@ -49,10 +49,20 @@ class _RecOrch:
     def __init__(self, outcomes):
         self._outcomes = list(outcomes)
         self.calls: list[bool] = []
+        self.discarded: list = []
+        self.committed: list = []
 
     def run(self, sel, desc, failure=None, use_knowledge=True):
         self.calls.append(use_knowledge)
         return self._outcomes.pop(0)
+
+    def commit_pending(self, attempt_id):
+        """B1：重试成功后引擎层提交暂存。"""
+        self.committed.append(attempt_id)
+
+    def discard_pending(self, attempt_id):
+        """M9：二次自愈会显式丢弃第一次闭环的暂存。"""
+        self.discarded.append(attempt_id)
 
 
 def test_heal_and_retry():
@@ -72,8 +82,8 @@ def test_secondary_healing_bounded():
     """自愈后的选择器仍超时 → 二次自愈（use_knowledge=False），且最多两次。"""
     orch = _RecOrch(
         [
-            HealOutcome(success=True, new_selector="#new", confidence=0.9),
-            HealOutcome(success=True, new_selector="#new2", confidence=0.9),
+            HealOutcome(success=True, new_selector="#new", confidence=0.9, attempt_id="heal-1"),
+            HealOutcome(success=True, new_selector="#new2", confidence=0.9, attempt_id="heal-2"),
         ]
     )
     page = _Page(
@@ -86,6 +96,30 @@ def test_secondary_healing_bounded():
     hl = HealingLocator(page.locator("#old"), page, "#old", HealingConfig(), orch)
     assert hl.click() == "second-ok"
     assert orch.calls == [True, False]  # T4 不变量：第二次跳过知识缓存
+    # M9 回归：第一次闭环的暂存永远不会被 commit（本次改用叶子修复），必须显式丢弃
+    assert orch.discarded == ["heal-1"]
+    assert orch.committed == ["heal-2"]  # 二次自愈自己的暂存仍按 B1 提交
+
+
+def test_secondary_healing_discards_only_first_attempt():
+    """M9：只丢弃被替换的那一条暂存；二次自愈自己的 attempt 仍等 commit。"""
+    orch = _RecOrch(
+        [
+            HealOutcome(success=True, new_selector="#new", confidence=0.9),
+            HealOutcome(success=True, new_selector="#new2", confidence=0.9),
+        ]
+    )
+    page = _Page(
+        {
+            "#old": _clickable(_raise(_MyTimeout("not found"))),
+            "#new": _clickable(_raise(_MyTimeout("also failed"))),
+            "#new2": _clickable(lambda: "second-ok"),
+        }
+    )
+    hl = HealingLocator(page.locator("#old"), page, "#old", HealingConfig(), orch)
+    hl.click()
+    # 两轮闭环都没带 attempt_id（引擎层未 commit）→ 不该产生任何丢弃记录
+    assert orch.discarded == []
 
 
 def test_non_timeout_raises():
