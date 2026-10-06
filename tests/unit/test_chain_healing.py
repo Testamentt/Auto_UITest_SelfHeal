@@ -97,10 +97,15 @@ class _RecOrch:
     def __init__(self, outcomes):
         self._outcomes = list(outcomes)
         self.calls: list[tuple] = []
+        self.discarded: list = []
 
     def run(self, sel, desc, failure=None, use_knowledge=True):
         self.calls.append((sel, desc, use_knowledge))
         return self._outcomes.pop(0)
+
+    def discard_pending(self, attempt_id):
+        """M9：二次自愈会显式丢弃第一次闭环的暂存。"""
+        self.discarded.append(attempt_id)
 
 
 def _hl(page, selector="#form", **kw):
