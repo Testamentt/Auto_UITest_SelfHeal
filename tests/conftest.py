@@ -107,7 +107,9 @@ def context(browser_manager, settings, request):
     trace_enabled = settings.browser.trace if cli is None else cli
     ctx = browser_manager.new_context()
     if trace_enabled:
-        ctx.tracing.start(**TRACE_RECORDING_KWARGS)  # 与 collector 内联 trace 恢复参数同源（评审 m6）
+        ctx.tracing.start(
+            **TRACE_RECORDING_KWARGS
+        )  # 与 collector 内联 trace 恢复参数同源（评审 m6）
     yield ctx
     if trace_enabled:
         trace_dir = Path(settings.browser.trace_dir)
@@ -169,6 +171,31 @@ def disabled_page(settings, context):
     yield HealingPage(context.new_page(), settings, enabled_override=False)
 
 
+@pytest.fixture
+def offline_healing_page(settings, context):
+    """**离线**自愈页面：自愈开启，但关闭 LLM / VLM / embedding（只跑规则式 + 启发式策略）。
+
+    2026-10-08（修复轮新发现）：真实模型可用后，"故意不可自愈"的场景不再确定——
+    LLM/VLM 仍可能为与页面无关的描述给出高置信候选（自报置信度 + 语义路径无 L2 交叉校验），
+    使 D6 兜底用例变成"模型心情驱动"的抖动用例（全量跑实测：同一用例在全量中点到 ghost、
+    单文件跑却走 fallback）。需要"确定性不可自愈"的场景请用本 fixture，并断言模型调用为 0。
+    """
+    from selfheal.engine.healing_locator import HealingPage  # 惰性导入
+
+    # 不污染 session 级 settings：深拷贝后关闭模型与持久化知识库
+    offline = settings.model_copy(deep=True)
+    offline.llm.enabled = False
+    offline.vision.enabled = False
+    offline.embedding.enabled = False
+    offline.knowledge.backend = "memory"
+    page = HealingPage(context.new_page(), offline, enabled_override=True)
+    _session_reporters.append(page.reporter)
+    try:
+        yield page
+    finally:
+        page.close()
+
+
 # --- T23：管伊佳 ERP 被测系统（marker erp；需本地 ERP 环境，CI 不跑） ---
 # 角色语义（专家确认）：租户 = 业务数据管理员（UI 测试与 API 造数共用其凭证）；
 # admin = 平台运维用户（不能编辑业务数据），测试基建不使用。
@@ -176,7 +203,11 @@ def disabled_page(settings, context):
 
 @pytest.fixture(scope="session")
 def erp_api(settings):
-    """ERP 租户 API 客户端（测试数据造数/清理；凭证缺失时 skip 整组用例）。"""
+    """ERP 租户 API 客户端（测试数据造数/清理；凭证缺失或服务未启动时 skip 整组用例）。
+
+    2026-10-08 审查 M12：此前只在"凭证缺失"时 skip，**凭证已配置但 ERP 服务未启动**时
+    直接 ERROR（外部依赖缺失应 skip）——实测 ERP 未启动即让 `pytest -m e2e` 必然红。
+    """
     import pytest as _pytest
 
     from tests.e2e.api.erp_client import ErpApiError, ErpClient, ErpCredentials
@@ -187,7 +218,10 @@ def erp_api(settings):
     except ErpApiError as exc:
         _pytest.skip(f"ERP 租户凭证未配置：{exc}")
     client = ErpClient(sut.api_base_url, credentials)
-    client.login()
+    try:
+        client.login()
+    except ErpApiError as exc:
+        _pytest.skip(f"ERP 后端不可用（{sut.name} 未启动？）：{exc}")
     yield client
 
 
@@ -195,6 +229,8 @@ def erp_api(settings):
 def erp_page(settings, knowledge, context):
     """ERP 被测页面：HealingPage（自愈开）+ UI 登录态（租户账号，.env 凭证）。"""
     import os
+
+    import pytest as _pytest
 
     from selfheal.engine.healing_locator import HealingPage  # 惰性导入
     from tests.e2e.pages.erp.home_page import ErpHomePage
@@ -204,8 +240,6 @@ def erp_page(settings, knowledge, context):
     username = os.getenv(sut.username_env, "")
     password = os.getenv(sut.password_env, "")
     if not username or not password:
-        import pytest as _pytest
-
         _pytest.skip(f"ERP 租户凭证未配置（{sut.username_env}/{sut.password_env}）")
 
     page = HealingPage(context.new_page(), settings, knowledge=knowledge)
@@ -213,8 +247,12 @@ def erp_page(settings, knowledge, context):
     # （dashboard / healing-records.json / T19 通知），否则审计看板缺 ERP 数据。
     _session_reporters.append(page.reporter)
     page.set_default_timeout(8_000)  # T23：失效定位器较快进入自愈（默认 30s 过长）
-    login = ErpLoginPage(page, sut.base_url).open_login()
-    login.login(username, password)
+    try:
+        login = ErpLoginPage(page, sut.base_url).open_login()
+        login.login(username, password)
+    except Exception as exc:  # noqa: BLE001 - ERP 前端未启动/不可达：外部依赖缺失 → skip（M12）
+        page.close()
+        _pytest.skip(f"ERP 前端不可用（{sut.name} 未启动？）：{type(exc).__name__}: {exc}")
     from tests.e2e.pages.erp import (
         dismiss_intro,  # T23 勘测：intro.js 引导层遮挡操作，登录后先清一次
     )
@@ -222,7 +260,10 @@ def erp_page(settings, knowledge, context):
     dismiss_intro(page)
     home = ErpHomePage(page, sut.base_url)
     assert home.is_logged_in(), f"ERP UI 登录未成功（url={page.url}）"
-    yield page
+    try:
+        yield page
+    finally:
+        page.close()  # M12：与 healing_page 对齐，释放自建 LLM/VLM 客户端与知识库
 
 
 def is_xdist_worker(config) -> bool:
@@ -316,7 +357,10 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 - pytest 钩子�
     try:
         results_dir = session.config.getoption("allure_report_dir", None)
         if results_dir:
-            write_environment(results_dir, load_settings())
+            # M16：把 CLI 实际生效的 trace 开关写进环境页（此前只写配置值，--trace-healing
+            # 覆盖时报告显示 False 而附件里却有 trace，审计口径相反）
+            cli_trace = session.config.getoption("trace_healing", None)
+            write_environment(results_dir, load_settings(), trace_enabled=cli_trace)
     except Exception:  # noqa: BLE001 - 环境页失败不影响测试结果
         pass
     records = []
