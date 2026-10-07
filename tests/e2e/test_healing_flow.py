@@ -29,11 +29,22 @@ def test_heal_success(healing_page):
     assert rec.success and rec.original_selector == "#submit-btn-old"
 
 
-def test_fallback_when_unhealable(healing_page):
-    demo = DemoPage(healing_page)
+def test_fallback_when_unhealable(offline_healing_page):
+    """场景 2（D6 兜底）：描述与页面完全无关且**真实模型关闭** → 退回人工备用定位器。
+
+    用 offline_healing_page 而不是 healing_page：真实模型可用时，LLM/VLM 仍可能为
+    "zzz_不存在的描述"给出高置信候选（自报置信度、无 L2 交叉校验），让"不可自愈"不再成立，
+    用例会变成模型非确定性驱动的抖动（2026-10-08 全量跑实测到该抖动）。
+    """
+    page = offline_healing_page
+    page.set_default_timeout(8_000)  # 缩短等待，避免"不可自愈"用例长时间阻塞
+    demo = DemoPage(page)
     demo.open()
-    demo.click_secondary_via_fallback()  # 描述故意不匹配，无法自愈
+    demo.click_secondary_via_fallback()  # 描述故意不匹配，离线策略链无法自愈
     assert demo.result() == "secondary"  # 由人工备用定位器 #real-secondary 完成
+    # 确定性护栏：本用例不允许调用真实模型（调用即说明确定性前提被破坏）
+    assert page.reporter.stats.get("llm_calls", 0) == 0
+    assert page.reporter.stats.get("vlm_calls", 0) == 0
 
 
 def test_disabled_behaves_native(disabled_page):
