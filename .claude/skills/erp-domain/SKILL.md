@@ -5,8 +5,11 @@ description: 管伊佳 ERP（jshERP）被测系统领域知识库。当用户要
 
 # ERP Domain（管伊佳 ERP 被测系统领域知识）
 
+> **定位**：ERP 领域**事实库**（角色语义 / 接入参数 / 勘测结论 / 造数模式 / 坑位）——写 ERP 用例或排查环境问题前先读。
+> **状态**：活文档（随 ERP 环境变化同步更新；与代码冲突时以代码为准并回改本文）
+> **最后更新**：2026-10-08 · 关联：[docs/architecture.md](../../../docs/architecture.md)（被测系统小节）、[memory.md](../../../memory.md)（环境事实）
+
 > 来源：T23 被测系统迁移的实测勘测（2026-08-31 ~ 09-01）+ 人工专家确认。
-> 本文是**领域事实**，随 ERP 环境变化同步更新；与代码冲突时以代码为准并回改本文。
 
 ## 👥 角色语义（铁律，人工专家确认 2026-09-01）
 
@@ -41,7 +44,7 @@ description: 管伊佳 ERP（jshERP）被测系统领域知识库。当用户要
 
 ## 🧪 测试基建约定
 
-- **fixtures**（`tests/conftest.py`）：`erp_page`（租账号 UI 登录态 + HealingPage 自愈开 + `set_default_timeout(8000)`，失效定位器较快进入自愈）、`erp_api`（租户 API 客户端）；凭证缺失自动 `pytest.skip`。
+- **fixtures**（`tests/conftest.py`）：`erp_page`（租账号 UI 登录态 + HealingPage 自愈开 + `set_default_timeout(8000)`，失效定位器较快进入自愈）、`erp_api`（租户 API 客户端）；凭证缺失**或服务不可达**自动 `pytest.skip`（2026-10-08 起，不再 ERROR）。
 - **marker**：`erp`（pyproject 已注册）；CI 门禁 `-m "e2e and not erp"`（CI 无 ERP 环境）。
 - **造数模式**（`tests/e2e/api/erp_client.py`）：`add` 响应不带 id → `list`（`search` 参数为 **JSON 字符串**）反查 id → `deleteBatch?ids=` 清理（单条 `delete` 会 500，勘测实测）。
 - **Allure**：marker `erp` → feature「ERP 被测系统」（`allure_bridge._FEATURE_PRIORITY` 中 erp 优先级最高）。
