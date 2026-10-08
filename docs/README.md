@@ -76,7 +76,7 @@
 | 规范 | R7.1 考古挖掘（只记录、不发挥） | R7.2 翻译官 9 条（只改表达） |
 | 同步 | 源文档改动后**同批**更新镜像 | 流水线：`.claude/skills/doc-study-sync/SKILL.md` |
 
-- 不参与双轨：`docs/sessions/`、`docs/plans/`、`docs/reviews/`、`docs/TODO.md`、`docs/templates/`。
+- 不参与双轨：`docs/sessions/`、`docs/plans/`、`docs/reviews/`、`docs/TODO.md`、`docs/backlog/`、`docs/templates/`。
 - 镜像头部必须带 `> 源版本: <commit> | 同步日期: <UTC>`；事实冲突时**熔断**交人工，不得自行折算。
 
 ## 五、新增 / 移动 / 改名文档的检查清单
