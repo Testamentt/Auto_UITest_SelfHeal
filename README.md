@@ -22,9 +22,13 @@
 
 </div>
 
+> **定位**：项目对外展示页（GitHub 首页 / 面试讲解底稿）。
+> **状态**：技术文档（事实源，参与文档双轨；改动须同步学习版镜像，见 [docs/README.md](docs/README.md)）
+> **最后更新**：2026-10-08 · 关联：[docs/architecture.md](docs/architecture.md) 架构 · [docs/roadmap.md](docs/roadmap.md) 路线 · [docs/TODO.md](docs/TODO.md) 待办
+
 ## 项目预览
 
-> 暂未放置截图。可运行 `python scripts/ab_compare.py` 生成 A/B 对比报告（`reports/ab-compare.md`）、`pytest -m e2e` 后用浏览器打开 `reports/dashboard.html` 自愈看板、`allure serve allure-results` 查看 Allure 报告，截图后补充到本节。
+> 暂未放置截图。可运行 `python scripts/ab_compare.py` 生成 A/B 对比报告（`reports/ab-compare.md`）、`pytest -m "e2e and not erp"` 后用浏览器打开 `reports/dashboard.html` 自愈看板、`allure serve allure-results` 查看 Allure 报告，截图后补充到本节。
 
 ## 核心功能
 
@@ -128,19 +132,20 @@ flowchart TD
 | 组件 | 要求 | 说明 |
 | :--- | :--- | :--- |
 | Python | ≥ 3.10 | 框架运行环境 |
-| Chrome | 系统已装 | 默认 `channel: chrome` 直连系统浏览器，免下载内核 |
-| API Key | 可选 | `OPENAI_API_KEY`（DeepSeek）与 `DASHSCOPE_API_KEY`（通义）；未配置时自动降级：诊断退规则式、语义与视觉策略跳过 |
+| Chrome | 系统已装 | 默认 `channel: chrome` 直连系统浏览器，免下载内核（CI 用 `chromium`） |
+| API Key | 可选 | `OPENAI_API_KEY`（LLM）与 `DASHSCOPE_API_KEY`（VLM）；未配置时自动降级：诊断退规则式、语义与视觉策略跳过。**注意 `base_url` / `model` 必须与 key 所属平台一致**，否则一律 401 |
 | allure CLI | 可选 | 本地查看 Allure 报告（依赖 Java）；CI 报告发布 GitHub Pages，无需本地安装 |
 
 ### 常见命令
 
 ```bash
-pytest -m unit                      # 单元测试（CI 门禁，不依赖浏览器）
-pytest -m e2e                       # 端到端测试（自愈闭环 / 弹窗 / 智能等待等场景）
-pytest -m e2e --selfheal            # 显式开启自愈（--no-selfheal 关闭）
-pytest -m e2e --trace-healing       # 运行并录制 Playwright Trace
-pytest --alluredir=allure-results   # 生成 Allure 结果
-ruff check .                        # Lint（格式化：ruff format .）
+pytest -m unit                        # 单元测试（CI 门禁，不依赖浏览器）
+pytest -m "e2e and not erp"           # 端到端测试（自愈闭环 / 弹窗 / 智能等待等场景）
+pytest -m e2e                         # 含 erp 用例（需本地 ERP 环境，未启动会自动 skip）
+pytest -m e2e --selfheal              # 显式开启自愈（--no-selfheal 关闭）
+pytest -m e2e --trace-healing         # 运行并录制 Playwright Trace
+pytest --alluredir=allure-results     # 生成 Allure 结果
+ruff check . && ruff format --check . # Lint + 格式检查（CI 两道门禁）
 ```
 
 ### 1. 安装框架
@@ -180,7 +185,7 @@ DASHSCOPE_API_KEY=sk-xxx   # 通义百炼（VLM）
 
 ```bash
 pytest -m unit                    # 单元测试，秒级完成
-pytest -m e2e                     # 自愈闭环 / 弹窗 / 智能等待等场景
+pytest -m "e2e and not erp"       # 自愈闭环 / 弹窗 / 智能等待等场景（无需 ERP）
 python scripts/ab_compare.py      # A/B 实证：关闭 vs 开启自愈（产出 reports/ab-compare.md）
 ```
 
@@ -245,8 +250,8 @@ AutoAiSelfHeal/
 ├── tests/
 │   ├── unit/                    # 单元测试（CI 门禁，不依赖浏览器）
 │   └── e2e/                     # 端到端测试（自愈闭环 / 弹窗 / ERP 等）
-├── scripts/                     # A/B 对比 / 语义复用演示 / 通知 / 草稿 PR
-├── docs/                        # architecture.md · roadmap.md · TODO.md
+├── scripts/                     # A/B 对比 / 人审标记 / 通知 / 草稿 PR
+├── docs/                        # 先读 docs/README.md（文档地图）：architecture / roadmap / TODO / backlog
 └── .github/workflows/ci.yml     # CI：unit 门禁 → e2e → 报告发布 / 草稿 PR / 告警
 ```
 
@@ -255,12 +260,15 @@ AutoAiSelfHeal/
 | 现象 | 处理方式 |
 | :--- | :--- |
 | 提示找不到 Chrome，或想用 Chromium | `playwright install chromium`，并把 `config/settings.yaml` 的 `browser.channel` 改为 `chromium` |
+| 模型报 `AuthenticationError` / 401 | key 与端点不同平台。核对 `config/settings.yaml` 的 `llm.base_url` / `llm.model` 是否与 `api_key_env` 指向的密钥同属一家（旧版报错只显示异常类名，2026-10-08 起会打印 provider / model / 端点主机） |
+| 视觉策略从不生效 | 看日志是否有"截图超过 `max_image_bytes` 且无法压缩"——装 `pillow`（`pip install -e ".[llm]"`）或调大 `vision.max_image_bytes` |
 | 没配 API Key 能跑吗 | 能。诊断退规则式，语义与视觉策略跳过；启发式、知识库复用与 fallback 照常工作 |
 | 定位失败但没触发自愈 | 检查是否带 `--selfheal`（或 `settings.healing.enabled: true`）；确认 URL 未命中 `healing.exclude_url_patterns` 豁免 |
 | `settings.yaml` 加键后启动报错 | 配置按 pydantic 严格校验（未建模键禁止），以 `config/settings.example.yaml` 为准 |
 | 想重置知识库 | 删除 `.cache/knowledge.db` 即可，下次运行自动重建 |
+| 想把知识库案例标记为"已人审" | `python scripts/verify_case.py --list` 查看 `repair_key`，再 `--repair-key <rk>` 标记（L3 高相似自动采纳的信任开关） |
 | Allure 报告打不开 | 本地需安装 allure CLI（依赖 Java）；或直接浏览器打开 `reports/dashboard.html` 自愈看板 |
-| ERP 用例如何运行 | 本地启动 ERP 前后端，`.env` 配 `ERP_USERNAME` / `ERP_PASSWORD`，被测环境关闭登录验证码；CI 不跑 erp 用例 |
+| ERP 用例如何运行 | 本地启动 ERP 前后端，`.env` 配 `ERP_USERNAME` / `ERP_PASSWORD`，被测环境关闭登录验证码；CI 不跑 erp 用例，未启动时本地自动 skip |
 
 ## 开源说明
 

@@ -45,12 +45,12 @@ AutoAiSelfHeal 是一个**带 AI 自愈能力的 UI 自动化测试框架**。�
 | 自动化框架 | Playwright (Python) | 现代、高效、原生支持 trace/截图/网络拦截 |
 | 测试框架 | pytest + pytest-playwright | 用例组织与 fixture |
 | 自愈定位器 | 自研 LLM 定位器 + 开源库辅助 | 灵活可控 |
-| 大语言模型 | DeepSeek（`deepseek-v4-flash`，OpenAI 兼容端点），经 `llm/` 抽象层接入 | 支持 API 付费调用、可切换 provider |
-| 视觉模型 | 通义 `qwen3-vl-plus`（阿里云百炼 MaaS 专属端点），经 `llm/` 抽象层接入 | 多模态，视觉定位与控件画像 |
+| 大语言模型 | DeepSeek（`deepseek-v4-flash`，OpenAI 兼容端点），经 `llm/` 抽象层接入 | 支持 API 付费调用、可切换 provider；**`base_url` / `model` 必须与 `api_key_env` 的密钥同平台**，否则 401 |
+| 视觉模型 | 通义 `qwen3-vl-plus`（默认 DashScope 公共 compatible-mode 端点），经 `llm/` 抽象层接入 | 多模态，视觉定位与控件画像；专属百炼 MaaS 端点经本机 `config/settings.yaml` 覆盖 |
 | 报告 | Allure + 自研 HTML | 自愈看板、视频回放 |
 | CI/CD | GitHub Actions | 演示自动化流水线 |
 
-> **provider 已定**（见 `docs/roadmap.md` D7/D13）：LLM=DeepSeek（OpenAI 兼容端点）、VLM=通义 qwen3-vl-plus（阿里云百炼 MaaS 专属端点，备选 qwen3.8-flash）。
+> **provider 已定**（见 `docs/roadmap.md` D7/D13）：LLM=DeepSeek（OpenAI 兼容端点）、VLM=通义 qwen3-vl-plus（默认 DashScope 公共 compatible-mode 端点，专属百炼 MaaS 端点经本机 `config/settings.yaml` 覆盖，备选 qwen3.8-flash）。
 > 所有模型调用**必须**经过 `src/selfheal/llm/` 的抽象接口（`llm/factory.py` 统一构建、`registry` 注册），禁止在业务代码里直接 import 某个 SDK，切换 provider 只改 `config/settings.yaml`。
 
 ## 架构（大局）
@@ -102,12 +102,13 @@ pytest --alluredir=allure-results            # 生成 Allure 结果
 allure serve allure-results                  # 本地查看 Allure 报告
 ```
 
-代码质量（使用 ruff 同时负责 lint 与格式化）：
+代码质量（使用 ruff 同时负责 lint 与格式化；CI 两道门禁都要绿）：
 
 ```bash
-ruff check .          # lint
+ruff check .          # lint（CI 门禁）
 ruff check . --fix    # lint 并自动修复
 ruff format .         # 格式化
+ruff format --check . # 格式检查（CI 门禁）
 ```
 
 ## 项目结构
@@ -115,19 +116,30 @@ ruff format .         # 格式化
 ```
 AutoAiSelfHeal/
 ├── CLAUDE.md / RULE.md / README.md / memory.md
-├── pyproject.toml              # 依赖 + pytest/ruff 配置（含 unit/e2e/healing marker）
+├── pyproject.toml              # 依赖 + pytest/ruff 配置（含 unit/e2e/healing/erp marker）
 ├── config/settings.example.yaml# 运行时配置示例（复制为 settings.yaml 使用）
 ├── src/selfheal/               # 框架主体（见「架构」分层）
 ├── tests/                      # unit/（-m unit）与 e2e/（-m e2e），conftest.py 提供 fixture
-├── docs/                       # architecture.md 架构 · roadmap.md 路线图(活文档) · session-doc-template.md · sessions/ 沉淀
-└── .github/workflows/ci.yml    # CI 两阶段（unit 门禁 → e2e）
+├── scripts/                    # ab_compare 对比 · verify_case 人审标记 · notify 通知 · propose_pr 草稿 PR
+├── docs/                       # 先读 docs/README.md（文档地图与写作规范）
+│   ├── README.md               #   文档地图 · 写作规范 · 双轨说明（唯一入口）
+│   ├── architecture.md         #   架构与关键决策（事实源，参与双轨）
+│   ├── roadmap.md              #   阶段路线与决策记录（事实源，参与双轨）
+│   ├── TODO.md                 #   任务清单（唯一待办入口，活文档）
+│   ├── backlog/                #   低优先级待办明细（TODO.md 的展开）
+│   ├── templates/              #   会话沉淀模板
+│   ├── sessions/ plans/ reviews/  # 沉淀与历史（只读，禁止修改）
+└── .github/workflows/ci.yml    # CI：unit 门禁（lint + format + unit）→ e2e → 发布 / 草稿 PR / 告警
 ```
 
 ## 开发约定
 
 - 项目已完成 Phase 1–5（最小闭环 → AI 大脑 → 沉淀进阶 → 证据指标 → 语义化与风险控制），
   模块均已实现并有 unit/e2e 双覆盖；新增代码遵循既有分层与命名，不要跨层直接耦合。
-- 遗留与待办见 `docs/TODO.md`（T1–T17 已完成并勾选；长线项见 roadmap「后续可选」：语义化 v2 fastembed、T5 收缩数据标定、action_wait 默认翻转等）。
+- 遗留与待办见 **`docs/TODO.md`**（唯一待办入口：T1–T23 状态、踩坑记录、候补池）。
+  低优先级/延期项明细见 `docs/backlog/low-priority.md`；阶段与决策见 `docs/roadmap.md`。
+- **文档规范**：新增/修改文档前先读 `docs/README.md`（文档地图 + 写作规范 + 双轨说明）；
+  `docs/sessions`、`docs/plans`、`docs/reviews` 是只读历史，不得修改。
 - **自愈是插件，不侵入框架**：经 pytest fixture 按 `settings.healing.enabled` / CLI `--selfheal` 提供；`HealingPage` 与原生 `Page` 接口兼容（代理），POM 代码开/关自愈都能跑；关闭时为原生 Page、零开销。不用 import 替换 / monkeypatch（见 roadmap.md 决策 D5）。
 - **兜底优先**：`locator(sel, fallback=...)`；AI 不确定（置信度 < 阈值）时按 `healing.on_uncertain` 处理，默认 `use_fallback`，无备用则 fail（决策 D6）。
 - 新增模型能力一律走 `llm/` 抽象 + `registry` 注册，provider 相关配置放进 `config/settings.yaml`。
