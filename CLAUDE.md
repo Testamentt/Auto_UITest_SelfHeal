@@ -1,6 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+> **定位**：面向 AI 协作者（Claude Code 等）的项目上手说明——规则索引、常用命令、分层速览、开发约定。
+> **状态**：活文档（与实现同步；规则条款以 [RULE.md](RULE.md) 为准）
+> **最后更新**：2026-10-08 · 关联：[RULE.md](RULE.md) 规则源头 · [docs/README.md](docs/README.md) 文档地图
+
+本文件为 Claude Code（及其他 AI 协作者）提供本仓库的工作指引。
 
 ## 开发规则（强制）
 

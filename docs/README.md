@@ -26,6 +26,8 @@
 | 搞清四层架构与自愈闭环 | [architecture.md](architecture.md) | 含关键设计决策与风险边界 |
 | 知道现在做到哪、下一步做什么 | [roadmap.md](roadmap.md) | 阶段状态 + 决策记录（D 编号） |
 | 领一个待办 / 看历史踩坑 | [TODO.md](TODO.md) | T 编号任务、踩坑记录、候补池 |
+| 挑一个低优先项来做 | [backlog/low-priority.md](backlog/low-priority.md) | L1–L20 + 延期项 + 残余项（全部未开工） |
+| 新建会话沉淀文档 | [templates/session-doc-template.md](templates/session-doc-template.md) | R5 五要素模板 |
 | 看某次审查发现了什么 | [reviews/](reviews/) | 按日期，只读 |
 | 查 ERP（管伊佳）接入细节 | [`.claude/skills/erp-domain/SKILL.md`](../.claude/skills/erp-domain/SKILL.md) | 领域知识唯一归属 |
 | 查同步学习文档的流水线 | [`.claude/skills/doc-study-sync/SKILL.md`](../.claude/skills/doc-study-sync/SKILL.md) | 规则源头仍是 RULE.md §R7 |
