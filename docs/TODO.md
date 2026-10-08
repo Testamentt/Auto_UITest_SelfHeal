@@ -1,8 +1,34 @@
-# TODO — 优化与待办清单
+# TODO — 任务清单（唯一待办入口）
 
-> 来源：`docs/reviews/2026-08-04-phase3-retrospective.md` · 全量评审 `docs/reviews/2026-08-15-code-review.md` · 全量评审 `docs/reviews/2026-09-03-code-review.md` · 随进展勾选/更新（R5 活文档）
-> T1–T4 具体实现方案：`docs/plans/2026-08-04-phase4-t1-t4-implementation.md`
+> **定位**：全项目**唯一待办入口**——待办、已完成存档、踩坑记录、候补与落选理由都在这里。
+> **状态**：活文档（随进展勾选/更新，R5）
+> **最后更新**：2026-10-08 · 关联：[roadmap.md](roadmap.md) 阶段与决策 · [backlog/low-priority.md](backlog/low-priority.md) 低优先明细 · [reviews/2026-10-08-fix-report.md](reviews/2026-10-08-fix-report.md) 最近一轮修复
 > 图例：⬜ 待办 · 🟡 进行中 · ✅ 完成 · 🔴 阻断项 · 🟠 部分完成
+> 历史来源：[reviews/2026-08-04-phase3-retrospective.md](reviews/2026-08-04-phase3-retrospective.md)、[reviews/2026-08-15-code-review.md](reviews/2026-08-15-code-review.md)、[reviews/2026-09-03-code-review.md](reviews/2026-09-03-code-review.md)、[reviews/2026-10-08-code-review.md](reviews/2026-10-08-code-review.md)
+
+## 📌 2026-10-08 全量审查：High / Medium 已修复，Low 未开工
+
+> 报告：[reviews/2026-10-08-code-review.md](reviews/2026-10-08-code-review.md)（H1–H6 / M1–M16 / L1–L20）·
+> 修复记录：[reviews/2026-10-08-fix-report.md](reviews/2026-10-08-fix-report.md) ·
+> 未开工明细：[backlog/low-priority.md](backlog/low-priority.md)
+
+- [x] **High 6 项** ✅ 2026-10-08
+  - H1 弹窗关闭限定容器 + 关闭信号分级（防误点业务控件）；H2 `HealingPage` 自建知识库所有权与关闭；
+    H3 LLM 超时 / `max_tokens` / 重试可配（此前硬编码且被 `extra='forbid'` 堵死）；
+    H4 模型不可用的五类原因分别记 warning（此前静默 `None`）；H5 VLM 图片体积护栏（Pillow 降质 / 缩放）；
+    H6 `flaky` 口径与 `success` 取交集、`verified_rate` ≤ 1
+- [x] **Medium 16 项** ✅ 2026-10-08
+  - M1 异常分级（Fatal / Transient）+ 显式 `max_retries`；M2 `HealingFailedError` 兼容两种 `TimeoutError`；
+    M3 人审入口 `scripts/verify_case.py`；M4 知识库双后端语义对齐 + Protocol 补齐；M5 迁移去重先探测 + 降级记 error；
+    M6 `smart_wait` 值域与稳定窗口预算；M7 浏览器管理器失败清理与幂等；M8 静默 `except` 补日志；
+    M9 暂存淘汰 / 幂等窗口有界 + `discard_pending`；M11 选择器字面量转义；M12 ERP 用例缺环境时 skip；
+    M13 CI 固定 `channel=chromium`；M14 CI 增 `ruff format --check` + `--strict-markers` + 未分类测试门禁；
+    M15 补 VLM 单测与工厂断言失效修正；M16 环境页写实际 trace 开关 + 修复建议表头
+- [ ] **Low 20 项 + 延期 2 项（M10 分层重构、M15-3 链式自愈 e2e）+ 残余 5 项（R1–R5）** ⬜ 未开工
+  - 明细与开工方式见 [backlog/low-priority.md](backlog/low-priority.md)；其中 R5（语义 LLM 段缺 L2 交叉校验）有实测证据，建议优先
+- [x] **验收** ✅ 2026-10-08
+  - `pytest -m unit` **404 passed**（修前 312）；全量 `pytest` **427 passed / 2 skipped / 3 xfailed / 0 failed**；
+    `ruff check .` 0 errors；`ruff format --check .` 全绿（此前 CI 无此门禁）
 
 ## 🔥 高优先级（Phase 4 核心：证据 + 指标 + 加固）
 
@@ -242,7 +268,7 @@
     README 与汇报直接引用实证数据——**核心卖点"自愈提升稳定性"的量化证据**
   - 位置：`scripts/ab_compare.py` + 复用 `tests/e2e/pages/` 演示页
   - 验收：一键脚本产出对比结论；对比计算逻辑 unit 覆盖
-- [ ] **T21 · pytest-xdist 并行兼容**（难度 ★★☆ / 回报 ★★★）🟠 代码+单测并行验证完成 2026-08-31
+- [x] **T21 · pytest-xdist 并行兼容**（难度 ★★☆ / 回报 ★★★）✅ 2026-08-31（代码 + 单测 + e2e `-n 2` 集成回归全部完成）
   - ✅ 诊断：xdist 下每 worker 独立进程——knowledge session 级 tmp 库实际不共享（无并发写冲突），
     **真实 bug 是 `_session_reporters` 聚合**：各 worker 的 sessionfinish 互相覆盖
     dashboard.html / healing-records.json → 记录丢失
@@ -277,10 +303,11 @@
   - 验收：PR body 生成逻辑 unit；实际开 PR 在 feature 分支验证后合入
 
 ### 候补池（性价比尚可，待前置条件）
-- **iframe / Shadow DOM 自愈**：真实场景大空白（`healing_locator.py:73` 明示原生透传），
-  但跨 frame 候选解析/存在性验证是架构级改动——先做评估 spike，再决定是否立项
+- **iframe / Shadow DOM 自愈**：真实场景大空白（`engine/healing_locator.py` 明示原生透传），
+  但跨 frame 候选解析 / 存在性验证是架构级改动——先做评估 spike，再决定是否立项
 - **自愈指标跨运行历史**：价值依赖持续运行（T19 先行）→ dashboard 时间序列
-- **知识库运维 CLI**（list / 去重 / 失效清理）：知识库长期运行的卫生问题
+- **知识库运维 CLI**：🟠 部分落地——`scripts/verify_case.py` 已提供 `--list` / `--repair-key` / `--selector`（人审标记入口）；
+  去重 / 失效清理 / 批量导出仍未提供（残余项见 [backlog/low-priority.md](backlog/low-priority.md) §三）
 
 ### 落选记录（本轮不立项，理由存档）
 - 语义化 v2 fastembed / T5 收缩标定：依赖真实场景数据沉淀，当前无数据支撑收益
@@ -299,7 +326,7 @@
 
 - [x] **A1 Embedding 抽象**：`llm/embedding.py::NgramEmbedding`（md5 确定性 n-gram 向量，零网络/零费用/<10ms）+ `EmbeddingConfig`。验收：`test_embedding.py` 6 项。
 - [x] **A2 存储/检索**：`RepairCase` 扩展（page_fingerprint/repair_key/embedding/embedding_version/hit_count/is_verified/created_at）；SQLite/内存 `find_by_repair_key`（L1）+ `find_semantic`（L3，page 分桶+numpy 余弦）+ `bump_hit`/`set_verified`。验收：`test_knowledge_semantic.py` 10 项。
-- [x] **A3 orchestrator 接线**：L1 硬短路 + L3 进策略链（`semantic` 升级为向量检索，LLM 兜底）+ 失败上下文三级回退提取（live→快照→静态，带缓存）+ persist 富化 + review-queue 人审清单。验收：`test_orchestrator_semantic.py` 14 项。
+- [x] **A3 orchestrator 接线**：L1 硬短路 + L3 进策略链（`semantic` 升级为向量检索，LLM 兜底）+ 失败上下文三级回退提取（live→快照→静态，带缓存）+ persist 富化 + review-queue 人审清单。验收：`test_orchestrator_semantic.py` 17 项（2026-10-08 校正：原文写 14 项，实测 `def test_` 17 个）。
 
 ## 已完成（存档）
 
