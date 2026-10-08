@@ -1,0 +1,2 @@
+已把 1 条案例标记为 is_verified=True
+已把 1 条案例标记为 is_verified=False

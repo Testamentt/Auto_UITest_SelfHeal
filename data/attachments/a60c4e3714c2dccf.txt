@@ -1,0 +1,1 @@
+WARNING  selfheal.agent.persistence:persistence.py:114 自愈暂存被显式丢弃（attempt_id=heal-1，改用后续修复尝试）

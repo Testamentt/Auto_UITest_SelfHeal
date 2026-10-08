@@ -1,0 +1,9 @@
+WARNING  selfheal.llm.factory:factory.py:43 LLM 不可用：环境变量 OPENAI_API_KEY 未设置或为空（只报变量名，不打印值）
+WARNING  selfheal.llm.factory:factory.py:79 VLM 不可用：环境变量 DASHSCOPE_API_KEY 未设置或为空（只报变量名，不打印值）
+WARNING  selfheal.agent.persistence:persistence.py:181 知识沉淀失败（自愈本身已成功）
+Traceback (most recent call last):
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/agent/persistence.py", line 149, in _persist
+    self._knowledge.add_repair(
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/tests/unit/test_persist_failure.py", line 51, in add_repair
+    raise RuntimeError("disk full")
+RuntimeError: disk full

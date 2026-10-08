@@ -1,0 +1,1 @@
+WARNING  selfheal.llm.factory:factory.py:43 LLM 不可用：环境变量 OPENAI_API_KEY 未设置或为空（只报变量名，不打印值）

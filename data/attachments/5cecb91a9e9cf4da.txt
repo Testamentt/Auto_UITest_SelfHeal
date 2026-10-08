@@ -1,0 +1,1 @@
+WARNING  selfheal.llm.factory:factory.py:48 LLM 不可用：provider 'nope' 未注册（已注册：['openai']）——检查配置拼写

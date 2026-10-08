@@ -1,0 +1,3 @@
+WARNING  selfheal.agent.persistence:persistence.py:100 自愈暂存超过上限 64，已丢弃最旧暂存（attempt_id=heal-1，该修复不会沉淀）
+WARNING  selfheal.agent.persistence:persistence.py:100 自愈暂存超过上限 64，已丢弃最旧暂存（attempt_id=heal-2，该修复不会沉淀）
+WARNING  selfheal.agent.persistence:persistence.py:100 自愈暂存超过上限 64，已丢弃最旧暂存（attempt_id=heal-3，该修复不会沉淀）

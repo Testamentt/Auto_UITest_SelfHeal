@@ -1,0 +1,7 @@
+WARNING  selfheal.reporting.allure_bridge:allure_bridge.py:142 文件证据附件失败：/tmp/pytest-of-runner/pytest-0/test_attach_file_failure_logs_0/trace.zip（测试不受影响）
+Traceback (most recent call last):
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/reporting/allure_bridge.py", line 135, in attach_file
+    allure.attach.file(
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/tests/unit/test_reporting_hardening.py", line 97, in _boom
+    raise RuntimeError("attach file failed")
+RuntimeError: attach file failed
