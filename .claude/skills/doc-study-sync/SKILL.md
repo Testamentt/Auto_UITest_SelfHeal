@@ -14,7 +14,7 @@ description: 文档双轨同步器（Doc Study Sync）。当用户要求「同�
 | 镜像本地路径（独立 git 仓库根） | `E:\Project\AutoAiSelfHeal-docs-study` |
 | 镜像内项目文件夹 | `AutoAiSelfHeal` |
 | 镜像远端仓库 | `https://github.com/Testamentt/docs_study.git` |
-| 不参与双轨的目录 | `docs/sessions`、`docs/plans`、`docs/reviews`、`docs/TODO.md`、`docs/session-doc-template.md` |
+| 不参与双轨的目录 | `docs/sessions`、`docs/plans`、`docs/reviews`、`docs/TODO.md`、`docs/backlog`、`docs/templates` |
 | 规则源头 | `RULE.md` §R7 |
 
 > 配置表为空或占位符未替换 = 本项目未完成迁移；先提示用户补配置，禁止凭猜测同步。

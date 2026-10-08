@@ -51,7 +51,7 @@
 - 所有**大的修改**（架构调整、新增模块、规则变更、重要修复）必须提交到 Git，commit message 清晰说明"做了什么 + 为什么"。
 - 文档与代码**同批提交**，避免"代码先行、文档缺失"。
 
-### 沉淀文档必含五要素（模板见 `docs/session-doc-template.md`）
+### 沉淀文档必含五要素（模板见 `docs/templates/session-doc-template.md`）
 
 1. **当前目标**：本轮要达成什么。
 2. **关键约束**：技术 / 时间 / 规则等限制条件。
@@ -126,7 +126,7 @@
 - 本地工作副本：`E:\Project\AutoAiSelfHeal-docs-study`（独立 git 仓库）；本项目内容在 `AutoAiSelfHeal/` 子目录，路径与源文档一一镜像。
 - 镜像仓库与源代码仓库**完全隔离**：源仓库不提交它、不构建它、不引用它。
 - 新增或修改技术文档时，按 R7.3 SOP 同批更新镜像并推送；只改一处视为任务未完成。
-- `docs/sessions`、`docs/plans`、`docs/reviews`、`docs/TODO.md`、`docs/session-doc-template.md` 属沉淀/历史记录，不参与双轨。
+- `docs/sessions`、`docs/plans`、`docs/reviews`（只读历史）、`docs/TODO.md`、`docs/backlog`、`docs/templates` 属沉淀/历史/清单，不参与双轨。
 - 内容冲突以技术文档为准：先改源，再同步镜像，禁止只在镜像处修 bug。
 
 ## R8 · 敏感文件与不可逆操作纪律
