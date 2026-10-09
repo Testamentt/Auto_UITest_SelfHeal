@@ -28,8 +28,10 @@ dev = [
     "ruff>=0.4",
 ]
 # LLM / VLM provider（已定，见 docs/architecture.md「已定选型」）：DeepSeek + 通义 qwen3-vl-flash，经 llm/ 抽象层接入
+# pillow：视觉截图体积护栏（H5）用于超限降质/缩放转 JPEG；缺失时仅记 warning 后发原图（非硬依赖）
 llm = [
     "openai>=1.30",
+    "pillow>=10",
 ]
 
 [tool.setuptools.packages.find]
@@ -38,7 +40,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra"
+# --strict-markers（2026-10-08 审查 M14）：marker 拼错/未注册直接报错，而不是让用例
+# 被静默 deselected（CI 两个 job 都用 -m 过滤，漏标 marker 的用例会同时被两边跳过）。
+addopts = "-ra --strict-markers"
 markers = [
     "unit: 单元测试（不依赖浏览器与网络）",
     "e2e: 端到端测试（需要 Playwright 浏览器内核）",
@@ -50,7 +54,14 @@ markers = [
 line-length = 100
 target-version = "py310"
 src = ["src", "tests"]
+# Markdown 里的 Python 代码块是"给人看的示意片段"，格式化会把它们改坏
+# （实测：`timeout_s: float = 15.0` 被格式化成 `timeout_s: float = (15.0,)`），
+# 故 lint/format 只覆盖真正的 Python 文件。
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+# E501 保留 ignore（2026-10-08 审查 M14 评估结论）：启用后全仓 52 处告警，绝大多数是
+# 中文注释与长字符串字面量（`ruff format` 无法换行的那类），修它只产生噪音；
+# 代码换行约束改由 CI 的 `ruff format --check .` 真正兜住（此前完全没跑）。
 ignore = ["E501"]
