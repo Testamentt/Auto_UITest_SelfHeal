@@ -32,6 +32,24 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
+      # M14（2026-10-08 审查）：lint 之外补格式化门禁——此前只跑 ruff check，
+      # 代码风格漂移无人拦（实测已漂移 1 个文件）。
+      - name: Format check (ruff format)
+        run: ruff format --check .
+
+      # M14：两个 job 都用 -m 过滤，漏写 marker 的用例会同时躲过两边。
+      # pytest 在"未收集到任何测试"时退出码为 5：正好用来做"无未分类测试"门禁。
+      - name: 未分类测试门禁（marker 漏写检测）
+        run: |
+          set +e
+          pytest -m "not unit and not e2e and not erp" --collect-only -q
+          code=$?
+          set -e
+          if [ "$code" -ne 5 ]; then
+            echo "::error::存在未标 unit/e2e/erp 的测试：marker 漏写会同时被两个 job 跳过"
+            exit 1
+          fi
+
       - name: Unit tests (-m unit)
         run: pytest -m unit --alluredir=allure-results
 
@@ -63,9 +81,12 @@ jobs:
 
       # T22：CI 上开启修复建议产出（settings.yaml 仅含该开关，其余字段走 pydantic 默认；
       # 本地默认关闭守"不自动乱合库"，CI 产物仅用于人工审阅）
-      - name: Enable fix proposals (T22 产物开关)
+      # M13（2026-10-08 审查）：显式声明 channel=chromium——代码默认 channel="chrome"
+      # 走系统 Chrome，会让上面的 `playwright install chromium` 完全失效；
+      # runner 镜像一旦不带 Chrome，报错还会与"已安装 chromium"的说法自相矛盾。
+      - name: Enable fix proposals (T22 产物开关) + 固定浏览器内核 (M13)
         run: |
-          printf 'healing:\n  fix_proposals: true\n' > config/settings.yaml
+          printf 'browser:\n  channel: chromium\nhealing:\n  fix_proposals: true\n' > config/settings.yaml
 
       - name: Integration / e2e tests (-m e2e)
         run: pytest -m "e2e and not erp" --trace-healing --alluredir=allure-results
