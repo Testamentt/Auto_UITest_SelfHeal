@@ -10,6 +10,8 @@ browser:
   trace_dir: reports/traces
 
 # LLM（已定选型，见 docs/architecture.md「已定选型」）：DeepSeek OpenAI 兼容端点
+# 注意：base_url 与 model 必须与 api_key_env 指向的密钥**属同一平台**，否则一律 401
+# （2026-10-08 实证：把 CommandCode 的 key 指向 api.deepseek.com 会得到 AuthenticationError）。
 llm:
   enabled: true             # 模型能力总开关；False 或缺少 API key 时诊断退规则式、语义策略被跳过
   provider: openai
@@ -17,6 +19,9 @@ llm:
   api_key_env: OPENAI_API_KEY   # 从环境变量名读取密钥，勿写明文
   base_url: https://api.deepseek.com
   temperature: 0.0
+  timeout_s: 15.0           # 单次调用超时（秒）；推理型模型响应慢时可放宽
+  max_tokens: 2000          # 单次输出上限（token）
+  max_retries: 2            # 显式重试次数（一次失败最多重试 2 次；0=不重试）
 
 # VLM（已定选型）：通义 qwen3-vl-plus；base_url 默认 DashScope 公共 compatible-mode 端点
 # （可移植默认）。如用专属百炼 MaaS 实例端点，请在本机 settings.yaml 覆盖（勿写进模板/代码）
@@ -26,6 +31,10 @@ vision:
   model: qwen3-vl-plus      # 首选；备选 qwen3.8-flash（模型更替只改此配置）
   api_key_env: DASHSCOPE_API_KEY   # 从环境变量名读取密钥，勿写明文
   base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  timeout_s: 60.0           # plus 级模型响应慢，默认放宽（20s 曾导致 ERP 场景超时）
+  max_tokens: 1000
+  max_retries: 2
+  max_image_bytes: 1500000  # 单请求图片体积护栏；超限经 Pillow 降质/缩放转 JPEG（缺 Pillow 记 warning 发原图）
 
 healing:
   enabled: true            # 插件总开关；false 时透传为原生 Playwright 行为
