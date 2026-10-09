@@ -1,0 +1,1 @@
+WARNING  selfheal.llm.openai_vision:openai_vision.py:126 截图 11 字节超过 max_image_bytes=4 且无法压缩（未安装 Pillow？），按原图发送，服务端可能拒绝

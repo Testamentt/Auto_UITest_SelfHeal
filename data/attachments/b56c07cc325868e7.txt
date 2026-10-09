@@ -1,0 +1,3 @@
+WARNING  selfheal.llm.factory:factory.py:43 LLM 不可用：环境变量 OPENAI_API_KEY 未设置或为空（只报变量名，不打印值）
+WARNING  selfheal.llm.factory:factory.py:79 VLM 不可用：环境变量 DASHSCOPE_API_KEY 未设置或为空（只报变量名，不打印值）
+WARNING  selfheal.agent.fix_generator:fix_generator.py:183 strategy_order 含未知策略名 'nope'，已跳过（可用: ['heuristic', 'semantic', 'visual']）

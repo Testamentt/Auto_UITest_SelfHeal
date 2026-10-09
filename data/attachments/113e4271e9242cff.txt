@@ -1,0 +1,7 @@
+WARNING  selfheal.reporting.allure_bridge:allure_bridge.py:110 Allure 环境页写入失败（报告缺环境信息，测试不受影响）
+Traceback (most recent call last):
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/reporting/allure_bridge.py", line 94, in write_environment
+    directory.mkdir(parents=True, exist_ok=True)
+  File "/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/pathlib.py", line 1116, in mkdir
+    os.mkdir(self, mode)
+FileExistsError: [Errno 17] File exists: '/tmp/pytest-of-runner/pytest-0/test_write_environment_failure1/not-a-dir'

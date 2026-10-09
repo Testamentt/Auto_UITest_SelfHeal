@@ -1,0 +1,2 @@
+WARNING  selfheal.llm.factory:factory.py:39 LLM 不可用：llm.enabled=false（诊断退规则式、语义策略被跳过）
+WARNING  selfheal.llm.factory:factory.py:75 VLM 不可用：vision.enabled=false（视觉策略被跳过）

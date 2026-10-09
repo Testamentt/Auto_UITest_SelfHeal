@@ -1,0 +1,1 @@
+ERROR    selfheal.knowledge.factory:factory.py:32 sqlite 知识库构建失败（path=/tmp/pytest-of-runner/pytest-0/test_factory_degrades_to_memor0/bad.db）：已降级 memory 后端，跨重启持久化不可用: file is not a database

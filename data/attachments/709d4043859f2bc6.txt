@@ -1,0 +1,3 @@
+WARNING  selfheal.llm.factory:factory.py:43 LLM 不可用：环境变量 OPENAI_API_KEY 未设置或为空（只报变量名，不打印值）
+WARNING  selfheal.llm.factory:factory.py:79 VLM 不可用：环境变量 DASHSCOPE_API_KEY 未设置或为空（只报变量名，不打印值）
+WARNING  selfheal.agent.persistence:persistence.py:114 自愈暂存被显式丢弃（attempt_id=heal-1，改用后续修复尝试）
