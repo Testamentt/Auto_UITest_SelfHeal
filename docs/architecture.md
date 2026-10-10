@@ -113,8 +113,9 @@ iframe / Shadow DOM 自愈评估 spike；自愈指标跨运行时间序列；T19
 
 - LLM：OpenAI 兼容客户端，默认 `deepseek-v4-flash` @ `https://api.deepseek.com`，key 走 `OPENAI_API_KEY`
   （`LLMConfig` 覆盖，本机实际指向 CommandCode 网关——见 `config/settings.yaml`）。
-- VLM：通义 `qwen3-vl-plus`（备选 qwen3.8-flash）；默认 DashScope **公共** compatible-mode 端点，专属百炼 MaaS 端点经本机
-  `config/settings.yaml` 覆盖；key 走 `DASHSCOPE_API_KEY`；候选护栏防幻觉；`timeout_s` / `max_tokens` / `max_image_bytes` 可配。
+- VLM：**本项目自 2026-10-10 起改用 CommandCode 网关的 `deepseek/deepseek-v4.1-flash`**（实测支持图片输入，见决策 D18），
+  key 走 `COMMANDCODE_API_KEY`（与 LLM 共用同一把）；候选护栏防幻觉；`timeout_s` / `max_tokens` / `max_image_bytes` 可配。
+  代码默认值仍保留通义 `qwen3-vl-plus` + DashScope **公共** compatible-mode 端点作为可移植基线（备选 qwen3.8-flash）。
 - 知识库：SQLite（`knowledge/sqlite_store.py`，WAL + `busy_timeout`）与内存双实现；DOM 指纹 + 页面指纹参与检索择优；
   向量为本地确定性 n-gram（`llm/embedding.py::NgramEmbedding`，`embedding_version` 含维度）。
 - 报告：Allure（`reporting/allure_bridge.py` 轻量桥）+ 自研 HTML 看板；CI 发布 GitHub Pages。

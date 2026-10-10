@@ -118,7 +118,7 @@ flowchart TD
 | :--- | :--- | :--- |
 | 自动化底座 | Python 3.10+、Playwright、pytest、pytest-playwright | 执行引擎、用例组织与 fixture 注入 |
 | AI 自愈 Agent | 自研 orchestrator / diagnose / strategies | 编排「感知 → 诊断 → 决策 → 修复」闭环与多策略修复 |
-| 模型接入 | DeepSeek（LLM）、通义 qwen3-vl-plus（VLM）、llm/ 抽象层 | 语义定位、根因精判与截图视觉定位；provider 无关，切换只改配置 |
+| 模型接入 | DeepSeek V4.1（LLM + VLM，同一网关）、llm/ 抽象层 | 语义定位、根因精判与截图视觉定位；provider 无关，切换只改配置 |
 | 知识库 | SQLite + numpy 本地向量 | 修复案例沉淀与语义检索，零 API 费用 |
 | 现场采集 | BeautifulSoup4、Playwright Tracing | DOM 快照解析与 trace 录制回放 |
 | 配置管理 | pydantic、PyYAML、python-dotenv | 集中加载校验，密钥只存环境变量 |
@@ -133,7 +133,7 @@ flowchart TD
 | :--- | :--- | :--- |
 | Python | ≥ 3.10 | 框架运行环境 |
 | Chrome | 系统已装 | 默认 `channel: chrome` 直连系统浏览器，免下载内核（CI 用 `chromium`） |
-| API Key | 可选 | `OPENAI_API_KEY`（LLM）与 `DASHSCOPE_API_KEY`（VLM）；未配置时自动降级：诊断退规则式、语义与视觉策略跳过。**注意 `base_url` / `model` 必须与 key 所属平台一致**，否则一律 401 |
+| API Key | 可选 | 本项目当前用 `COMMANDCODE_API_KEY`（LLM 与 VLM 共用同一网关，见 `config/settings.yaml`）；代码默认值是 `OPENAI_API_KEY`（LLM）与 `DASHSCOPE_API_KEY`（VLM）。未配置时自动降级：诊断退规则式、语义与视觉策略跳过。**注意 `base_url` / `model` 必须与 key 所属平台一致**，否则一律 401 |
 | allure CLI | 可选 | 本地查看 Allure 报告（依赖 Java）；CI 报告发布 GitHub Pages，无需本地安装 |
 
 ### 常见命令
@@ -175,9 +175,12 @@ cp config/settings.example.yaml config/settings.yaml
 在项目根目录创建 `.env`（已被 gitignore，绝不入库），填入模型密钥：
 
 ```text
-OPENAI_API_KEY=sk-xxx      # DeepSeek（LLM）
-DASHSCOPE_API_KEY=sk-xxx   # 通义百炼（VLM）
+COMMANDCODE_API_KEY=sk-xxx # CommandCode 网关：本项目当前 LLM + VLM 共用（key 必须与 base_url / model 同平台）
+OPENAI_API_KEY=sk-xxx      # 代码默认值指向的变量（LLM），未用 CommandCode 时填 DeepSeek 官方 key
+DASHSCOPE_API_KEY=sk-xxx   # 代码默认值指向的变量（VLM），未用 CommandCode 时填通义百炼 key
 ```
+
+> 只填实际使用的那个即可；本项目当前只填 `COMMANDCODE_API_KEY`（详见 `config/settings.yaml`）。
 
 未配置密钥也能跑：诊断自动退规则式、语义与视觉策略跳过，启发式匹配与知识库复用照常工作。
 
