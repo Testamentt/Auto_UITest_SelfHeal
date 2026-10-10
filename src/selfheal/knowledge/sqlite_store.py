@@ -14,7 +14,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from selfheal.knowledge.base import utc_now_iso
+from selfheal.knowledge.base import utc_now_iso, utc_now_iso_if_missing
 from selfheal.knowledge.schema import PopupFeature, RepairCase, RepairQuery
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,10 @@ CREATE TABLE IF NOT EXISTS repairs (
     hit_count INTEGER DEFAULT 0,
     last_hit_at TEXT,
     is_verified INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    -- R1：刻意不给 created_at 列默认值——CURRENT_TIMESTAMP 产出 "YYYY-MM-DD HH:MM:SS"
+    -- （空格分隔、无时区），与内存端的 UTC ISO 串不同格式，导致 L3 新鲜窗口两端判定漂移。
+    -- 写入侧统一用 base.utc_now_iso() 显式赋值（见 add_repair），旧库的默认值/旧值由读侧归一。
+    created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS popups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,24 +145,25 @@ def _dedupe_legacy_rows(conn: sqlite3.Connection) -> int:
     return removed
 
 
-def _normalize_last_hit_at(raw: str | None) -> str | None:
-    """last_hit_at 归一为 UTC ISO 串（M4：读取兼容旧格式，不新增字段）。
+def _normalize_utc_iso(raw: str | None, field: str) -> str | None:
+    """时间字段归一为 UTC ISO 串（M4 起用于 last_hit_at，R1 起同时用于 created_at）。
 
     新写入值已是 ``utc_now_iso()`` 格式（``2026-10-08T12:00:00+00:00``）；旧库里的
-    SQLite ``datetime('now')`` 值（``2026-10-08 12:00:00``，空格分隔、无时区）在此
-    补 UTC 时区并转 ISO，使两端读出的字符串可被 ``datetime.fromisoformat`` 解析且 tz-aware
-    （与 ``agent/strategies/semantic._is_fresh`` 同款容错思路）。无法解析时原样返回并记
-    warning（不静默丢数据）。
+    SQLite ``CURRENT_TIMESTAMP`` / ``datetime('now')`` 值（``2026-10-08 12:00:00``，
+    空格分隔、无时区）在此补 UTC 时区并转 ISO，使两端读出的字符串可被
+    ``datetime.fromisoformat`` 解析且 tz-aware（与 ``agent/strategies/semantic._is_fresh``
+    同款容错思路）。空值（``None`` / ``""``）归一为 ``None``；无法解析时原样返回并记
+    warning（不静默丢数据，R4）——``_is_fresh`` 对不可解析值按"不新鲜"处理，不会误采纳。
     """
     if not raw:
         return None
     try:
         dt = datetime.fromisoformat(raw.replace(" ", "T"))
     except ValueError:
-        logger.warning("last_hit_at 无法解析为时间，原样返回: %r", raw)
+        logger.warning("%s 无法解析为时间，原样返回: %r", field, raw)
         return raw
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)  # 旧格式隐含 UTC（datetime('now') 即 UTC）
+        dt = dt.replace(tzinfo=timezone.utc)  # 旧格式隐含 UTC（CURRENT_TIMESTAMP 即 UTC）
     return dt.isoformat(timespec="seconds")
 
 
@@ -193,6 +197,13 @@ class SqliteKnowledgeStore:
             )
 
     def add_repair(self, case: RepairCase) -> None:
+        """沉淀一条修复案例（同键 upsert）。
+
+        R1 时间契约：``created_at`` 缺席（``None``）时由本方法补 ``base.utc_now_iso()``，
+        不再依赖列默认值 ``CURRENT_TIMESTAMP``（空格分隔、无时区的历史格式），使两端
+        写出的 ``created_at`` 同格式、可被 ``_is_fresh`` 同口径解析。``created_at`` 刻意
+        不进 ``DO UPDATE`` 列——与内存端一致，保留首写时刻（不用末次沉淀刷新）。
+        """
         # #10 upsert：同 (原,新,指纹) 已存在则更新，不重复插入。
         # dom_fingerprint 归一化（None → ""）：SQLite UNIQUE 索引对 NULL 不生效（NULL ≠ NULL），
         # 不归一化会使"无指纹"（页面无可交互元素）的重复修复绕过冲突检测、无界增长（审查 C2）。
@@ -200,11 +211,12 @@ class SqliteKnowledgeStore:
         self._conn.execute(
             "INSERT INTO repairs"
             " (original_selector, new_selector, strategy, confidence, page_url, dom_fingerprint,"
-            "  page_fingerprint, repair_key, embedding, embedding_version, is_verified)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "  page_fingerprint, repair_key, embedding, embedding_version, is_verified, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT(original_selector, new_selector, dom_fingerprint)"
             # V5 复核：is_verified 刻意不进 DO UPDATE 列——再次沉淀不覆盖人工审核标记，
             # 否则 L3 防污染自动采纳（sim>0.92 且 is_verified）依赖的信任状态被静默清除。
+            # R1：created_at 同样保留首写值（时间字段语义 = 首次沉淀时刻）。
             " DO UPDATE SET strategy=excluded.strategy, confidence=excluded.confidence,"
             "               page_url=excluded.page_url, page_fingerprint=excluded.page_fingerprint,"
             "               repair_key=excluded.repair_key, embedding=excluded.embedding,"
@@ -221,6 +233,7 @@ class SqliteKnowledgeStore:
                 case.embedding,
                 case.embedding_version,
                 int(case.is_verified),
+                utc_now_iso_if_missing(case.created_at),
             ),
         )
         self._conn.commit()
@@ -367,7 +380,8 @@ class SqliteKnowledgeStore:
         - dom_fingerprint：写侧把 None 归一成 ""（防 NULL 绕过唯一约束），读侧还原 None。
         - confidence / hit_count：旧库 ALTER 补列的 NULL（或手改库）归一为 0.0 / 0
           （M5：否则 None 会泄进指标计算与 dataclass）。
-        - last_hit_at：归一为 UTC ISO 串（旧库 ``datetime('now')`` 格式兼容读出）。
+        - last_hit_at / created_at：归一为 UTC ISO 串（旧库 ``CURRENT_TIMESTAMP`` /
+          ``datetime('now')`` 的空格格式兼容读出，R1；格式契约见 base 模块 docstring）。
         """
         return RepairCase(
             original_selector=row["original_selector"],
@@ -382,9 +396,9 @@ class SqliteKnowledgeStore:
             embedding=bytes(row["embedding"]) if row["embedding"] is not None else None,
             embedding_version=row["embedding_version"],
             hit_count=row["hit_count"] or 0,
-            last_hit_at=_normalize_last_hit_at(row["last_hit_at"]),
+            last_hit_at=_normalize_utc_iso(row["last_hit_at"], "last_hit_at"),
             is_verified=bool(row["is_verified"]),
-            created_at=row["created_at"],
+            created_at=_normalize_utc_iso(row["created_at"], "created_at"),
         )
 
     @staticmethod
