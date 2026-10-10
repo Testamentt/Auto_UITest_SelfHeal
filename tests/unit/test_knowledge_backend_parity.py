@@ -6,7 +6,9 @@ find_repair 取"插入序首个"指纹匹配者（SQLite 取置信度最高者�
 比对观测结果（upsert 键 / 覆盖列 / 择优规则 / 时间格式 / 人工审核标记保留）。
 """
 
+import sqlite3
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -234,6 +236,96 @@ def test_legacy_last_hit_at_space_format_normalized(tmp_path):
         found = store.find_by_repair_key("rk-legacy")
         assert found.last_hit_at == "2026-10-08T12:00:00+00:00"
         assert _is_utc_iso(found.last_hit_at)
+    finally:
+        store.close()
+
+
+# --- R1（K1）：created_at 双端格式漂移 ---
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_created_at_filled_and_iso_utc_when_missing(backend, tmp_path):
+    """R1：写入方未传 created_at 时两端都补 UTC ISO 串——不再"内存 None / SQLite 空格格式"。
+
+    修复前：内存端整字段为 ``None``（不可解析），SQLite 靠列默认值 ``CURRENT_TIMESTAMP``
+    产出 ``2026-10-08 12:00:00``（空格分隔、无时区），L3 七天新鲜窗口（``_is_fresh``）的
+    判定口径因此在两端不同。
+    """
+    with _store(backend, tmp_path) as store:
+        store.add_repair(_case(repair_key="rk-created"))  # created_at 刻意留空（None）
+        found = store.find_by_repair_key("rk-created")
+        raw = found.created_at
+        assert raw is not None  # 修复前内存端为 None
+        assert _is_utc_iso(raw)  # 可解析、tz-aware、秒精度、与 last_hit_at 同格式
+        assert raw.endswith("+00:00") and "T" in raw and " " not in raw
+        assert abs((datetime.now(timezone.utc) - datetime.fromisoformat(raw)).total_seconds()) < 60
+        if backend == "sqlite":
+            stored = store._conn.execute("SELECT created_at FROM repairs").fetchone()[0]
+            assert stored == raw  # 落库即 ISO（修复前落的是 CURRENT_TIMESTAMP 空格格式）
+
+
+def test_explicit_created_at_preserved_on_both_backends(tmp_path):
+    """R1：调用方显式给出的 created_at 原样保留（两端一致，不被补值覆盖）。"""
+    explicit = "2026-01-02T03:04:05+00:00"
+    cases = [
+        _case(new="#n1", fp="fpA", repair_key="rk-exp"),
+        _case(new="#n2", fp="fpB", repair_key="rk-exp2"),
+    ]
+    with _store("memory", tmp_path) as memory, _store("sqlite", tmp_path) as sqlite:
+        observed = []
+        for store in (memory, sqlite):
+            for case in cases:
+                store.add_repair(replace(case, created_at=explicit))
+            observed.append(
+                (
+                    store.find_by_repair_key("rk-exp").created_at,
+                    store.find_by_repair_key("rk-exp2").created_at,
+                )
+            )
+        assert observed[0] == observed[1] == (explicit, explicit)
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_created_at_preserved_on_upsert(backend, tmp_path):
+    """R1：upsert 保留首写 created_at（与 is_verified 同策略），两端一致。"""
+    explicit = "2026-01-02T03:04:05+00:00"
+    with _store(backend, tmp_path) as store:
+        store.add_repair(replace(_case(fp="fp", repair_key="rk-keep"), created_at=explicit))
+        store.add_repair(_case(fp="fp", repair_key="rk-keep", confidence=0.5))  # 新案例不带时间
+        assert store.find_by_repair_key("rk-keep").created_at == explicit
+
+
+def test_legacy_created_at_space_format_normalized(tmp_path):
+    """R1：旧库 CURRENT_TIMESTAMP 值（空格分隔、无时区）读出时归一为 UTC ISO 且可解析。"""
+    store = SqliteKnowledgeStore(str(tmp_path / "legacy-created.db"))
+    try:
+        store.add_repair(_case(repair_key="rk-legacy-created"))
+        store._conn.execute("UPDATE repairs SET created_at = '2026-10-08 12:00:00'")
+        store._conn.commit()
+        found = store.find_by_repair_key("rk-legacy-created")
+        assert found.created_at == "2026-10-08T12:00:00+00:00"
+        assert _is_utc_iso(found.created_at)
+    finally:
+        store.close()
+
+
+def test_legacy_null_created_at_reads_back_none(tmp_path):
+    """R1：历史 NULL 列（ALTER 补列）读出为 None，不伪造时间、不抛异常。"""
+    db = tmp_path / "legacy-null-created.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE repairs (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " original_selector TEXT NOT NULL, new_selector TEXT NOT NULL, repair_key TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO repairs (original_selector, new_selector, repair_key)"
+        " VALUES ('#old', '#new', 'rk-null')"
+    )
+    conn.commit()
+    conn.close()
+    store = SqliteKnowledgeStore(str(db))
+    try:
+        assert store.find_by_repair_key("rk-null").created_at is None
     finally:
         store.close()
 
