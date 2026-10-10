@@ -8,13 +8,16 @@
 M4：与 SqliteKnowledgeStore 语义逐条对齐——add_repair 走 upsert（键与覆盖列清单一致）、
 find_repair 择优规则一致（指纹命中取置信度最高者，退化取置信度最高者）、last_hit_at 同格式
 （base.utc_now_iso）、补 close()。
+
+R1：``created_at`` 同法归位——写入侧 ``None`` 时补 ``base.utc_now_iso()``（此前只靠 SQLite
+列默认值兜底，内存端落 ``None``，两端 L3 新鲜窗口判定口径不同）；upsert 保留首写值。
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
 
-from selfheal.knowledge.base import utc_now_iso
+from selfheal.knowledge.base import utc_now_iso, utc_now_iso_if_missing
 from selfheal.knowledge.schema import PopupFeature, RepairCase, RepairQuery
 
 
@@ -39,9 +42,14 @@ class KnowledgeStore:
         page_fingerprint / repair_key / embedding / embedding_version；
         hit_count / last_hit_at / is_verified / created_at 保留原值——尤其 is_verified 是
         人工审核标记，再次沉淀不得静默清除（L3 防污染自动采纳依赖该信任状态）。
+
+        R1：``created_at`` 缺席（``None``）时补 ``base.utc_now_iso()``，与 SQLite 端
+        （列默认值已被写侧显式值取代）同格式同语义；仅首写生效（upsert 保留首写值）。
         """
         # 写侧归一化与 SQLite 一致：空指纹统一按 None 存储，读回也是 None（SQLite 端存 "" 但读侧还原）
         stored = case if case.dom_fingerprint else replace(case, dom_fingerprint=None)
+        # 时间字段同样在写侧补齐并归一，保证"读出的 created_at 永远可解析"这一契约两端一致
+        stored = replace(stored, created_at=utc_now_iso_if_missing(stored.created_at))
         key = self._upsert_key(case)
         for idx, existing in enumerate(self._repairs):
             if self._upsert_key(existing) == key:

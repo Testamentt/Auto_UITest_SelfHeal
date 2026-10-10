@@ -3,6 +3,18 @@
 定义知识存储与检索的统一接口（Protocol）。内存实现（store.KnowledgeStore）与
 SQLite 实现（sqlite_store.SqliteKnowledgeStore）均遵循该接口，由 factory 按配置选择，
 调用方（orchestrator / PopupGuard / 测试）不感知具体后端。
+
+**时间字段格式契约（R1，两端必须逐字一致）**——适用于 ``RepairCase.created_at`` 与
+``RepairCase.last_hit_at``：
+
+- **写入**：一律 ``utc_now_iso()``（UTC ISO 8601、秒精度、带 ``+00:00``，形如
+  ``2026-10-08T12:00:00+00:00``）。字段缺席时由 ``utc_now_iso_if_missing()`` 补齐，
+  **不得**依赖 SQLite 列默认值 ``CURRENT_TIMESTAMP``（它产出 ``2026-10-08 12:00:00``，
+  空格分隔且无时区）。
+- **读出**：两端都必须给出可被 ``datetime.fromisoformat`` 解析且 tz-aware 的字符串；
+  SQLite 读侧对旧库的历史空格格式做等价归一（补 UTC 时区 → ISO），兼容而非丢弃。
+- **消费方**：``agent/strategies/semantic._is_fresh``（L3 七天新鲜窗口）按此契约解析，
+  两端判定口径因此一致；无法解析的值按"不新鲜"处理（保守，不误采纳）。
 """
 
 from __future__ import annotations
@@ -23,6 +35,21 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def utc_now_iso_if_missing(raw: str | None) -> str:
+    """``created_at`` 写入归一：未提供（``None``）时补当前 UTC ISO 串，已提供原样返回（R1）。
+
+    背景：两端曾各自兜底——SQLite 靠列默认值 ``DEFAULT CURRENT_TIMESTAMP`` 产出
+    ``"2026-10-08 12:00:00"``（空格分隔、无时区），内存后端写入方不传则整字段为 ``None``，
+    于是同一份逻辑数据在两端落成"可解析"与"不可解析"两种形态，直接改变
+    ``agent/strategies/semantic._is_fresh``（L3 七天新鲜窗口）的判定口径。
+
+    约定：写入侧统一调用本函数补齐，读出侧再按同一契约归一（SQLite 读侧兼容旧空格格式），
+    因此两端读出的 ``created_at`` 必然同格式、同可解析性。空串等假值视为已提供、不覆盖
+    （与 SQLite 列默认值只在字段缺席时生效的语义保持一致）。
+    """
+    return raw if raw is not None else utc_now_iso()
+
+
 class KnowledgeBackend(Protocol):
     """知识库统一接口（内存 / SQLite 实现均遵循）。
 
@@ -36,7 +63,12 @@ class KnowledgeBackend(Protocol):
     """
 
     def add_repair(self, case: RepairCase) -> None:
-        """沉淀一条修复案例（按 (original_selector, new_selector, dom_fingerprint or "") upsert）。"""
+        """沉淀一条修复案例（按 (original_selector, new_selector, dom_fingerprint or "") upsert）。
+
+        时间契约（见模块 docstring）：``case.created_at`` 为 ``None`` 时由写入侧补
+        ``utc_now_iso()``——两端都不得落 ``None``，否则 L3 新鲜窗口在两端判定不同。
+        upsert 保留首次写入的 ``created_at``（不刷新为末次写入时刻）。
+        """
         ...
 
     def add_popup(self, feature: PopupFeature) -> None:
