@@ -210,13 +210,23 @@ class HealingLocator:
         self._last_heal_outcome: HealOutcome | None = None
 
     def __getattr__(self, name: str) -> Any:
-        # 仅对实例上不存在的属性触发；__init__ 设置的属性不走这里
-        if self._enabled and name in CHAIN_PROPERTIES:
+        # 仅对实例上不存在的属性触发；__init__ 设置的属性不走这里。
+        # L1：内部字段必须用 object.__getattribute__ 直接取。拷贝/序列化协议（copy.copy、
+        # copy.deepcopy、pickle）会在属性表就绪前探测 `__setstate__`/`__deepcopy__` 这类
+        # 协议属性，构造中途也可能被取属性；若此处写成 `self._enabled`，缺失时会再次进入
+        # __getattr__ 取 `_enabled` → 无限递归（RecursionError）。缺失即按"属性不存在"抛
+        # AttributeError，让 hasattr/拷贝协议走默认路径（copy 退化为 __dict__ 浅拷贝）。
+        try:
+            enabled = object.__getattribute__(self, "_enabled")
+            raw_locator = object.__getattribute__(self, "_locator")
+        except AttributeError:
+            raise AttributeError(name) from None
+        if enabled and name in CHAIN_PROPERTIES:
             return self._chain(name, (), {}, True)
-        if self._enabled and name in CHAIN_METHODS:
+        if enabled and name in CHAIN_METHODS:
             return lambda *a, **kw: self._chain(name, a, kw)
-        attr = getattr(self._locator, name)
-        if self._enabled and name in self.HEALABLE and callable(attr):
+        attr = getattr(raw_locator, name)
+        if enabled and name in self.HEALABLE and callable(attr):
             return self._healing_action(name, attr)
         return attr
 
@@ -502,4 +512,10 @@ class HealingPage:
         )
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(self._page, name)
+        # L1：与 HealingLocator 同源的代理递归风险——内部字段未就绪（构造中途 / 拷贝协议
+        # 探测 `__setstate__` 等）时若写成 `self._page`，会再次进入 __getattr__ 无限递归。
+        try:
+            page = object.__getattribute__(self, "_page")
+        except AttributeError:
+            raise AttributeError(name) from None
+        return getattr(page, name)
