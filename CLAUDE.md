@@ -49,12 +49,13 @@ AutoAiSelfHeal 是一个**带 AI 自愈能力的 UI 自动化测试框架**。�
 | 自动化框架 | Playwright (Python) | 现代、高效、原生支持 trace/截图/网络拦截 |
 | 测试框架 | pytest + pytest-playwright | 用例组织与 fixture |
 | 自愈定位器 | 自研 LLM 定位器 + 开源库辅助 | 灵活可控 |
-| 大语言模型 | DeepSeek（`deepseek-v4-flash`，OpenAI 兼容端点），经 `llm/` 抽象层接入 | 支持 API 付费调用、可切换 provider；**`base_url` / `model` 必须与 `api_key_env` 的密钥同平台**，否则 401 |
-| 视觉模型 | 通义 `qwen3-vl-plus`（默认 DashScope 公共 compatible-mode 端点），经 `llm/` 抽象层接入 | 多模态，视觉定位与控件画像；专属百炼 MaaS 端点经本机 `config/settings.yaml` 覆盖 |
+| 大语言模型 | DeepSeek（`deepseek-v4-flash`，OpenAI 兼容端点），经 `llm/` 抽象层接入 | 支持 API 付费调用、可切换 provider；**`base_url` / `model` 必须与 `api_key_env` 的密钥同平台**，否则 401（本项目当前经 CommandCode 网关，见 `config/settings.yaml`） |
+| 视觉模型 | DeepSeek V4.1（`deepseek/deepseek-v4.1-flash`，**支持图片输入**，与 LLM 同一网关），经 `llm/` 抽象层接入 | 视觉定位与控件画像；代码默认值是通义 `qwen3-vl-plus`（DashScope 公共端点），本项目当前经本机 `config/settings.yaml` 指向 CommandCode |
 | 报告 | Allure + 自研 HTML | 自愈看板、视频回放 |
 | CI/CD | GitHub Actions | 演示自动化流水线 |
 
-> **provider 已定**（见 `docs/roadmap.md` D7/D13）：LLM=DeepSeek（OpenAI 兼容端点）、VLM=通义 qwen3-vl-plus（默认 DashScope 公共 compatible-mode 端点，专属百炼 MaaS 端点经本机 `config/settings.yaml` 覆盖，备选 qwen3.8-flash）。
+> **provider 已定**（见 `docs/roadmap.md` D7/D13/D18）：LLM=DeepSeek（OpenAI 兼容端点）、VLM 自 2026-10-10 起本项目改用 **CommandCode 网关的 `deepseek/deepseek-v4.1-flash`**（实测支持图片输入；代码默认的通义 `qwen3-vl-plus` / DashScope 公共端点仍保留为可移植基线，备选 qwen3.8-flash）。
+> 凭据：本项目当前统一用 `.env` 的 `COMMANDCODE_API_KEY`（LLM/VLM 共用）；代码默认值仍指向 `OPENAI_API_KEY` / `DASHSCOPE_API_KEY`。
 > 所有模型调用**必须**经过 `src/selfheal/llm/` 的抽象接口（`llm/factory.py` 统一构建、`registry` 注册），禁止在业务代码里直接 import 某个 SDK，切换 provider 只改 `config/settings.yaml`。
 
 ## 架构（大局）

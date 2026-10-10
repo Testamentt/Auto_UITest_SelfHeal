@@ -64,11 +64,12 @@
 | D10 | 知识库后端形态 | `KnowledgeBackend` 接口 + 内存 / SQLite 双实现 + factory 选择；DOM 指纹参与检索择优 | 可切换、可持久化、同结构页面复用更可靠 |
 | D11 | 弹窗处理 | 知识优先（弹窗特征库）+ 关闭按钮启发式识别，成功后沉淀特征；动作超时先清弹窗再走自愈 | 直击"被遮挡"类失败 |
 | D12 | 智能等待 | 先可见，再要求 `bounding_box` 连续 `stable_ms` 不变；POM 显式调用（可选增强） | 减少加载抖动误判，不改变默认行为 |
-| D13 | 视觉定位 | OpenAI 兼容 VLM（`qwen3-vl-plus`，备选 qwen3.8-flash）；候选集护栏；key 走 `DASHSCOPE_API_KEY`；`base_url` 默认 DashScope 公共 compatible-mode，专属百炼 MaaS 端点经本机 `config/settings.yaml` 覆盖 | 复用 OpenAI 兼容机制；防幻觉；密钥参数化；环境端点不入代码默认值 |
+| D13 | 视觉定位 | OpenAI 兼容 VLM（`qwen3-vl-plus`，备选 qwen3.8-flash）；候选集护栏；key 走 `DASHSCOPE_API_KEY`；`base_url` 默认 DashScope 公共 compatible-mode，专属百炼 MaaS 端点经本机 `config/settings.yaml` 覆盖 | 复用 OpenAI 兼容机制；防幻觉；密钥参数化；环境端点不入代码默认值（**本项目 2026-10-10 起实际选型见 D18**） |
 | D14 | 知识库语义化 | 本地确定性 n-gram 哈希 TF 向量（零 API 费用）+ numpy 余弦；L1 `repair_key` 硬短路 → L2 启发式 → L3 语义检索 → L4 VLM；按 `page_fingerprint` 分桶；采纳规则（sim>0.92 且 verified / 7 天内 sim>0.80 自动，其余写人审清单） | 热路径不调 API embedding；ID 变但文本 / 结构不变仍可命中；防污染 + 冷启动免人审 |
 | D15 | Allure 报告增强 | 轻量桥 `reporting/allure_bridge.py`（`_HAS_ALLURE` 单点探测，未装全 no-op）；环境页 + marker→标签（erp>healing>e2e>unit 取唯一 feature）+ 证据附件；CI `publish` job 发布 GitHub Pages（gh-pages，含历史趋势，仅 main） | 展示层不该侵入 agent；标签单 feature 防爆炸；闭环过程以结构化附件呈现够用 |
 | D16 | 模型层护栏与异常语义 | 超时 / 输出上限 / 重试次数 / 图片体积上限**全部可配**（`LLMConfig`、`VisionConfig`）；异常分级为 `FatalUnavailableError`（鉴权 / 参数，重试无用）与 `TransientUnavailableError`（限流 / 超时 / 5xx，可重试），均继承 `UnavailableError` 保持既有降级契约；`HealingFailedError` 同时继承 Playwright 与内置 `TimeoutError` | 2026-10-08 实证：key 与端点不同平台时只报异常类名，无法定位；401 与 429 同待遇导致重试策略与成本不可控 |
 | D17 | 文档治理 | `docs/README.md` 为文档唯一入口（分区 + 写作规范 + 双轨说明）；`sessions/plans/reviews` 只读；低优先待办入 `docs/backlog/`、模板入 `docs/templates/`；同一事实只允许一个归属地，其余改指针 | 2026-10-08 文档体检：格式不一、前后错位、跨文件重复、散落多处 |
+| D18 | 视觉模型切换 | VLM 由通义 `qwen3-vl-plus`（DashScope）改为 **CommandCode 网关的 `deepseek/deepseek-v4.1-flash`**（与 LLM 同网关同凭据）；凭据变量由 `DASHSCOPE_API_KEY` 改名为 `COMMANDCODE_API_KEY`；代码默认值仍保留 qwen3-vl-plus + DashScope 公共端点作为可移植基线（仅本机 `config/settings.yaml` 覆盖） | ① 用项目自身客户端实测该模型**支持图片输入**（合成图 6 位随机数字识别正确）；② 真实视觉冒烟 `1 passed`、`confidence=0.873`（原 qwen3-vl-plus 0.921）、耗时 8.6s vs 60s 级；③ 与 LLM 同平台可少一套端点与计费口径。代价：推理模型每次视觉调用含 reasoning token，成本单价需按新平台重估（登记于 backlog） |
 
 ## 待解决问题
 
