@@ -54,6 +54,7 @@
 
 - 所有**大的修改**（架构调整、新增模块、规则变更、重要修复）必须提交到 Git，commit message 清晰说明"做了什么 + 为什么"。
 - 文档与代码**同批提交**，避免"代码先行、文档缺失"。
+- **推送纪律**：远端推送按仓库**可见性**分档（用 `gh repo view <owner/repo> --json visibility` 确认）——**私有仓库可直接推送**（如 `Testamentt/docs_study`、`Testamentt/SongTest-Helper`），无需逐次确认；**公开仓库推送前必须经人工明确同意**（本仓库 `Testamentt/Auto_UITest_SelfHeal` 为 **PUBLIC**，推送即公开且难撤回）。本地提交不受限，允许长期处于「已提交未推送」状态，属预期而非遗漏。
 
 ### 沉淀文档必含五要素（模板见 `docs/templates/session-doc-template.md`）
 

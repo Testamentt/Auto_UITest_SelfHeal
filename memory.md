@@ -2,12 +2,18 @@
 
 > **定位**：跨会话持久化偏好与环境事实——回答"这个项目怎么跟我配合、本机环境是什么样"。
 > **状态**：活文档（环境事实变化时必须同步；读者：AI 协作者与本人）
-> **最后更新**：2026-10-08 · 关联：[CLAUDE.md](CLAUDE.md)（上手说明）、[docs/README.md](docs/README.md)（文档地图）
+> **最后更新**：2026-10-11 · 关联：[CLAUDE.md](CLAUDE.md)（上手说明）、[docs/README.md](docs/README.md)（文档地图）
 
 ## 沟通语言
 
 - 始终使用**中文**回答用户问题、撰写说明与提交信息。
 - 代码、命令、标识符、文件路径保持英文原样，不做翻译。
+
+## Git 与推送可见性
+
+- **私有仓库可直接推送**（如 `Testamentt/docs_study`、`Testamentt/SongTest-Helper`），无需逐次确认。
+- **公开仓库推送前必须人工明确同意**：本仓库 `Testamentt/Auto_UITest_SelfHeal` 为 **PUBLIC**。本地提交不受限，可长期「已提交未推送」。
+- 确认可见性：`gh repo view <owner/repo> --json visibility`。规则源头：`RULE.md` §R5「推送纪律」。
 
 ## 文档约定
 
