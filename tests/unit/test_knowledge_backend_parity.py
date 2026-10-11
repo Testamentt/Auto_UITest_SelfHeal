@@ -210,6 +210,43 @@ def test_find_repair_falls_back_to_highest_confidence(backend, tmp_path):
         assert store.find_repair("#missing") is None
 
 
+# --- R2（K2）：find_repair 同分并列的稳定次序 ---
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_find_repair_tie_break_stable_and_matches_memory(backend, tmp_path):
+    """R2：置信度全部并列 → 次序稳定且取插入序首个（SQLite 端靠 ``ORDER BY … rowid ASC``）。
+
+    修复前 SQL 未显式写次级排序键，次序依赖 SQLite 扫描/索引选择（理论不保证）；现约定
+    "置信度降序 → rowid 升序（插入序）"，与内存端稳定排序的列表序一致。
+    """
+    with _store(backend, tmp_path) as store:
+        for new in ("#t-first", "#t-second", "#t-third"):
+            store.add_repair(_case(new=new, confidence=0.6, fp=None))
+        # 指纹不同也走并列分支（查询不带指纹）→ 取首写者
+        assert store.find_repair("#old").new_selector == "#t-first"
+        # 重复调用同一输入必须同结果（稳定性，非偶然）
+        assert {store.find_repair("#old").new_selector for _ in range(5)} == {"#t-first"}
+
+
+def test_find_repair_tie_break_uses_rowid_ascending(tmp_path):
+    """R2：带指纹时同样按 "置信度降序 → 插入序" 取首个指纹匹配者（SQLite 侧逐条验证）。"""
+    store = SqliteKnowledgeStore(str(tmp_path / "tie.db"))
+    try:
+        store.add_repair(_case(new="#n1", confidence=0.6, fp="fpX", repair_key="rk-1"))
+        store.add_repair(_case(new="#n2", confidence=0.6, fp="fpX", repair_key="rk-2"))
+        # 同指纹并列 → 首写者
+        assert store.find_repair("#old", "fpX").new_selector == "#n1"
+        # 与库内 rowid 次序一致（首写 = 最小 rowid）
+        rows = store._conn.execute(
+            "SELECT new_selector FROM repairs WHERE original_selector = '#old'"
+            " ORDER BY confidence DESC, rowid ASC"
+        ).fetchall()
+        assert [r["new_selector"] for r in rows] == ["#n1", "#n2"]
+    finally:
+        store.close()
+
+
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_last_hit_at_iso_utc_format(backend, tmp_path):
     """M4：last_hit_at 两端同格式——UTC ISO、秒精度、可被 fromisoformat 解析且 tz-aware。"""

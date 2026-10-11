@@ -74,9 +74,11 @@ class KnowledgeStore:
     def find_repair(self, original_selector: str, dom_fingerprint: str | None = None):
         """按原定位器检索；择优规则与 SQLite 端逐条对齐（M4）。
 
-        对齐 SQLite 的 ``ORDER BY confidence DESC`` 后取首个指纹匹配者；无指纹匹配
-        （或未给指纹）时退化取置信度最高者。confidence 相同时按插入序取先写入者
-        （sorted 稳定 + SQLite 同分扫描顺序为 rowid 升序），保证两端同输入同结果。
+        对 SQLite 的 ``ORDER BY confidence DESC, rowid ASC`` 取首个指纹匹配者；无指纹匹配
+        （或未给指纹）时退化取置信度最高者。confidence 相同时按插入序取先写入者——
+        ``sorted`` 稳定（并列保持列表序）且列表序恒为插入序（upsert 原地替换、不搬到表尾），
+        与 SQLite 的 ``rowid`` 升序（insert 自增、update 不变）一致，故同输入必同结果（R2：
+        该并列次序是既定契约，两端都由测试锁定）。
         """
         matches = [c for c in self._repairs if c.original_selector == original_selector]
         if not matches:

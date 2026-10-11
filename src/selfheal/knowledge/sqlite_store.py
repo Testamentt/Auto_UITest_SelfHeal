@@ -254,9 +254,21 @@ class SqliteKnowledgeStore:
     def find_repair(
         self, original_selector: str, dom_fingerprint: str | None = None
     ) -> RepairCase | None:
-        """（旧知识优先）按原定位器精确匹配，指纹优先、其余按置信度。"""
+        """（旧知识优先）按原定位器精确匹配，指纹优先、其余按置信度。
+
+        既定次序（R2，契约，勿依赖 SQLite 默认扫描顺序）：
+
+        1. 置信度降序——高置信度候选优先；
+        2. 置信度并列时按 ``rowid`` 升序——即**插入序先写入者优先**（与内存后端
+           ``sorted`` 稳定排序的列表序一致）；旧库去重保留 ``MIN(rowid)``，首写行仍在最前。
+        3. 给了 ``dom_fingerprint`` 时，在满足 1/2 的序列里取**首个指纹匹配者**（不因指纹
+           相同而跳过置信度更高者）；未给指纹或无匹配时取序列首个。
+
+        边界：选择器无命中返回 ``None``；并列次序的稳定性由
+        ``test_find_repair_tie_break_stable_and_matches_memory`` 锁定。
+        """
         rows = self._conn.execute(
-            "SELECT * FROM repairs WHERE original_selector = ? ORDER BY confidence DESC",
+            "SELECT * FROM repairs WHERE original_selector = ? ORDER BY confidence DESC, rowid ASC",
             (original_selector,),
         ).fetchall()
         if not rows:
