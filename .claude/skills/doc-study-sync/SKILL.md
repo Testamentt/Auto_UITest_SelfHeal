@@ -7,7 +7,7 @@ description: 文档双轨同步器（Doc Study Sync）。当用户要求「同�
 
 > **定位**：把技术文档渲染成学习版镜像的**执行流水线**（Diff 识别 → 冲突熔断 → 翻译官 9 条 → 版本印记 → 三重校验 → 推送）。
 > **状态**：活文档（规则源头仍是 [RULE.md](../../../RULE.md) §R7；本文件内嵌副本与其冲突时以 RULE.md 为准）
-> **最后更新**：2026-10-08 · 关联：[docs/README.md](../../../docs/README.md) §四（双轨说明）
+> **最后更新**：2026-10-11 · 关联：[docs/README.md](../../../docs/README.md) §四（双轨说明）
 
 ## 🧭 项目配置（迁移到新项目时必填此表）
 
@@ -15,13 +15,14 @@ description: 文档双轨同步器（Doc Study Sync）。当用户要求「同�
 |---|---|
 | 源文档目录（事实源） | `docs` |
 | 参与双轨的源文档 | `docs/architecture.md`、`docs/roadmap.md`、`README.md` |
-| 镜像本地路径（独立 git 仓库根） | `E:\Project\AutoAiSelfHeal-docs-study` |
+| 镜像本地路径（独立 git 仓库根，**全项目共用且全盘唯一**） | `E:\Project\docs-study` |
 | 镜像内项目文件夹 | `AutoAiSelfHeal` |
 | 镜像远端仓库 | `https://github.com/Testamentt/docs_study.git` |
 | 不参与双轨的目录 | `docs/sessions`、`docs/plans`、`docs/reviews`、`docs/TODO.md`、`docs/backlog`、`docs/templates` |
 | 规则源头 | `RULE.md` §R7 |
 
 > 配置表为空或占位符未替换 = 本项目未完成迁移；先提示用户补配置，禁止凭猜测同步。
+> 镜像本地路径必须指向唯一工作区 `E:\Project\docs-study`；**不得**指向本项目旁的副本（如 `E:\Project\AutoAiSelfHeal-docs-study`）。
 
 ## 🚦 触发与模式
 
@@ -35,6 +36,10 @@ description: 文档双轨同步器（Doc Study Sync）。当用户要求「同�
 
 1. **事实源唯一性**：源文档是绝对真理。镜像只允许改变表达形式；严禁改变数值、路径、键名。
 2. **原子块保护**：正则 `[a-zA-Z0-9_\-/.]+` 的连续串（路径、环境变量、函数名、端点）是不可分割原子；禁止在原子中间加空格、换行或「的」。
+3. **工作区唯一性**：镜像工作区全盘唯一，恒为 `E:\Project\docs-study`。
+   - 严禁在本仓库内、其父容器目录内或任意项目目录内创建 `docs-study` / `docs_study` 文件夹。
+   - 严禁为本项目再 `git clone` 一份工作副本；需要同步就直接进唯一工作区。
+   - 发现副本立即停止同步并报告人工：先并回唯一工作区、再删副本，最后才继续。
 
 ## 🔄 强制流水线（按序执行，不得跳步、不得合并）
 
@@ -71,7 +76,7 @@ description: 文档双轨同步器（Doc Study Sync）。当用户要求「同�
 - 任一不一致 → 回滚本次镜像改动，回到 2️⃣ 熔断流程报告。
 
 ### 6️⃣ 提交推送镜像仓库
-- 在 `E:\Project\AutoAiSelfHeal-docs-study` 提交：`docs(AutoAiSelfHeal): 同步 <源hash>（<篇名列表>）`。
+- 在 `E:\Project\docs-study` 提交：`docs(AutoAiSelfHeal): 同步 <源hash>（<篇名列表>）`。
 - `git push` 到 `https://github.com/Testamentt/docs_study.git`；推送失败（网络/凭据）→ 保留本地 commit，回报用户，不重试超过 1 次。
 
 ### 7️⃣ 回报格式
@@ -98,5 +103,6 @@ description: 文档双轨同步器（Doc Study Sync）。当用户要求「同�
 - ❌ 数值对不上时「顺手修正」→ 必须熔断交人工，你可能改错的是源。
 - ❌ 把豁免区一起改写 → 表格/命令/Mermaid/链接必须逐字搬运。
 - ❌ 追问硬凑 → 无内容可问的章节宁可不加并回报，禁止编问题。
-- ❌ 在源仓库里提交镜像 → 镜像只活在 `E:\Project\AutoAiSelfHeal-docs-study` 独立仓库。
+- ❌ 在源仓库里提交镜像 → 镜像只活在 `E:\Project\docs-study` 独立仓库。
 - ❌ 源文档不存在/被重命名时静默跳过 → 回报缺失清单，交人工确认映射。
+- ❌ 在项目旁边克隆第二份工作区（如 `E:\Project\AutoAiSelfHeal-docs-study`）→ 多副本各自提交、互不可见，必然分叉；只准用唯一工作区 `E:\Project\docs-study`。
