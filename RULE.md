@@ -2,7 +2,7 @@
 
 > **定位**：本项目**规则源头**（R1–R8）——与其他文档冲突时以本文件为准。
 > **状态**：活文档（改规则条款须人工确认；速查索引见 [CLAUDE.md](CLAUDE.md)）
-> **最后更新**：2026-10-08 · 关联：[CLAUDE.md](CLAUDE.md) 上手说明 · [docs/README.md](docs/README.md) 文档地图
+> **最后更新**：2026-10-11 · 关联：[CLAUDE.md](CLAUDE.md) 上手说明 · [docs/README.md](docs/README.md) 文档地图
 
 本文件定义本项目**必须遵守**的开发规则，由 `CLAUDE.md` 通过 `@RULE.md` 引入，
 对所有协作者（含 AI Agent）生效。规则冲突时，以本文件为准。
@@ -81,7 +81,7 @@
 
 ## R7 · 文档双轨制（技术文档 + 学习文档）
 
-> 来源：`doc-system-kit` 迁移底稿（TestPlatform `RULES.md` §18+§19）。技术文档（事实源）+ 学习文档（面试镜像）双轨并行。
+> 来源：`doc-system-kit` 迁移底稿（TestPlatform `RULES.md` §18+§19）。技术文档（事实源）+ 学习文档（面试镜像）双轨并行。迁移包现位于学习文档工作区 `E:\Project\docs-study\doc-system-kit\`（2026-10-11 由 `E:\Project\TestPlatform\doc-system-kit` 迁入）。
 > 沉淀要求（底稿 §A，与本章同源）已由 **R5 · 变更沉淀** 完整覆盖，不再重复；执行同步任务时 R5 与本章配合适用。
 > 执行流水线细节见技能 `.claude/skills/doc-study-sync/SKILL.md`；本章为规则源头，SKILL 内嵌副本与之冲突时以本章为准。
 
@@ -89,6 +89,7 @@
 
 1. **事实源唯一性**：`docs/` 是绝对真理。学习文档是渲染视图：只允许改变表达形式；严禁改变数值、路径、键名。
 2. **原子块保护**：正则 `[a-zA-Z0-9_\-/.]+` 匹配的连续串（路径、环境变量、函数名、端点等）视为不可分割原子。改写时原样保留；禁止在原子中间加空格、换行或「的」。
+3. **工作区唯一性**：学习文档工作区全盘唯一，恒为 `E:\Project\docs-study`。严禁在本仓库内或其父容器目录内创建 `docs-study` / `docs_study` 文件夹，严禁为本项目就近再克隆一份。细则与违反处置见 R7.4。
 
 ### R7.1 技术文档准则（源文档 = 考古挖掘）
 
@@ -127,7 +128,13 @@
 ### R7.4 仓库与路径
 
 - 学习文档远端仓库：`https://github.com/Testamentt/docs_study.git`（多项目共用，顶层文件夹区分项目）。
-- 本地工作副本：`E:\Project\AutoAiSelfHeal-docs-study`（独立 git 仓库）；本项目内容在 `AutoAiSelfHeal/` 子目录，路径与源文档一一镜像。
+- 本地工作区根：`E:\Project\docs-study`（独立 git 仓库，**全项目共用且全盘唯一**）；本项目镜像在 `E:\Project\docs-study\AutoAiSelfHeal\`，路径与源文档一一镜像。
+- **工作区唯一性（铁律，2026-10-11 起）**——学习文档工作区恒为 `E:\Project\docs-study`，全盘只此一份：
+  1. **禁止就地新建**：严禁在本仓库（`E:\Project\AutoAiSelfHeal\`）内、其父容器目录 `E:\Project\` 内、或任意项目目录内创建 `docs-study` / `docs_study` 文件夹。
+  2. **禁止就近多克隆**：需要镜像工作副本时**直接使用** `E:\Project\docs-study`；严禁为图方便在本仓库旁边再 `git clone` 第二份（如 `E:\Project\AutoAiSelfHeal-docs-study`）。多副本各自提交、互不可见，必然分叉。
+  3. **脚本必须可注入**：定位镜像一律走可配置项（参数或环境变量），默认值指向唯一工作区；禁止硬编码「项目旁的 docs-study」。
+  4. **违反即停**：一旦发现项目目录内存在 `docs-study` 副本，立即停止同步并报告人工——先并回唯一工作区、再删除副本，最后才继续同步。
+- 迁移依据与事故记录：`E:\Project\docs-study\README.md` §0（工作区唯一性）；迁移工具 `E:\Project\docs-study\doc-system-kit\`。
 - 镜像仓库与源代码仓库**完全隔离**：源仓库不提交它、不构建它、不引用它。
 - 新增或修改技术文档时，按 R7.3 SOP 同批更新镜像并推送；只改一处视为任务未完成。
 - `docs/sessions`、`docs/plans`、`docs/reviews`（只读历史）、`docs/TODO.md`、`docs/backlog`、`docs/templates` 属沉淀/历史/清单，不参与双轨。

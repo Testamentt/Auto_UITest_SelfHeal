@@ -2,7 +2,7 @@
 
 > **定位**：本仓库文档**唯一入口**——先看这里，再决定读哪一篇；新增、移动、改名文档时必须同步更新本文件。
 > **状态**：活文档（唯一入口索引 + 全仓写作规范）
-> **最后更新**：2026-10-08 · 关联：[RULE.md](../RULE.md) §R7（文档双轨）、[TODO.md](TODO.md)（任务清单）
+> **最后更新**：2026-10-11 · 关联：[RULE.md](../RULE.md) §R7（文档双轨）、[TODO.md](TODO.md)（任务清单）
 
 ## 一、文档分区（按"能不能改"分类）
 
@@ -15,7 +15,7 @@
 | 任务清单 | [TODO.md](TODO.md) | 活文档 | 全项目**唯一待办入口**：待办、已完成存档、踩坑记录 |
 | 沉淀与历史 | [sessions/](sessions/)、[plans/](plans/)、[reviews/](reviews/) | **只读，禁止修改** | 当时的结论留档；不作为当前事实依据 |
 | 模板 | [templates/session-doc-template.md](templates/session-doc-template.md) | 可改 | 新建 session 文档时复制 |
-| 学习镜像 | `E:\Project\AutoAiSelfHeal-docs-study\AutoAiSelfHeal\` | 只改表达形式 | 独立仓库（面试学习版），见 §四 |
+| 学习镜像 | `E:\Project\docs-study\AutoAiSelfHeal\` | 只改表达形式 | 独立仓库（面试学习版），见 §四；工作区全盘唯一 |
 | 运行时产物 | `reports/**`、`allure-results/**`、`.cache/**` | 自动生成，可删 | 已 gitignore，**不是文档**（看板 / 建议清单 / 知识库） |
 
 ## 二、读什么（按目的索引）
@@ -71,13 +71,14 @@
 
 | | 技术文档（源，本仓库） | 学习文档（镜像，独立仓库） |
 | --- | --- | --- |
-| 位置 | `README.md`、`docs/architecture.md`、`docs/roadmap.md` | `E:\Project\AutoAiSelfHeal-docs-study\AutoAiSelfHeal\`（路径一一镜像） |
+| 位置 | `README.md`、`docs/architecture.md`、`docs/roadmap.md` | `E:\Project\docs-study\AutoAiSelfHeal\`（路径一一镜像） |
 | 读者 | 开发与维护者 | 面试准备的初级测试工程师 |
 | 规范 | R7.1 考古挖掘（只记录、不发挥） | R7.2 翻译官 9 条（只改表达） |
 | 同步 | 源文档改动后**同批**更新镜像 | 流水线：`.claude/skills/doc-study-sync/SKILL.md` |
 
 - 不参与双轨：`docs/sessions/`、`docs/plans/`、`docs/reviews/`、`docs/TODO.md`、`docs/backlog/`、`docs/templates/`。
 - 镜像头部必须带 `> 源版本: <commit> | 同步日期: <UTC>`；事实冲突时**熔断**交人工，不得自行折算。
+- **工作区唯一性**（R7.0-3 / R7.4）：学习文档工作区全盘唯一，恒为 `E:\Project\docs-study`。本仓库内及其父容器目录内**不得**出现 `docs-study` 文件夹；需要同步时直接进入该工作区，禁止再克隆第二份（2026-10-11 曾因双副本导致镜像分叉）。
 
 ## 五、新增 / 移动 / 改名文档的检查清单
 
