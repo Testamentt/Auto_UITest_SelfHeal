@@ -171,3 +171,38 @@ def test_main_reads_summary_file(monkeypatch, tmp_path):
         == 0
     )
     assert captured["payload"]["markdown"]["title"].startswith("⛔")
+
+
+# --- L13：best-effort 失败必须输出 GitHub 注解（退出码仍为 0） ---
+
+
+def test_main_send_failure_emits_github_annotation(monkeypatch, tmp_path, capsys):
+    """L13：webhook 推送失败 → ::warning:: 注解可见，退出码保持 0（不炸流水线）。"""
+    monkeypatch.setenv("WEBHOOK_URL", "https://hook.example/x")
+    monkeypatch.setattr(notify, "send", lambda url, payload: False)
+    assert notify.main(["--summary-file", str(tmp_path / "nope.json")]) == 0
+    out = capsys.readouterr().out
+    assert "::warning::" in out
+    assert "通知发送失败" in out
+    assert "退出码保持 0" in out  # 语义显式：失败不改变退出码
+
+
+def test_main_success_has_no_annotation(monkeypatch, tmp_path, capsys):
+    """注解只给失败：成功路径不得输出 ::warning::（避免告警疲劳）。"""
+    monkeypatch.setenv("WEBHOOK_URL", "https://hook.example/x")
+    monkeypatch.setattr(notify, "send", lambda url, payload: True)
+    assert notify.main(["--summary-file", str(tmp_path / "nope.json")]) == 0
+    out = capsys.readouterr().out
+    assert "::warning::" not in out
+    assert "通知已发送" in out
+
+
+def test_main_broken_summary_emits_github_annotation(monkeypatch, tmp_path, capsys):
+    """L13：摘要解析失败降级为空摘要 → 同样冒泡注解（否则告警口径静默失真）。"""
+    monkeypatch.setenv("WEBHOOK_URL", "https://hook.example/x")
+    monkeypatch.setattr(notify, "send", lambda url, payload: True)
+    broken = tmp_path / "broken.json"
+    broken.write_text("{not json", encoding="utf-8")
+    assert notify.main(["--summary-file", str(broken)]) == 0
+    out = capsys.readouterr().out
+    assert "::warning::" in out and "解析失败" in out

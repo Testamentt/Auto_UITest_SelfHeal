@@ -4,6 +4,8 @@
 - 标准库零第三方依赖（urllib/json/argparse），CI 直接可跑；
 - payload 组装为**纯函数**（build_summary / build_payload），便于单测快照；
 - send 为 best-effort：网络失败只记 warning 返回 False，不抛、不阻塞 CI；
+- 失败路径统一输出 `::warning::` GitHub 注解（L13）：退出码仍是 0（不炸流水线），
+  但故障在 Actions 注解面板可见，不再"只能翻日志"；
 - WEBHOOK_URL 未配置 → CLI 打印 skip 并以退出码 0 结束（不炸流水线）；
 - 触发范围由 CI 侧 job 条件控制（当前：仅 main 失败告警；定时回归启用后
   成功发摘要 + 失败发告警，见 .github/workflows/ci.yml 注释）。
@@ -30,6 +32,17 @@ logger = logging.getLogger("selfheal.notify")
 
 # 通知 provider 白名单（payload 格式各异，见 build_payload）
 PROVIDERS = ("dingtalk", "wecom", "slack", "generic")
+
+
+def warn_annotation(message: str) -> None:
+    """输出 GitHub Actions 注解（L13）：best-effort 失败必须在流水线页面可见。
+
+    - CI：`::warning::` 进 Actions 注解面板（run 页面直接看到，无需翻日志）；
+    - 本地：只是一行普通输出，无副作用。
+    - **退出码语义不变**（通知失败永远不炸 CI），但 R4"不允许静默失败"由此满足：
+      长期故障（webhook 一直不可达 / 摘要文件一直解析失败）会在每次运行的注解里冒泡。
+    """
+    print(f"::warning::{message}")
 
 
 def build_summary(
@@ -153,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
             records, cost = data.get("records", []), data.get("cost")
         except Exception:  # noqa: BLE001 - 摘要解析失败降级为空摘要
             logger.warning("摘要文件解析失败（按空摘要告警）", exc_info=True)
+            # L13：降级不静默——摘要内容失真会影响告警判断，必须冒泡到注解面板
+            warn_annotation(f"自愈记录摘要解析失败（{summary_path}），本次按空摘要发送")
     else:
         print(f"摘要文件不存在（{summary_path}），按空摘要通知")
 
@@ -164,7 +179,16 @@ def main(argv: list[str] | None = None) -> int:
         failed_jobs=args.failed_jobs,
     )
     ok = send(webhook_url, build_payload(args.provider, summary))
-    print(f"通知{'已发送' if ok else '发送失败（已忽略）'}")
+    if not ok:
+        # L13：通知失败仍 exit 0（best-effort 设计），但必须显式冒泡（webhook 长期不可达时
+        # 此前只有日志 + 一行 print，绿色 job 掩盖了"告警根本没发出去"）
+        warn_annotation(
+            f"自愈回归通知发送失败（provider={args.provider}，webhook 不可达或非 2xx），"
+            "通知未送达，详见日志"
+        )
+        print("通知发送失败（已忽略，退出码保持 0）")
+        return 0
+    print("通知已发送")
     return 0
 
 
