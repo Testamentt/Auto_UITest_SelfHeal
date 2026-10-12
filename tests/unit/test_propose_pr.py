@@ -126,3 +126,41 @@ def _completed(stdout: str) -> object:
     from subprocess import CompletedProcess
 
     return CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+
+
+# --- L13：best-effort 失败必须输出 GitHub 注解（退出码仍为 0） ---
+
+
+def test_main_create_failure_emits_github_annotation(monkeypatch, tmp_path, capsys):
+    """L13：gh 开草稿 PR 失败 → ::warning:: 注解可见，退出码保持 0。"""
+    (tmp_path / "p.json").write_text(json.dumps(_proposal()), encoding="utf-8")
+    monkeypatch.setattr(propose_pr, "has_open_pr", lambda label: False)
+    monkeypatch.setattr(propose_pr, "create_draft_pr", lambda *a, **k: False)
+    assert propose_pr.main(["--proposals-dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "::warning::" in out
+    assert "草稿 PR 创建失败" in out and "退出码保持 0" in out
+
+
+def test_main_success_has_no_annotation(monkeypatch, tmp_path, capsys):
+    """注解只给失败：正常开成草稿 PR 不输出 ::warning::。"""
+    (tmp_path / "p.json").write_text(json.dumps(_proposal()), encoding="utf-8")
+    monkeypatch.setattr(propose_pr, "has_open_pr", lambda label: False)
+    monkeypatch.setattr(propose_pr, "create_draft_pr", lambda *a, **k: True)
+    assert propose_pr.main(["--proposals-dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "::warning::" not in out
+    assert "草稿 PR 已创建" in out
+
+
+def test_main_skip_paths_have_no_annotation(monkeypatch, tmp_path, capsys):
+    """查重命中属正常跳过（非故障）：不应打注解，避免告警疲劳。"""
+    (tmp_path / "p.json").write_text(json.dumps(_proposal()), encoding="utf-8")
+    monkeypatch.setattr(propose_pr, "has_open_pr", lambda label: True)
+    assert propose_pr.main(["--proposals-dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "::warning::" not in out and "跳过重复" in out
+
+    capsys.readouterr()
+    assert propose_pr.main(["--proposals-dir", str(tmp_path / "none")]) == 0
+    assert "::warning::" not in capsys.readouterr().out

@@ -3,7 +3,8 @@
 职责边界（守 T15 人审原则）：
 - 本脚本只做「PR 内容组装 + 查重 + 调 gh 开**草稿** PR」，**绝不自动合并**、不改代码库；
 - 分支与产物提交由 CI 步骤完成（见 .github/workflows/ci.yml propose-pr job）；
-- 无建议产物 / 已有同名标签 open PR / gh 不可用 → 全部安全跳过（exit 0，不炸流水线）。
+- 无建议产物 / 已有同名标签 open PR / gh 不可用 → 全部安全跳过（exit 0，不炸流水线）；
+- 但"安全跳过"不等于"静默"：真正的失败（gh 创建失败）额外输出 `::warning::` 注解（L13）。
 
 用法（CI）：
     python scripts/propose_pr.py \
@@ -22,6 +23,16 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("selfheal.propose_pr")
+
+
+def warn_annotation(message: str) -> None:
+    """GitHub Actions 注解（L13）：best-effort 失败必须在流水线页面可见。
+
+    与 `scripts/notify.py` 同名助手保持一致的语义（脚本间零共享依赖，各自本地一份）：
+    退出码恒 0，但 `::warning::` 会进 Actions 注解面板，长期故障不再只能翻日志。
+    """
+    print(f"::warning::{message}")
+
 
 CHECKLIST = """## ⚠️ 人审清单（T22 · 草稿 PR，绝不自动合并）
 
@@ -138,7 +149,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"已存在标签 [{args.label}] 的 open PR，跳过重复创建（exit 0）")
         return 0
     ok = create_draft_pr(args.head_branch, title, body, args.label)
-    print(f"草稿 PR{'已创建' if ok else '创建失败（已忽略）'}")
+    if not ok:
+        # L13：开 PR 失败仍 exit 0（人审链路的产物已上传 artifact，不炸流水线），但
+        # "建议产出了却从没开成 PR"必须冒泡——此前只有日志 + 一行 print。
+        warn_annotation(
+            f"草稿 PR 创建失败（gh 不可用 / 权限不足 / 网络失败）：{len(proposals)} 条修复建议"
+            "仍在 reports/fix-proposals 产物中，请人工核对"
+        )
+        print("草稿 PR 创建失败（已忽略，退出码保持 0）")
+        return 0
+    print("草稿 PR 已创建（草稿态，绝不自动合并）")
     return 0
 
 
