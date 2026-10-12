@@ -88,3 +88,95 @@ def test_build_round_cmd_targets_variant():
     cmd = ab_compare.build_round_cmd("disabled", ab_compare.ROOT / "reports" / "a.xml")
     joined = " ".join(cmd)
     assert "-k disabled" in joined and "--junitxml" in joined and "test_ab_scenarios" in joined
+
+
+# --- L14：A 组守卫 +「未运行」告警行（作废对比不得静默产出） ---
+
+
+def test_build_rows_counts_not_run_rows():
+    """任一轮缺结果的行计入 summary['not_run']（A 缺 / B 缺都算）。"""
+    only_b = {"test_ab_s1_login_button[healing]": {"result": "passed", "time": 1.0}}
+    only_a = {"test_ab_s1_login_button[disabled]": {"result": "failed", "time": 1.0}}
+    rows, summary = ab_compare.build_rows(only_a, only_b)
+    assert len(rows) == 1 and rows[0]["no_heal"] == "failed" and rows[0]["with_heal"] == "passed"
+    assert summary["not_run"] == "0"
+
+    rows, summary = ab_compare.build_rows({}, only_b)  # A 组缺
+    assert rows[0]["no_heal"] == "未运行" and summary["not_run"] == "1"
+
+    rows, summary = ab_compare.build_rows(only_a, {})  # B 组缺
+    assert rows[0]["with_heal"] == "未运行" and summary["not_run"] == "1"
+
+
+def test_render_markdown_warns_when_rows_not_run():
+    """有「未运行」行 → 报告追加显式告警行（含行数与"不完整"提示）。"""
+    rows, summary = ab_compare.build_rows(
+        {"test_ab_s1_login_button[disabled]": {"result": "failed", "time": 1.0}}, {}
+    )
+    md = ab_compare.render_markdown(rows, summary, None)
+    assert "⚠️ **告警**" in md and "1 行「未运行」" in md
+    assert "不完整" in md
+
+
+def test_render_markdown_no_warning_when_all_rows_ran():
+    """两轮都有结果 → 无告警行（告警不得滥用，否则等于没有告警）。"""
+    junit = ab_compare.parse_junit_from_str(JUNIT_SAMPLE)
+    rows, summary = ab_compare.build_rows(junit, junit)
+    md = ab_compare.render_markdown(rows, summary, None)
+    assert summary["not_run"] == "0"
+    assert "⚠️ **告警**" not in md
+
+
+def test_render_markdown_tolerates_summary_without_not_run_key():
+    """兼容手工构造的旧 summary（缺 not_run 键）：退化为不告警，而不是 KeyError。"""
+    rows = [{"scenario": "s1", "no_heal": "failed", "with_heal": "passed", "value": "自愈修复 ✓"}]
+    _rows, summary = ab_compare.build_rows({}, {})
+    summary.pop("not_run")  # 模拟旧版 summary（L14 之前无该键）
+    md = ab_compare.render_markdown(rows, summary, None)
+    assert "⚠️ **告警**" not in md
+
+
+def test_main_aborts_when_group_a_empty(monkeypatch, tmp_path, capsys):
+    """L14：A 组（无自愈基线）为空 → 中止报告生成、退出码 1、不写报告文件。"""
+    monkeypatch.setattr(ab_compare, "parse_junit", lambda path: {})
+    monkeypatch.setattr(ab_compare, "REPORT_PATH", tmp_path / "ab-compare.md")
+    assert ab_compare.main(["--skip-run"]) == 1
+    out = capsys.readouterr().out
+    assert "A 组结果为空" in out and "无对照基线" in out
+    assert not (tmp_path / "ab-compare.md").exists()
+
+
+def test_main_aborts_when_group_b_empty(monkeypatch, tmp_path, capsys):
+    """对称守卫：B 组为空同样中止（既有行为，补用例锁定）。"""
+    monkeypatch.setattr(
+        ab_compare,
+        "parse_junit",
+        lambda path: (
+            {"test_ab_s1_login_button[disabled]": {"result": "failed", "time": 1.0}}
+            if "disabled" in str(path)
+            else {}
+        ),
+    )
+    monkeypatch.setattr(ab_compare, "REPORT_PATH", tmp_path / "ab-compare.md")
+    assert ab_compare.main(["--skip-run"]) == 1
+    assert "B 组结果为空" in capsys.readouterr().out
+    assert not (tmp_path / "ab-compare.md").exists()
+
+
+def test_main_writes_report_with_not_run_warning(monkeypatch, tmp_path):
+    """部分未运行：仍产出报告，但报告里带告警行（非静默）。"""
+    only_b = ab_compare.parse_junit_from_str(
+        JUNIT_SAMPLE.replace("test_ab_s1_login_button[disabled]", "test_ab_other[disabled]")
+    )
+    monkeypatch.setattr(
+        ab_compare,
+        "parse_junit",
+        lambda path: (
+            only_b if "disabled" in str(path) else ab_compare.parse_junit_from_str(JUNIT_SAMPLE)
+        ),
+    )
+    monkeypatch.setattr(ab_compare, "REPORT_PATH", tmp_path / "ab-compare.md")
+    monkeypatch.setattr(ab_compare, "_load_cost", lambda: None)
+    assert ab_compare.main(["--skip-run"]) == 0
+    report = (tmp_path / "ab-compare.md").read_text(encoding="utf-8")
+    assert "⚠️ **告警**" in report

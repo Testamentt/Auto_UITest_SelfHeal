@@ -9,7 +9,8 @@
 - 标准库零第三方依赖（subprocess / xml.etree / json）；
 - pytest 解析与对比统计均为**纯函数**（parse_junit / build_rows / render_markdown，
   tests/unit/test_ab_compare.py 快照覆盖）；
-- 两轮定向运行以 `-k <variant>` 过滤变体（同一份用例代码，见 tests/e2e/test_ab_scenarios.py）。
+- 两轮定向运行以 `-k <variant>` 过滤变体（同一份用例代码，见 tests/e2e/test_ab_scenarios.py）；
+- L14 守卫：A 组（无自愈基线）为空 → 中止并说明原因；个别行「未运行」→ 报告显式告警。
 
 用法：
     python scripts/ab_compare.py            # 两轮运行 + 产出 reports/ab-compare.md
@@ -103,6 +104,9 @@ def build_rows(
     - 无自愈 failed / 开启自愈 passed → 「自愈修复 ✓」
     - 双 failed → 「自愈未救回（需人工）」
     - 双 passed → 「原定位器仍有效（非失效场景）」
+
+    L14：任一轮缺该场景结果（值为「未运行」）的行数进 `summary["not_run"]`，
+    由 render_markdown 在报告里显式告警——作废行不得静默混进结论。
     """
     rows: list[dict[str, str | float]] = []
     for base in sorted(
@@ -131,11 +135,15 @@ def build_rows(
             }
         )
     healed = sum(1 for r in rows if r["value"] == "自愈修复 ✓")
+    # L14：任一轮缺该场景结果（junit 未收集到）→ 该行结论无意义；统计出来供报告显式告警，
+    # 避免"部分未运行"的作废表格被当成有效对比（render_markdown 会渲染 ⚠️ 行）。
+    not_run = sum(1 for r in rows if r["no_heal"] == "未运行" or r["with_heal"] == "未运行")
     summary = {
         "no_heal_pass": str(sum(1 for r in rows if r["no_heal"] == "passed")),
         "with_heal_pass": str(sum(1 for r in rows if r["with_heal"] == "passed")),
         "manual_fixes": str(sum(1 for r in rows if r["no_heal"] in ("failed", "xfail"))),
         "auto_healed": str(healed),
+        "not_run": str(not_run),
         "no_heal_time": f"{sum(float(r['no_heal_time']) for r in rows):.2f}s",
         "with_heal_time": f"{sum(float(r['with_heal_time']) for r in rows):.2f}s",
     }
@@ -155,6 +163,15 @@ def render_markdown(rows: list[dict], summary: dict[str, str], cost: dict | None
     ]
     for r in rows:
         lines.append(f"| {r['scenario']} | {r['no_heal']} | {r['with_heal']} | {r['value']} |")
+    not_run = int(summary.get("not_run", 0) or 0)
+    if not_run:
+        # L14：把"未运行"从表格里的一格提升为报告级告警——否则读者会把作废对比当结论
+        lines += [
+            "",
+            f"> ⚠️ **告警**：{not_run} 行「未运行」——A/B 至少一轮没有该场景的结果"
+            "（junit 缺失或 `-k` 过滤未命中）。这些行不参与结论，本报告**不完整**，"
+            "请先确认两轮都真正跑过再解读数字。",
+        ]
     lines += [
         "",
         "| 指标 | 关闭自愈 | 开启自愈 |",
@@ -201,8 +218,13 @@ def main(argv: list[str] | None = None) -> int:
 
     junit_disabled = parse_junit(args.junit_disabled)
     junit_healing = parse_junit(args.junit_healing)
+    # L14：A 组为空同样中止（此前只守 B 组）——A 组空 = 没有"无自愈"基线，
+    # 生成的表格全是「未运行」，任何"自愈提升"结论都不成立，属作废产物。
+    if not junit_disabled:
+        print(f"A 组结果为空（{args.junit_disabled} 无用例结果？），无对照基线，中止报告生成")
+        return 1
     if not junit_healing:
-        print("B 组结果为空（用例未运行？），中止报告生成")
+        print(f"B 组结果为空（{args.junit_healing} 无用例结果？），中止报告生成")
         return 1
 
     rows, summary = build_rows(junit_disabled, junit_healing)
