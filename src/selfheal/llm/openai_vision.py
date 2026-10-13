@@ -9,6 +9,10 @@ openai SDK 惰性导入，缺失时抛 UnavailableError，由上层优雅降级�
   超服务端请求体上限即 400 → 视觉策略表现为"永不生效"。Pillow 可用时自动降质/缩放转 JPEG；
   Pillow 缺失时记 warning 后按原图发送（不引入硬依赖，best-effort）。
 - M1：异常分级 + `max_retries` 显式设置 + 错误信息带 provider/model/端点主机。
+- L8：`analyze_image()` 的 `**kwargs` 改为**显式拒绝**（与 LLM 侧同一约定，见
+  openai_client.reject_unsupported_kwargs）：调用方转发 kwargs 时不再被静默丢弃。
+  同时把确定性解码参数写回 wire（`temperature=0.0`）——此前 VLM 请求**完全不带**
+  temperature，端点默认值随服务端而异（隐性不确定），与文本侧"temperature 由配置固定"不对称。
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from typing import Any
 
 from selfheal.llm._exceptions import UnavailableError, classify_sdk_error
 from selfheal.llm.base import VisionClient
+from selfheal.llm.openai_client import reject_unsupported_kwargs
 from selfheal.llm.registry import register_vision
 
 logger = logging.getLogger(__name__)
@@ -138,7 +143,9 @@ class OpenAICompatibleVLM(VisionClient):
 
         #11 降级契约收敛：SDK 异常统一转抛 UnavailableError（from exc），调用方捕获即可降级。
         M1：转抛分级子类，信息含 provider/model/端点主机。
+        L8：未支持的调用期参数显式抛 ``TypeError``（与文本侧同一约定）。
         """
+        reject_unsupported_kwargs("OpenAICompatibleVLM.analyze_image", kwargs)
         client = self._ensure_client()
         prepared, media_type = self._prepare_image(image)
         b64 = base64.b64encode(prepared).decode("utf-8")
@@ -157,6 +164,7 @@ class OpenAICompatibleVLM(VisionClient):
                         ],
                     }
                 ],
+                temperature=0.0,  # L8：与文本侧一致固定确定性输出（此前 VLM 不带该字段，端点默认值不定）
                 max_tokens=self._max_tokens,
             )
         except UnavailableError:

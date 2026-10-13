@@ -60,6 +60,7 @@ def get_llm_for_settings(settings: Settings) -> LLMClient | None:
             temperature=llm_cfg.temperature,
             timeout_s=llm_cfg.timeout_s,  # H3：超时/上限/重试均可配置
             max_tokens=llm_cfg.max_tokens,
+            max_tokens_field=llm_cfg.max_tokens_field,  # L9：输出上限字段名可按模型族切换
             max_retries=llm_cfg.max_retries,
             provider=llm_cfg.provider,  # M1：异常信息带 provider，便于定位 key/端点错配
         )
