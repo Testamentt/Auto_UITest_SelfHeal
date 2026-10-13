@@ -8,7 +8,7 @@ import pytest
 
 from tests.e2e.pages.popup_page import PopupPage
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # L16：Allure feature 落「AI 自愈」分组
 
 
 def test_popup_auto_dismiss_then_action(healing_page, knowledge):
