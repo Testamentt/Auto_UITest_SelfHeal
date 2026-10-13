@@ -64,6 +64,10 @@ class LLMConfig(_StrictModel):
     - timeout_s / max_tokens / max_retries（2026-10-08 审查 H3/M1）: 此前写死在客户端签名里，
       且本模型 `extra='forbid'` 使用户无法在 `llm:` 段配置它们。VLM 侧早已因同类问题（T23
       的 20s/500 超时/截断）放宽过，LLM 侧对齐配置入口。
+    - max_tokens_field（L9）: 输出上限**字段名**，`max_tokens`（默认，兼容 DeepSeek/Qwen 等
+      既有端点）或 `max_completion_tokens`（新推理模型族）。两者互斥，客户端**只发其中一个**；
+      选 `max_completion_tokens` 时模型族不接受自定义 temperature，客户端会省略该参数（并把
+      被忽略的配置值记 warning）。切换字段名等价于声明"目标模型族不同"，属显式选择。
     """
 
     enabled: bool = True
@@ -74,6 +78,7 @@ class LLMConfig(_StrictModel):
     temperature: float = 0.0
     timeout_s: float = Field(default=15.0, gt=0)
     max_tokens: int = Field(default=2000, gt=0)
+    max_tokens_field: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
     max_retries: int = Field(default=2, ge=0)
 
 

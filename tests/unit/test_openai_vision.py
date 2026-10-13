@@ -58,6 +58,8 @@ def test_analyze_image_builds_data_url_and_returns_text(monkeypatch):
     assert url.startswith("data:image/png;base64,")
     assert base64.b64decode(url.split(",", 1)[1]) == b"PNGDATA"
     assert seen["max_tokens"] == 500  # 默认上限透传
+    assert "max_completion_tokens" not in seen  # L9 互斥：VLM 仍用 max_tokens 字段族
+    assert seen["temperature"] == 0.0  # L8：确定性解码参数显式写回 wire
 
 
 def test_max_retries_is_explicit_in_client_construction(monkeypatch):
@@ -121,6 +123,22 @@ def test_missing_sdk_degrades(monkeypatch):
     client = OpenAICompatibleVLM(api_key="sk-test", model="m")
     with pytest.raises(UnavailableError):
         client.analyze_image(b"x", "p")
+
+
+def test_analyze_image_rejects_unknown_kwargs(monkeypatch):
+    """L8：未支持的调用期参数抛 TypeError（与文本侧同一约定），不静默丢弃。"""
+    called = {"n": 0}
+
+    def _create(**kw):
+        called["n"] += 1
+        raise AssertionError("参数校验失败时不得发起 SDK 调用")
+
+    _inject_fake_openai(monkeypatch, _create)
+    client = OpenAICompatibleVLM(api_key="sk-test", model="m")
+    with pytest.raises(TypeError) as excinfo:
+        client.analyze_image(b"x", "p", detail="high")
+    assert "detail" in str(excinfo.value)
+    assert called["n"] == 0
 
 
 def test_close_is_idempotent(monkeypatch):
