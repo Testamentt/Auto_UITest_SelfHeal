@@ -130,6 +130,120 @@ def test_network_listeners_absent_skipped():
     assert scene.network_logs == []
 
 
+# --- L3：网络监听摘除（detach/close 幂等，摘除后不再计数） ---
+
+
+class _ListenerPage:
+    """可挂/可摘的页面 fake：on/remove_listener/emit 齐全，模拟 Playwright 的监听语义。
+
+    remove_listener 用 `list.remove(handler)`（按 `==` 比较绑定方法）→ 与 Playwright
+    （pyee + wrap_handler 实例级缓存）的"同一绑定方法可取回"语义一致。
+    """
+
+    def __init__(self, with_remove: bool = True):
+        self.listeners: dict[str, list] = {"request": [], "response": []}
+        self.removed: list[tuple] = []
+        self._with_remove = with_remove
+
+    def on(self, event, handler):
+        self.listeners[event].append(handler)
+
+    def remove_listener(self, event, handler):
+        self.removed.append((event, handler))
+        self.listeners[event].remove(handler)
+
+    def emit(self, event, obj):
+        for handler in list(self.listeners[event]):
+            handler(obj)
+
+    @property
+    def url(self):
+        return "file:///demo"
+
+    def screenshot(self, **k):
+        return b""
+
+    def content(self):
+        return "<html></html>"
+
+
+class _Req:
+    url = "https://x/api"
+    method = "GET"
+
+
+def test_l3_detach_removes_listeners_and_stops_counting():
+    """L3：detach() 用 remove_listener 摘除两类监听，摘除后事件不再计入（已采集的保留）。"""
+    page = _ListenerPage()
+    collector = SceneCollector(page)
+    page.emit("request", _Req())
+    page.emit("response", _Req())
+    assert len(collector.capture().network_logs) == 2
+
+    collector.detach()
+    assert [event for event, _ in page.removed] == ["request", "response"]  # 两类都摘掉
+    assert page.listeners == {"request": [], "response": []}  # 页面上已无残留监听
+
+    page.emit("request", _Req())
+    page.emit("response", _Req())
+    assert len(collector.capture().network_logs) == 2  # 摘除后不再新增，历史日志仍带出
+
+
+def test_l3_detach_is_idempotent_and_close_aliases_it():
+    """L3：detach() 幂等（重复调用不重复摘除、不抛异常）；close() 等价于 detach()。"""
+    page = _ListenerPage()
+    collector = SceneCollector(page)
+    collector.detach()
+    collector.detach()
+    collector.close()
+    assert len(page.removed) == 2  # 只有首次 detach 真正摘除两个事件
+
+    # 无监听可摘时 detach/close 仍安全（含无 page 的纯逻辑实例）
+    SceneCollector(None).close()
+
+
+def test_l3_reattach_after_detach_resumes_counting():
+    """L3：detach 后可重新挂载（同实例复用）→ 恢复计数，且不会重复挂同一事件。"""
+    page = _ListenerPage()
+    collector = SceneCollector(page)
+    collector.detach()
+    collector._attach_network_listeners(page)
+    page.emit("request", _Req())
+    assert len(collector.capture().network_logs) == 1
+    assert len(page.listeners["request"]) == 1  # 去重：未重复挂载
+
+
+def test_l3_repeated_construction_after_detach_no_double_count():
+    """L3：同页"先 detach 旧实例、再构造新实例"→ 事件只被新实例计一次（不重复计数）。"""
+    page = _ListenerPage()
+    old = SceneCollector(page)
+    old.detach()
+    fresh = SceneCollector(page)
+    page.emit("request", _Req())
+
+    assert len(fresh.capture().network_logs) == 1  # 新实例计一次
+    assert old.capture().network_logs == []  # 旧实例已摘除，不再计数
+    assert len(page.listeners["request"]) == 1  # 页面上只有一份监听
+
+
+def test_l3_detach_without_remove_listener_still_stops_counting(caplog):
+    """L3：页面无 remove_listener（摘不掉）→ 记 warning 且守卫确保不再计数（R4 不静默）。"""
+
+    class _NoRemovePage(_ListenerPage):
+        remove_listener = None  # 显式无摘除手段
+
+    page = _NoRemovePage()
+    collector = SceneCollector(page)
+    page.emit("request", _Req())
+    assert len(collector.capture().network_logs) == 1
+
+    with caplog.at_level("WARNING"):
+        collector.detach()
+    assert "无法真正摘除" in caplog.text
+    page.emit("request", _Req())  # 监听仍挂在页面上，但守卫必须拦住
+    assert len(collector.capture().network_logs) == 1
+
+
 # --- T11 现场内联 trace（fake tracing，不依赖浏览器） ---
 
 

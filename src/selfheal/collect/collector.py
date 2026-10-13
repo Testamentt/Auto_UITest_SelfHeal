@@ -17,6 +17,7 @@ trace（T11）：capture() 顺带产出**现场内联 trace**——外层录制�
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -58,28 +59,98 @@ class Scene:
 
 
 class SceneCollector:
-    """失败现场采集。page 在构造时不做调用，capture() 时才采集；构造时挂网络监听。"""
+    """失败现场采集。page 在构造时不做调用，capture() 时才采集；构造时挂网络监听。
+
+    L3：网络监听可经 detach() / close() 摘除（幂等）。同一页面构造多个采集器会各挂一份
+    监听（事件被重复计入各自的 _network_logs），因此不再使用的采集器必须显式 detach()；
+    推荐用法是"先 detach 旧实例、再构造新实例"，或整场复用同一个实例。
+    """
+
+    # 网络事件 → 处理器（挂载 / 摘除共用同一映射，防止两处事件名漂移）
+    NETWORK_EVENTS: tuple[str, ...] = ("request", "response")
 
     def __init__(self, page: Page | None, trace_dir: str = "reports/traces"):
         self._page = page
         self._trace_dir = trace_dir  # T11：现场内联 trace 输出目录（默认与 browser.trace_dir 一致）
         self._network_logs: list[dict] = []
+        # L3：已挂监听的网络事件集合——决定 detach 摘哪些，也保证同一实例不重复挂载
+        self._attached_events: set[str] = set()
+        # L3：是否已显式摘除——摘除后即使监听未能真正摘掉也不再累计事件（见 detach 与两个回调）
+        self._detached = False
         self._attach_network_listeners(page)
 
+    def _listener(self, event: str) -> Callable[[Any], None]:
+        """事件名 → 处理器的唯一映射（挂载与摘除必须取到"同一个"绑定方法）。
+
+        绑定方法每次取属性都是新对象，但 Python 的 `==` 按 (函数, 实例) 比较，且 Playwright
+        的 wrap_handler 对绑定方法做了实例级缓存（`_impl_<name>`）→ remove_listener 仍能
+        命中挂载时的同一包装函数（实测 sync_api 的 on/remove_listener 走同一 wrapper）。
+        """
+        return self._on_request if event == "request" else self._on_response
+
     def _attach_network_listeners(self, page: Any) -> None:
-        """挂载请求/响应监听，缓存近期网络日志（best-effort：页面不支持则跳过）。"""
+        """挂载请求/响应监听，缓存近期网络日志（best-effort：页面不支持则跳过）。
+
+        L3：按事件记录已挂状态（self._attached_events），已挂事件不再重复挂载；
+        单个事件挂载失败只跳过该事件，不影响其余监听与采集主流程。
+        """
         if page is None:
             return
         try:
             on = getattr(page, "on", None)
-            if on is None:
-                return
-            on("request", self._on_request)
-            on("response", self._on_response)
-        except Exception:  # noqa: BLE001 - 监听挂载失败不影响采集
-            logger.warning("网络日志监听挂载失败（跳过）", exc_info=True)
+        except Exception:  # noqa: BLE001 - 极端页面对象取属性失败不炸构造
+            logger.warning("网络日志监听挂载失败（页面不可用，跳过）", exc_info=True)
+            return
+        if on is None:
+            return
+        attached_any = False
+        for event in self.NETWORK_EVENTS:
+            if event in self._attached_events:
+                continue
+            try:
+                on(event, self._listener(event))
+                self._attached_events.add(event)
+                attached_any = True
+            except Exception:  # noqa: BLE001 - 监听挂载失败不影响采集
+                logger.warning("网络日志监听挂载失败（%s，跳过）", event, exc_info=True)
+        if attached_any:
+            self._detached = False  # 重新挂载成功后恢复计数（detach 可逆）
+
+    def detach(self) -> None:
+        """摘除网络监听（L3，幂等）。
+
+        - 用 `page.remove_listener(event, handler)` 摘除，处理器与挂载时同一个绑定方法；
+        - 摘除后**不再累计**新事件（见 `_on_request`/`_on_response` 的 `_detached` 守卫），
+          已采集到的日志仍在 `capture()` 中带出（证据不丢）；
+        - 页面不支持 remove_listener 或摘除抛错**不静默**：记 warning；此时监听可能仍挂在
+          页面上，但守卫保证不再计数，调用方可安全继续。
+        """
+        self._detached = True  # 先置位：摘除失败也不重复计数（守卫生效，见回调）
+        pending = sorted(self._attached_events)
+        if not pending or self._page is None:
+            self._attached_events.clear()
+            return
+        try:
+            remove = getattr(self._page, "remove_listener", None)
+        except Exception:  # noqa: BLE001 - 取属性失败按"无摘除手段"处理并告警
+            remove = None
+        for event in pending:
+            self._attached_events.discard(event)  # 先置位：摘除失败也不重复尝试（幂等）
+            if remove is None:
+                logger.warning("页面不支持 remove_listener，网络监听 %s 无法真正摘除", event)
+                continue
+            try:
+                remove(event, self._listener(event))
+            except Exception:  # noqa: BLE001 - 摘除失败不炸调用方
+                logger.warning("摘除网络监听失败（%s）", event, exc_info=True)
+
+    def close(self) -> None:
+        """关闭采集器（= 摘除网络监听，幂等），便于被通用资源收口（_safe_close 等）调用。"""
+        self.detach()
 
     def _on_request(self, req: Any) -> None:
+        if self._detached:
+            return  # L3：已 detach（或摘除失败）→ 忽略后续事件，避免重复计数
         try:
             self._network_logs.append(
                 {
@@ -94,6 +165,8 @@ class SceneCollector:
             logger.debug("网络请求日志记录失败（忽略该条）", exc_info=True)
 
     def _on_response(self, resp: Any) -> None:
+        if self._detached:
+            return  # L3：已 detach（或摘除失败）→ 忽略后续事件，避免重复计数
         try:
             self._network_logs.append(
                 {
