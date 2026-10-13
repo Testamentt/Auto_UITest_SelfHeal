@@ -16,7 +16,7 @@ from selfheal.engine.healing_locator import HealingPage
 from selfheal.knowledge.store import KnowledgeStore
 from tests.e2e.pages.demo_page import DemoPage
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # L16：Allure feature 落「AI 自愈」分组
 
 
 @pytest.fixture

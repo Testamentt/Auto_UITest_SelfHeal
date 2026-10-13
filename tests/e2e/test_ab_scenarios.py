@@ -14,7 +14,8 @@ import pytest
 
 from tests.e2e.pages.demo_page import DemoPage
 
-pytestmark = pytest.mark.e2e
+# L16：healing marker 让 Allure feature 落「AI 自愈」分组；disabled 变体的 xfail 语义不变
+pytestmark = [pytest.mark.e2e, pytest.mark.healing]
 
 # A/B 双变体注入（indirect）：disabled 关自愈 + 短超时快速失败；healing 正常自愈
 ab_variants = pytest.mark.parametrize(
