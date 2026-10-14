@@ -12,10 +12,18 @@ on:
 
 # 两阶段（见 RULE.md R2 配套约定）：unit 门禁 → e2e 集成
 
+# L17：并发组 —— 同一 ref 只保留最新一次运行。此前并发 push 会同时跑 publish（两个
+# 进程同时写 gh-pages / allure-history），历史趋势互相覆盖。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unit:
     name: 单元测试（门禁）
     runs-on: ubuntu-latest
+    # L17：此前无超时 = GitHub 默认 360 分钟；门禁卡死会白占 runner 并挂住整条流水线
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -64,6 +72,8 @@ jobs:
   e2e:
     name: 集成 / 端到端测试
     runs-on: ubuntu-latest
+    # L17：e2e 含浏览器启动 + 自愈重试，给足 30 分钟；超时即失败，不再拖到默认 6 小时
+    timeout-minutes: 30
     needs: unit # 单测门禁全绿后才运行
     steps:
       - uses: actions/checkout@v5
@@ -251,7 +261,9 @@ jobs:
         continue-on-error: true
 
       - name: Generate Allure report
-        uses: simple-elf/allure-report-action@master
+        # L17：此前 `@master`（浮动分支，上游一改行为就直接影响发布）；v1.15 为
+        # GitHub API 核实存在的最新 release tag（2026-10 核实，含本步骤用到的全部 inputs）。
+        uses: simple-elf/allure-report-action@v1.15
         id: allure
         with:
           allure_results: allure-results
