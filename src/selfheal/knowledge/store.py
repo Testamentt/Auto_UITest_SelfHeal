@@ -11,6 +11,8 @@ find_repair 择优规则一致（指纹命中取置信度最高者，退化取�
 
 R1：``created_at`` 同法归位——写入侧 ``None`` 时补 ``base.utc_now_iso()``（此前只靠 SQLite
 列默认值兜底，内存端落 ``None``，两端 L3 新鲜窗口判定口径不同）；upsert 保留首写值。
+R3：``confidence`` 与 SQLite 端同规则归一（``None``/负值 → 0.0，``> 1.0`` 留给消费者
+fail-closed 拒绝），脏值不会让两端排序结论相反。
 """
 
 from __future__ import annotations
@@ -19,6 +21,32 @@ from dataclasses import replace
 
 from selfheal.knowledge.base import utc_now_iso, utc_now_iso_if_missing
 from selfheal.knowledge.schema import PopupFeature, RepairCase, RepairQuery
+
+
+def _normalize_confidence(value: float | None) -> float:
+    """confidence 的 NULL / 负值归一（R3；与 SQLite 端同规则，实现各自独立）。
+
+    内存端正常写入即 0.0–1.0，本函数是**契约护栏**：调用方塞了 ``None`` / 负值时，与 SQLite
+    端（``sqlite_store._normalize_confidence``）归一到同一取值，保证两端读出的 ``confidence``
+    逐值相同、排序结论一致（R3：脏库含负值时两端曾排序相反）。
+
+    刻意**不**夹取 ``> 1.0``：越上界的置信度属无效数据，由 ``fix_generator.lookup_knowledge``
+    的 ``0.0 <= conf <= 1.0`` 门槛 fail-closed 拒绝；在此洗成 1.0 会静默绕过该门槛（R4）。
+    """
+    if value is None:
+        return 0.0
+    return max(0.0, float(value))
+
+
+def _normalized_case(case: RepairCase) -> RepairCase:
+    """读出归一（R3）：confidence 的 ``NULL``/负值归零，返回新对象，不改库内数据。
+
+    与 SQLite 端 ``_row_to_repair`` 的读侧归一对称——两端"读出的 confidence 同值域"这一
+    契约不能只靠写入侧保证（内存对象可被测试/调试直接改，见
+    ``test_dirty_confidence_ordering_parity`` 的直插脏值场景）。``> 1.0`` 值原样透出，交给
+    消费者 fail-closed 门槛（不在此静默洗白）。
+    """
+    return replace(case, confidence=_normalize_confidence(case.confidence))
 
 
 class KnowledgeStore:
@@ -45,11 +73,18 @@ class KnowledgeStore:
 
         R1：``created_at`` 缺席（``None``）时补 ``base.utc_now_iso()``，与 SQLite 端
         （列默认值已被写侧显式值取代）同格式同语义；仅首写生效（upsert 保留首写值）。
+
+        R3：``confidence`` 经 ``_normalize_confidence`` 夹取到 ``[0.0, 1.0]``（``None`` →
+        0.0），与 SQLite 端写入归一一致，脏值不会以不同数值落在两端。
         """
         # 写侧归一化与 SQLite 一致：空指纹统一按 None 存储，读回也是 None（SQLite 端存 "" 但读侧还原）
         stored = case if case.dom_fingerprint else replace(case, dom_fingerprint=None)
         # 时间字段同样在写侧补齐并归一，保证"读出的 created_at 永远可解析"这一契约两端一致
-        stored = replace(stored, created_at=utc_now_iso_if_missing(stored.created_at))
+        stored = replace(
+            stored,
+            created_at=utc_now_iso_if_missing(stored.created_at),
+            confidence=_normalize_confidence(stored.confidence),
+        )
         key = self._upsert_key(case)
         for idx, existing in enumerate(self._repairs):
             if self._upsert_key(existing) == key:
@@ -79,11 +114,17 @@ class KnowledgeStore:
         ``sorted`` 稳定（并列保持列表序）且列表序恒为插入序（upsert 原地替换、不搬到表尾），
         与 SQLite 的 ``rowid`` 升序（insert 自增、update 不变）一致，故同输入必同结果（R2：
         该并列次序是既定契约，两端都由测试锁定）。
+
+        R3：读出前统一归一 confidence（``_normalized_case``），与 SQLite 端 ``_row_to_repair``
+        对称——脏值（``None`` / 负值 / 越界）不会让两端对"谁更优"给出相反判断；排序键用
+        归一后的值，避免 ``None`` 参与比较抛 ``TypeError``。
         """
         matches = [c for c in self._repairs if c.original_selector == original_selector]
         if not matches:
             return None
-        ordered = sorted(matches, key=lambda c: c.confidence, reverse=True)
+        ordered = sorted(
+            (_normalized_case(c) for c in matches), key=lambda c: c.confidence, reverse=True
+        )
         if dom_fingerprint:
             for case in ordered:
                 if case.dom_fingerprint == dom_fingerprint:
@@ -91,10 +132,10 @@ class KnowledgeStore:
         return ordered[0]
 
     def find_by_repair_key(self, repair_key: str) -> RepairCase | None:
-        """L1：按确定性 repair_key 精确命中。"""
+        """L1：按确定性 repair_key 精确命中（R3：读出归一 confidence，与 SQLite 端对称）。"""
         for case in self._repairs:
             if case.repair_key == repair_key:
-                return case
+                return _normalized_case(case)
 
     def query(self, q: RepairQuery) -> list[tuple[RepairCase, str]]:
         """按优先级返回候选（L1 精确命中优先，其次旧式 selector+指纹）；可能为空列表。
@@ -122,7 +163,10 @@ class KnowledgeStore:
         k: int = 1,
         threshold: float = 0.75,
     ) -> list[tuple[RepairCase, float]]:
-        """L3：按 page_fingerprint 分桶 → 桶内 numpy 余弦，返回 top-k（sim >= threshold）。"""
+        """L3：按 page_fingerprint 分桶 → 桶内 numpy 余弦，返回 top-k（sim >= threshold）。
+
+        返回案例的 confidence 同样经读出归一（R3），与 SQLite 端一致。
+        """
         import numpy as np
 
         bucket = [
@@ -144,7 +188,7 @@ class KnowledgeStore:
             sim = float(sims[idx])
             if sim < threshold:
                 break
-            results.append((bucket[idx], sim))
+            results.append((_normalized_case(bucket[idx]), sim))
             if len(results) >= k:
                 break
         return results
