@@ -1,9 +1,10 @@
-"""单元测试：低优先级工程一致性项（L16 起，后续项在本文件续写）。
+"""单元测试：低优先级工程一致性项（L16 / L17 起，后续项在本文件续写）。
 
 这些项的失效方式都是"静默"的（marker 注册了没人用、CI 缺门禁、本机配置污染结果），
 单靠读代码看不出来，所以断言都落在**真实产物**上：
 
-- L16：5 个自愈闭环 e2e 真的带 `healing` marker（否则 Allure「AI 自愈」分组永不出现）。
+- L16：5 个自愈闭环 e2e 真的带 `healing` marker（否则 Allure「AI 自愈」分组永不出现）；
+- L17：CI workflow 有 timeout-minutes / concurrency，且第三方 action 不跟随浮动分支。
 
 收集类断言用**子进程**跑 pytest（真实收集结果，不受本进程 args / marker 表达式影响），
 比 `pytester` 更贴近 CI 实际命令且无插件依赖。
@@ -12,13 +13,16 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 pytestmark = pytest.mark.unit
 
@@ -75,3 +79,57 @@ def test_healing_marker_hits_every_file():
     tagged = collected_nodeids(result.stdout)
     for path in HEALING_E2E_FILES:
         assert any(nodeid.startswith(f"{path}::") for nodeid in tagged), f"{path} 无用例带 healing"
+
+
+# --- L17：CI 超时 / 并发组 / action 版本固定 ---
+
+
+def _workflow() -> dict:
+    return yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+
+
+def test_jobs_have_timeout_minutes():
+    """L17：unit 15 / e2e 30——卡死不再拖到 GitHub 默认 6 小时。"""
+    jobs = _workflow()["jobs"]
+    assert jobs["unit"]["timeout-minutes"] == 15
+    assert jobs["e2e"]["timeout-minutes"] == 30
+
+
+def test_workflow_has_concurrency_group():
+    """L17：同一 ref 的并发运行只保留最新（并发 push 不再同时写 gh-pages）。"""
+    concurrency = _workflow()["concurrency"]
+    assert concurrency["group"] == "ci-${{ github.ref }}"
+    assert concurrency["cancel-in-progress"] is True
+
+
+def test_actions_are_pinned_to_release_tags():
+    """L17：不跟随浮动分支（master/main/HEAD）——上游一改行为会直接打到发布链路。"""
+    floating = {"master", "main", "HEAD"}
+    refs: list[str] = []
+    for job in _workflow()["jobs"].values():
+        for step in job.get("steps", []):
+            if "uses" in step:
+                refs.append(step["uses"])
+    assert refs, "前置条件失败：workflow 里没有 uses 步骤？"
+
+    for ref in refs:
+        action, _, version = ref.partition("@")
+        assert version, f"{ref} 未固定版本"
+        assert version not in floating, f"{action} 跟随浮动分支 @{version}"
+        # 允许：语义化 tag（v1 / v1.15）或 40 位 commit SHA
+        is_tag = re.fullmatch(r"v?\d+(\.\d+)*", version)
+        assert is_tag or re.fullmatch(r"[0-9a-f]{40}", version), (
+            f"{action}@{version} 既不是 release tag 也不是 commit SHA"
+        )
+
+
+def test_allure_report_action_pinned_to_verified_tag():
+    """L17：allure-report-action 从 @master 改为核实存在的 v1.15（非浮动）。"""
+    refs = [
+        step["uses"]
+        for job in _workflow()["jobs"].values()
+        for step in job.get("steps", [])
+        if "uses" in step
+    ]
+    allure_refs = [ref for ref in refs if ref.startswith("simple-elf/allure-report-action@")]
+    assert allure_refs == ["simple-elf/allure-report-action@v1.15"]
