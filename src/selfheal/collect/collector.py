@@ -10,6 +10,9 @@ trace（T11）：capture() 顺带产出**现场内联 trace**——外层录制�
 或 settings.browser.trace）时，把当前片段导出为独立现场 trace 填入 `Scene.trace_path`
 （可 show-trace 回放）并恢复录制；未录制则不擅自启动（占位保持 None）。整用例 trace
 由测试框架层录制（conftest 经 context.tracing 落盘 + CI 上传），两者职责互补不冲突。
+录制状态判定（L4）：推荐调用方经构造参数 `trace_active` 显式注入（外层自己就知道是否在
+录制）；未注入时保留 `tracing.stop()` 异常探测兜底（该行为属 Playwright 实现细节、跨版本
+可能变化，不应作为唯一依据）。
 
 注意：Playwright 仅作类型依赖（TYPE_CHECKING），本模块可在无浏览器环境下被单元测试导入。
 """
@@ -64,14 +67,25 @@ class SceneCollector:
     L3：网络监听可经 detach() / close() 摘除（幂等）。同一页面构造多个采集器会各挂一份
     监听（事件被重复计入各自的 _network_logs），因此不再使用的采集器必须显式 detach()；
     推荐用法是"先 detach 旧实例、再构造新实例"，或整场复用同一个实例。
+
+    L4：现场内联 trace（T11）的录制状态推荐经构造参数 `trace_active` 显式注入；
+    未注入时回退"tracing.stop() 异常探测"（Playwright 版本相关），详见 _try_inline_trace。
     """
 
     # 网络事件 → 处理器（挂载 / 摘除共用同一映射，防止两处事件名漂移）
     NETWORK_EVENTS: tuple[str, ...] = ("request", "response")
 
-    def __init__(self, page: Page | None, trace_dir: str = "reports/traces"):
+    def __init__(
+        self,
+        page: Page | None,
+        trace_dir: str = "reports/traces",
+        *,
+        trace_active: Callable[[], bool] | None = None,
+    ):
         self._page = page
         self._trace_dir = trace_dir  # T11：现场内联 trace 输出目录（默认与 browser.trace_dir 一致）
+        # L4：可注入的"当前是否在录制 trace"状态提供者（None → 回退异常探测，见 _try_inline_trace）
+        self._trace_active = trace_active
         self._network_logs: list[dict] = []
         # L3：已挂监听的网络事件集合——决定 detach 摘哪些，也保证同一实例不重复挂载
         self._attached_events: set[str] = set()
@@ -204,15 +218,38 @@ class SceneCollector:
         inline-trace-<uuid>.zip，随后立即重新 start 恢复录制）——现场 trace 含失败发生
         过程、可独立回放（`playwright show-trace`），整用例 trace 的后半段继续录制不中断。
 
-        未在录制时（Playwright 的 stop 会抛 "Must start tracing before stopping"，
-        实测确认）→ 不擅自启动录制（避免副作用/拖慢），返回 None 保持占位空语义。
+        录制状态判定（L4）：
+        - **推荐注入**：构造时传 `trace_active`（`Callable[[], bool]`），由调用方显式告知
+          是否在录制——外层（conftest / 夹具）本来就知道 `--trace-healing` / 配置取值。
+        - **兜底**：`trace_active` 为 None 时保留原有异常探测（未录制时 `tracing.stop()`
+          抛 "Must start tracing before stopping" → 返回 None，零副作用）。该行为属
+          Playwright 实现细节、跨版本可能变化，故只作兜底并记 debug 提示注入。
+        - provider 自身抛错：按"未录制"处理并记 warning（R4 不静默）——provider 是权威
+          判定，不因它故障就回退去动 tracing。
         """
         if self._page is None:
             return None
+        if self._trace_active is None:
+            logger.debug("未注入 trace_active：回退 tracing.stop 异常探测（Playwright 版本相关）")
+            return self._save_inline_trace()
+        try:
+            recording = bool(self._trace_active())
+        except Exception:  # noqa: BLE001 - provider 故障按未录制处理（不触碰 tracing）
+            logger.warning(
+                "trace_active 状态提供者调用失败，按未录制处理（不生成现场 trace）", exc_info=True
+            )
+            return None
+        if not recording:
+            logger.debug("trace_active 判定未在录制 → 不生成现场 trace（占位保持 None）")
+            return None
+        return self._save_inline_trace()
+
+    def _save_inline_trace(self) -> str | None:
+        """停止当前 trace 片段导出为现场文件并恢复外层录制（失败返回 None，不抛异常）。"""
         try:
             tracing = self._page.context.tracing
             path = self._inline_trace_path()
-            tracing.stop(path=str(path))  # 未录制时抛错 → 走 except（安全探测，零副作用）
+            tracing.stop(path=str(path))  # 未录制/保存失败 → 走 except（返回 None）
         except Exception:  # noqa: BLE001 - 未录制/保存失败：不生成现场 trace
             logger.debug(
                 "现场内联 trace 不可用（未录制或保存失败），Scene.trace_path 保持占位",

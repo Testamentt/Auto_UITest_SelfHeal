@@ -329,3 +329,76 @@ def test_inline_trace_restore_failure_keeps_path(tmp_path):
     scene = collector.capture()
     assert scene.trace_path is not None  # 现场 trace 有效
     assert Path(scene.trace_path).parent == tmp_path
+
+
+# --- L4：内联 trace 的录制状态由注入的 trace_active 判定（不再只靠异常探测） ---
+
+
+def _raise_provider() -> bool:
+    """故障的 trace 状态提供者（模拟 provider 内部异常）。"""
+    raise RuntimeError("trace 状态不可用")
+
+
+def test_l4_trace_provider_false_skips_stop(tmp_path):
+    """L4：注入 trace_active=False → 完全不触碰 tracing（不调 stop、不建文件）。"""
+    tracing = _RecordingTracing()
+    asked: list[bool] = []
+
+    def _provider() -> bool:
+        asked.append(True)
+        return False
+
+    trace_dir = tmp_path / "traces"  # 用不存在的子目录，验证"零副作用"
+    collector = SceneCollector(
+        _SimplePage(type("Ctx", (), {"tracing": tracing})()),
+        trace_dir=str(trace_dir),
+        trace_active=_provider,
+    )
+    scene = collector.capture()
+    assert scene.trace_path is None
+    assert tracing.calls == []  # 显式 False → 不调 stop（旧实现必调一次以探测）
+    assert asked == [True]  # provider 恰好被问一次
+    assert not trace_dir.exists()  # 连 trace_dir 都不创建：判定为未录制时零副作用
+
+
+def test_l4_trace_provider_true_saves_and_restores(tmp_path):
+    """L4：注入 trace_active=True → 正常落盘现场 trace 并立即恢复外层录制。"""
+    tracing = _RecordingTracing()
+    collector = SceneCollector(
+        _SimplePage(type("Ctx", (), {"tracing": tracing})()),
+        trace_dir=str(tmp_path),
+        trace_active=lambda: True,
+    )
+    scene = collector.capture()
+    assert scene.trace_path is not None
+    assert Path(scene.trace_path).parent == tmp_path
+    assert Path(scene.trace_path).name.startswith("inline-trace-")
+    assert tracing.calls[0][0] == "stop"
+    assert tracing.calls[1] == ("start", {"screenshots": True, "snapshots": True})
+
+
+def test_l4_trace_provider_error_treated_as_not_recording(tmp_path, caplog):
+    """L4：provider 自身抛错 → 按未录制处理（不动 tracing）并记 warning（R4 不静默）。"""
+    tracing = _RecordingTracing()
+    collector = SceneCollector(
+        _SimplePage(type("Ctx", (), {"tracing": tracing})()),
+        trace_dir=str(tmp_path),
+        trace_active=_raise_provider,
+    )
+    with caplog.at_level("WARNING"):
+        scene = collector.capture()
+    assert scene.trace_path is None
+    assert tracing.calls == []  # 权威判定故障时不猜、不动 tracing
+    assert "trace_active" in caplog.text
+
+
+def test_l4_without_provider_keeps_exception_probe(tmp_path):
+    """L4：未注入 provider（默认 None）→ 保留异常探测兜底路径（兼容旧行为）。"""
+    tracing = _RecordingTracing(stop_error=RuntimeError("Must start tracing before stopping"))
+    collector = SceneCollector(
+        _SimplePage(type("Ctx", (), {"tracing": tracing})()), trace_dir=str(tmp_path)
+    )
+    assert collector._trace_active is None
+    scene = collector.capture()
+    assert scene.trace_path is None  # 探测到未录制
+    assert len(tracing.calls) == 1 and tracing.calls[0][0] == "stop"
