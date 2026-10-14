@@ -247,6 +247,116 @@ def test_find_repair_tie_break_uses_rowid_ascending(tmp_path):
         store.close()
 
 
+# --- R3（K3）：NULL / 负值 confidence 的读出与排序一致性 ---
+
+
+def test_dirty_confidence_ordering_parity(tmp_path):
+    """R3 主回归：脏库（confidence 为 NULL / 负值）在两端读出与排序结论一致。
+
+    - 读出：NULL → 0.0、负值 → 0.0（两端同值，越界值不泄进指标）；
+    - 排序：负值不再被排到有效候选之后（SQLite 侧此前 ``ORDER BY confidence DESC`` 把负值
+      排最后，而内存端按真实值排序 → 两端可能给出相反结论）；
+    - 历史 NULL 行（旧库 ALTER 补列）不参与并列争抢，语义与改动前一致。
+    """
+    with _store("memory", tmp_path) as memory, _store("sqlite", tmp_path) as sqlite:
+        for store in (memory, sqlite):
+            # ① 正常写入：负值经写侧归一落 0.0
+            store.add_repair(_case(original="#dirty", new="#d-neg", confidence=-0.5, fp="fpD"))
+            store.add_repair(_case(original="#dirty", new="#d-good", confidence=0.6, fp="fpD"))
+            store.add_repair(_case(original="#dirty", new="#d-zero", confidence=0.0, fp="fpD"))
+            store.add_repair(_case(original="#dirty", new="#d-null", confidence=0.4, fp="fpD"))
+        # ② 直插脏值（等价手改库 / 旧库补列留下的 NULL），绕过写侧归一
+        memory._repairs = [
+            replace(c, confidence=None) if c.new_selector in ("#d-null", "#d-zero") else c
+            for c in memory._repairs
+        ]
+        sqlite._conn.execute(
+            "UPDATE repairs SET confidence = NULL WHERE new_selector IN ('#d-null', '#d-zero')"
+        )
+        sqlite._conn.commit()
+
+        def _read_all(store):
+            """统一从库内取回该选择器全部案例（SQLite 走行→dataclass 归一）。
+
+            内存端直接取内部对象，刻意**不走**读侧归一——先验证"库内脏值"本身在两端同值域
+            （写侧归一）；读侧归一由 ``test_read_side_confidence_normalized`` 覆盖。
+            """
+            if isinstance(store, KnowledgeStore):
+                return [c for c in store._repairs if c.original_selector == "#dirty"]
+            return [
+                store._row_to_repair(row)
+                for row in store._conn.execute(
+                    "SELECT * FROM repairs WHERE original_selector = '#dirty'"
+                ).fetchall()
+            ]
+
+        def _ordered(store):
+            """按 confidence 降序（并列按插入序）列出——脏 ``None`` 先按 0.0 处理（同读侧契约）。
+
+            SQLite 侧经过 ``_row_to_repair`` 已归一；内存端读的是库内原始对象（可能是
+            ``None``），此处显式按同一契约折算，避免 ``None`` 参与比较抛 ``TypeError``。
+            """
+            return sorted(
+                (
+                    (0.0 if c.confidence is None else c.confidence, c.new_selector)
+                    for c in _read_all(store)
+                ),
+                key=lambda item: item[0],
+                reverse=True,
+            )
+
+        assert _ordered(memory) == _ordered(sqlite)
+        assert _ordered(memory)[0] == (0.6, "#d-good")
+        assert sorted(_ordered(memory)) == [
+            (0.0, "#d-neg"),  # 写侧归一：负值 → 0.0（修复前 SQLite 端会排到最后）
+            (0.0, "#d-null"),  # 直插 NULL → 读出 0.0
+            (0.0, "#d-zero"),  # 直插 NULL → 读出 0.0
+            (0.6, "#d-good"),
+        ]
+        # 择优结论两端一致：值最高者胜（脏值不因其存储形态而改变判定）
+        assert memory.find_repair("#dirty", "fpD").new_selector == "#d-good"
+        assert sqlite.find_repair("#dirty", "fpD").new_selector == "#d-good"
+        assert memory.find_repair("#dirty", "fpD").confidence == 0.6
+        assert sqlite.find_repair("#dirty", "fpD").confidence == 0.6
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_read_side_confidence_normalized(backend, tmp_path):
+    """R3：读侧同样归一——脏库里的 NULL confidence 经任一读路径都返回 0.0（两端对称）。
+
+    修复前：SQLite 端读侧归一 0.0，内存端把 ``None`` 原样泄给调用方（``float`` 消费者会炸、
+    排序比较会抛 ``TypeError``），同一份脏数据两端不一致。
+    """
+    with _store(backend, tmp_path) as store:
+        store.add_repair(
+            _case(original="#dirty", new="#only", confidence=0.4, fp="fpD", repair_key="rk-only")
+        )
+        # 直插脏值（绕过写侧归一）：等价手改库 / 旧库补列留下的 NULL
+        if isinstance(store, KnowledgeStore):
+            store._repairs[0] = replace(store._repairs[0], confidence=None)
+        else:
+            store._conn.execute("UPDATE repairs SET confidence = NULL")
+            store._conn.commit()
+        assert store.find_repair("#dirty", "fpD").confidence == 0.0
+        assert store.find_by_repair_key("rk-only").confidence == 0.0
+        assert store.find_by_repair_key("rk-missing") is None  # 未命中不返回脏对象
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_write_side_confidence_normalized(backend, tmp_path):
+    """R3：两端写入即归一——``None`` / 负值 → 0.0；``> 1.0`` 原样保留。
+
+    越上界刻意不夹取：``fix_generator.lookup_knowledge`` 用 ``0.0 <= conf <= 1.0`` 门槛
+    拒绝无效置信度（见 ``test_secondary_healing`` 的越界用例），知识库层洗成 1.0 会静默
+    绕过该 fail-closed 判定。
+    """
+    with _store(backend, tmp_path) as store:
+        store.add_repair(_case(new="#neg", confidence=-0.5, fp="fpD", repair_key="rk-neg"))
+        store.add_repair(_case(new="#over", confidence=1.7, fp="fpD", repair_key="rk-over"))
+        assert store.find_by_repair_key("rk-neg").confidence == 0.0
+        assert store.find_by_repair_key("rk-over").confidence == 1.7  # 不洗白，交由消费端拒绝
+
+
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_last_hit_at_iso_utc_format(backend, tmp_path):
     """M4：last_hit_at 两端同格式——UTC ISO、秒精度、可被 fromisoformat 解析且 tz-aware。"""

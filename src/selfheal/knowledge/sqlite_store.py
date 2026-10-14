@@ -83,6 +83,30 @@ _POPUP_COLUMNS: dict[str, str] = {
 }
 
 
+def _normalize_confidence(value: float | None) -> float:
+    """confidence 的 NULL / 负值归一（R3；写侧与读侧共用同一函数）。
+
+    - ``NULL``（旧库 ALTER 补列 / 手改库）→ ``0.0``：与内存端"未给值即 0.0"一致；
+    - 负值（脏数据）→ ``0.0``：否则 SQLite ``ORDER BY confidence DESC`` 会把它排到有效
+      候选（含 NULL 归零行）之后，与内存端按真实值排序的结果不一致；
+    - 非数值（手改库塞文本）→ ``0.0``，避免 ``float``/比较抛错污染整条检索路径；
+    - **``> 1.0`` 刻意不动**：越上界属"无效置信度"，由消费者 fail-closed 拒绝
+      （``agent/fix_generator.lookup_knowledge`` 的 ``0.0 <= conf <= 1.0`` 门槛）；在此夹取
+      成 1.0 会把脏值洗成合法值、静默绕过该门槛（R4：不允许静默掩盖）。
+
+    归一动作在值确实被改动时记 debug（不静默，便于回溯上游写入，R4）。
+    """
+    try:
+        numeric = float(value) if value is not None else 0.0
+    except (TypeError, ValueError):
+        logger.debug("confidence 非数值，按 0.0 处理: %r", value)
+        return 0.0
+    normalized = max(0.0, numeric)
+    if normalized != numeric:
+        logger.debug("confidence 负值归一: %r -> %s", value, normalized)
+    return normalized
+
+
 def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
     """读表现有列名（PRAGMA table_info）。"""
     return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
@@ -203,6 +227,10 @@ class SqliteKnowledgeStore:
         不再依赖列默认值 ``CURRENT_TIMESTAMP``（空格分隔、无时区的历史格式），使两端
         写出的 ``created_at`` 同格式、可被 ``_is_fresh`` 同口径解析。``created_at`` 刻意
         不进 ``DO UPDATE`` 列——与内存端一致，保留首写时刻（不用末次沉淀刷新）。
+
+        R3 置信度契约：写入值经 ``_normalize_confidence`` 归一（``NULL``/负值 → ``0.0``），
+        与内存端同一规则，保证两端落库值一致、读出可比较；``> 1.0`` 不夹取（由消费者的
+        fail-closed 门槛拒绝，见该函数 docstring）。
         """
         # #10 upsert：同 (原,新,指纹) 已存在则更新，不重复插入。
         # dom_fingerprint 归一化（None → ""）：SQLite UNIQUE 索引对 NULL 不生效（NULL ≠ NULL），
@@ -225,7 +253,7 @@ class SqliteKnowledgeStore:
                 case.original_selector,
                 case.new_selector,
                 case.strategy,
-                case.confidence,
+                _normalize_confidence(case.confidence),
                 case.page_url,
                 fp,
                 case.page_fingerprint,
@@ -264,8 +292,15 @@ class SqliteKnowledgeStore:
         3. 给了 ``dom_fingerprint`` 时，在满足 1/2 的序列里取**首个指纹匹配者**（不因指纹
            相同而跳过置信度更高者）；未给指纹或无匹配时取序列首个。
 
+        R3 脏数据策略：``NULL`` 与负值在**写入侧**已归一为 ``0.0``，历史库里的 ``NULL`` 行由
+        读侧 ``_normalize_confidence`` 归零并记 debug（会话内不写回库）。排序键即归一后的值
+        （``NULL``/负值 = ``0.0``、``> 1.0`` 保留原值由消费者 fail-closed 拒绝），与内存端
+        ``_normalized_case`` 逐值对齐。故"读出 0.0"既可能是真 0.0，也可能是 NULL/负值归一
+        而来——两者语义等价（无有效置信度）。
+
         边界：选择器无命中返回 ``None``；并列次序的稳定性由
-        ``test_find_repair_tie_break_stable_and_matches_memory`` 锁定。
+        ``test_find_repair_tie_break_stable_and_matches_memory`` 锁定，``NULL``/负值一致性由
+        ``test_dirty_confidence_ordering_parity`` 锁定。
         """
         rows = self._conn.execute(
             "SELECT * FROM repairs WHERE original_selector = ? ORDER BY confidence DESC, rowid ASC",
@@ -391,7 +426,8 @@ class SqliteKnowledgeStore:
 
         - dom_fingerprint：写侧把 None 归一成 ""（防 NULL 绕过唯一约束），读侧还原 None。
         - confidence / hit_count：旧库 ALTER 补列的 NULL（或手改库）归一为 0.0 / 0
-          （M5：否则 None 会泄进指标计算与 dataclass）。
+          （M5：否则 None 会泄进指标计算与 dataclass）；R3：confidence 进一步经
+          ``_normalize_confidence`` 夹取到 ``[0.0, 1.0]``，与内存端读出的值域一致。
         - last_hit_at / created_at：归一为 UTC ISO 串（旧库 ``CURRENT_TIMESTAMP`` /
           ``datetime('now')`` 的空格格式兼容读出，R1；格式契约见 base 模块 docstring）。
         """
@@ -399,7 +435,7 @@ class SqliteKnowledgeStore:
             original_selector=row["original_selector"],
             new_selector=row["new_selector"],
             strategy=row["strategy"],
-            confidence=row["confidence"] or 0.0,
+            confidence=_normalize_confidence(row["confidence"]),
             page_url=row["page_url"],
             dom_fingerprint=row["dom_fingerprint"]
             or None,  # 写侧归一化 ""（None→"" 防 NULL 去重失效），读侧还原语义
