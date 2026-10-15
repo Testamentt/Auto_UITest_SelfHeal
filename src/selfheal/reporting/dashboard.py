@@ -3,15 +3,40 @@
 消费 reporter.records：顶部渲染量化指标（自愈总数/成功率/策略分布/根因分布），
 下方渲染自愈过程审计表（原定位器 → 新定位器 / 策略 / 置信度 / 根因 / 结果）。
 字段经 html.escape 转义，避免注入与乱码。
+
+成本卡片（T17）的数值一律经 _safe_number / _safe_count 归一（L5）：外部 JSON 里的 null、
+缺键、空串、非数值都回 0，单个字段异常不再让**整张看板**渲染失败。
 """
 
 from __future__ import annotations
 
 import html
+import math
 from pathlib import Path
+from typing import Any
 
 from selfheal.reporting.hooks import HealingRecord
 from selfheal.reporting.metrics import MetricsSnapshot, compute_metrics
+
+
+def _safe_number(value: Any, default: float = 0.0) -> float:
+    """成本字段安全取数（L5）：None / 缺键 / 非数值 / nan / inf 一律回 default。
+
+    成本契约来自 `reporting.fix_proposals.estimate_cost`（llm_calls / vlm_calls /
+    llm_cost / vlm_cost / total_cost），但看板也会消费外部 JSON（报告合并、CI 分片汇总），
+    那些来源可能给出 `null`——旧实现 `.get(key, 0.0)` 只防缺键，`null` 会 TypeError 让整张
+    看板渲染失败。这里统一归一：宁可个别字段归零，不可丢整张审计报告。
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return number if math.isfinite(number) else default
+
+
+def _safe_count(value: Any) -> int:
+    """调用次数安全取整（L5）：走 _safe_number，非数值/None → 0。"""
+    return int(_safe_number(value))
 
 
 def _render_metrics(metrics: MetricsSnapshot) -> str:
@@ -47,19 +72,24 @@ def _render_metrics(metrics: MetricsSnapshot) -> str:
 def _render_cost(cost: dict) -> str:
     """T17：多模态成本卡片（LLM/VLM 调用次数 + 估算费用）。
 
-    用 .get 防护缺键（审查 nit）：cost 契约来自 estimate_cost，但不依赖其必然完整。
+    所有取值点（llm_calls / vlm_calls / llm_cost / vlm_cost / total_cost）都经
+    _safe_number / _safe_count 归一（L5）：外部 JSON 的 null、缺键、空串、非数值回 0，
+    不再出现"一个 null 崩掉整张看板"。单项费用一并展示，便于与 estimate_cost 对账。
     """
     return f"""<div class="metrics">
-  <div class="card"><div class="num">{cost.get("llm_calls", 0)}</div><div class="label">LLM 调用次数</div></div>
-  <div class="card"><div class="num">{cost.get("vlm_calls", 0)}</div><div class="label">VLM 调用次数</div></div>
-  <div class="card"><div class="num">¥{cost.get("total_cost", 0.0):.4f}</div><div class="label">估算费用</div></div>
+  <div class="card"><div class="num">{_safe_count(cost.get("llm_calls"))}</div><div class="label">LLM 调用次数</div></div>
+  <div class="card"><div class="num">{_safe_count(cost.get("vlm_calls"))}</div><div class="label">VLM 调用次数</div></div>
+  <div class="card"><div class="num">¥{_safe_number(cost.get("llm_cost")):.4f}</div><div class="label">LLM 估算费用</div></div>
+  <div class="card"><div class="num">¥{_safe_number(cost.get("vlm_cost")):.4f}</div><div class="label">VLM 估算费用</div></div>
+  <div class="card"><div class="num">¥{_safe_number(cost.get("total_cost")):.4f}</div><div class="label">估算费用</div></div>
 </div>"""
 
 
 def render_dashboard(records: list[HealingRecord], cost: dict | None = None) -> str:
     """把自愈记录渲染为一张完整 HTML 页面（内嵌样式，零依赖）。
 
-    cost（T17）为可选成本统计（HealingReporter.cost_summary() 产出），提供时渲染成本卡片。
+    cost（T17）为可选成本统计（HealingReporter.cost_summary() 产出），提供时渲染成本卡片；
+    其字段容错见 _render_cost（L5：null / 缺键 / 非数值一律回 0，不影响整页渲染）。
     """
     metrics = compute_metrics(records)
     rows: list[str] = []
