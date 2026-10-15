@@ -7,12 +7,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "settings.yaml"
+
+# 已实现的向量化方法（L10）：Literal 只负责挡拼写，能力清单在此声明——
+# 未列入 _IMPLEMENTED 的取值在加载期报错，避免"配了却没实现"的死配置（R4）。
+_IMPLEMENTED_EMBEDDING_METHODS = frozenset({"ngram"})
 
 # 加载本地 .env（已被 .gitignore 忽略，绝不提交）；不覆盖已存在的同名环境变量。
 # 未安装 python-dotenv 时静默跳过（此时仅从系统环境变量读取密钥）。
@@ -41,7 +45,12 @@ class BrowserConfig(_StrictModel):
     - channel: 传给 launch 的浏览器渠道。"chrome" 使用系统已装的 Chrome（无需下载 Chromium），
       "chromium" 使用 Playwright 自带内核（需 playwright install chromium）。
     - trace: 是否录制 Playwright trace（Phase 4 视频回放选型），用 `playwright show-trace` 回放。
-    - trace_dir: trace .zip 输出目录。
+    - trace_dir: trace .zip 输出目录（相对路径在加载期按项目根解析，见 load_settings）。
+    - viewport（L10）：浏览器视口，**只接受 width / height 两个正整数字段**。此前是裸
+      `dict[str, int]`，"wdith"/"hight" 这类拼错键会被 `extra='forbid'` 之外的路径静默放行，
+      拼错后 Playwright 拿不到视口参数 → 用默认尺寸跑，截图与视觉定位的基准悄悄改变。
+      形状有意保持普通 dict（`engine/browser.py` 直接把它交给 `new_context`），故用
+      `field_validator` 而非子模型（子模型会变成非 dict 类型，破坏该调用点）。
     """
 
     headless: bool = True
@@ -50,6 +59,35 @@ class BrowserConfig(_StrictModel):
     viewport: dict[str, int] = {"width": 1280, "height": 800}
     trace: bool = False
     trace_dir: str = "reports/traces"
+
+    @field_validator("viewport", mode="before")
+    @classmethod
+    def _validate_viewport(cls, value: Any) -> dict[str, int]:
+        """视口键名白名单 + 正整数校验（L10）：未知键 / 拼错键 / 非正尺寸都在加载期报错。
+
+        `mode="before"` 有意为之：pydantic 的 `dict[str, int]` 会做宽松强制转换
+        （`"1280"` → 1280、`True` → 1、`1280.0` → 1280），先于强转校验才能让
+        "字符串 / 布尔尺寸"这类明显笔误被看见，而不是被抹平成看似合法的整数。
+
+        未知键**直接拒绝**而非 warning：`viewport` 只喂给 Playwright 的 `new_context`，
+        多出来的键必然意味着配置写错（如拼错 `wdith`、误以为支持 `device_scale_factor`），
+        而 Playwright 会静默退回默认视口——用户却以为改动生效了。
+        """
+        if not isinstance(value, dict):
+            raise ValueError(f"browser.viewport 必须是映射: {value!r}")
+        unknown = sorted(set(value) - {"width", "height"})
+        if unknown:
+            raise ValueError(
+                f"browser.viewport 含未知键 {unknown}（仅支持 width / height）——"
+                "拼错键会让 Playwright 退回默认视口，属静默失效（L10）"
+            )
+        for key in ("width", "height"):
+            if key not in value:
+                raise ValueError(f"browser.viewport 缺少 {key!r}（需同时给出 width 与 height）")
+            size = value[key]
+            if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+                raise ValueError(f"browser.viewport[{key!r}] 必须是正整数: {size!r}")
+        return value
 
 
 class LLMConfig(_StrictModel):
@@ -217,12 +255,17 @@ class VisionConfig(_StrictModel):
 class EmbeddingConfig(_StrictModel):
     """Embedding 配置（知识库语义化 A）。
 
-    - method: ngram=本地确定性向量（v1，零网络/零费用/<10ms）；fastembed=本地模型（v2，见文档）。
+    - method（L10）：向量化实现。`ngram`=本地确定性向量（v1，零网络/零费用/<10ms，已实现）；
+      `fastembed`=本地模型（v2，**预留未实现**）。此前是裸 `str`，写成 `fastembed` 能通过校验，
+      而 `get_embedding_for_settings` 只返回 None → 语义检索（L3）**静默失效**，只表现为
+      "知识库命中率下降"。现在：Literal 挡住拼写错误，未实现的取值在**加载期**直接报错
+      （选"报错"而非 warning：配了却跑不起来属死配置，R4 不允许静默失败）；
+      v2 真正落地时把 fastembed 从下面的拒绝分支移入实现分支即可。
     - 绝不在热路径调用 API text-embedding（延迟 + 成本）。
     """
 
     enabled: bool = True
-    method: str = "ngram"
+    method: Literal["ngram", "fastembed"] = "ngram"
     dim: int = 512
 
     @model_validator(mode="after")
@@ -230,6 +273,17 @@ class EmbeddingConfig(_StrictModel):
         """dim 必须为正整数（V4 复核）：0 在 NgramEmbedding 取模处除零崩溃，负数产生负索引错向量。"""
         if self.dim < 1:
             raise ValueError(f"embedding.dim 必须为正整数: {self.dim}")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_method(self) -> EmbeddingConfig:
+        """未实现的 method 在加载期报错（L10），不留"配置生效但能力静默缺失"的状态。"""
+        if self.method not in _IMPLEMENTED_EMBEDDING_METHODS:
+            raise ValueError(
+                f"embedding.method={self.method!r} 尚未实现（当前可用: "
+                f"{sorted(_IMPLEMENTED_EMBEDDING_METHODS)}）——配成未实现方法会让语义检索"
+                "静默失效，故直接拒绝；需要本地模型向量请等 v2（见 llm/embedding.py 升级路径）"
+            )
         return self
 
 
