@@ -3,6 +3,8 @@
 - `-m unit`：单元测试，不依赖浏览器 / 网络（不请求下方浏览器 fixture）。
 - `-m e2e`：集成 / 端到端测试，使用 healing_page / disabled_page（需要浏览器内核）。
 - 自愈开关：CLI `--selfheal` / `--no-selfheal` 优先于 `settings.healing.enabled`。
+- L18：e2e/erp 用例带基线守卫——本机配置开了 `healing.dry_run` / 关掉自愈会直接 fail
+  并提示"本机配置会污染 e2e"，而不是让 e2e 集体失败后靠猜。
 
 注意：engine（含 playwright）在 fixture 内**惰性导入**，使 `-m unit` 无需安装 playwright 即可收集运行。
 """
@@ -73,6 +75,63 @@ def pytest_addoption(parser):
 @pytest.fixture(scope="session")
 def settings() -> Settings:
     return load_settings()
+
+
+# --- L18：e2e 基线守卫（本机 gitignored 配置不得污染 e2e 结果） ---
+
+# 受守卫的 marker：e2e 与 erp（erp 用例同样是端到端自愈链路）
+_GUARDED_MARKERS = ("e2e", "erp")
+
+
+def e2e_baseline_violation(settings: Settings, cli_selfheal: bool | None = None) -> str | None:
+    """L18：检查本机 `config/settings.yaml`（gitignored）是否把 e2e 跑成了"另一种模式"。
+
+    问题：session 级 `settings` fixture 读本机配置，若本机开了"测试基线开关"
+    （`healing.dry_run` = T14 仅报告不执行；`healing.enabled=false` = 关掉插件），
+    e2e 会集体失败且报错点远离真实原因（"定位器还是超时"而不是"本机开了 dry_run"）。
+
+    返回 None = 基线干净；否则返回给 `pytest.fail` 的提示文案。
+    显式 CLI 覆盖（`--selfheal` / `--no-selfheal`）是"有意为之的开关"，不算污染。
+    """
+    if cli_selfheal is not None:
+        return None
+    polluted: list[str] = []
+    if settings.healing.dry_run:
+        polluted.append("healing.dry_run=true（T14 仅报告不执行：修复不会真正重试）")
+    if not settings.healing.enabled:
+        polluted.append("healing.enabled=false（自愈插件被本机配置关闭）")
+    if not polluted:
+        return None
+    return (
+        "本机配置会污染 e2e：config/settings.yaml（gitignored）里的 "
+        + "；".join(polluted)
+        + "。请在本机配置中关闭上述开关，或用 CLI --selfheal / --no-selfheal 显式覆盖"
+        "（显式 CLI 覆盖不算污染）。"
+    )
+
+
+def is_guarded_e2e_item(node) -> bool:
+    """该用例是否属于 e2e/erp 层（守卫只对端到端用例生效，unit 零影响）。"""
+    return any(marker.name in _GUARDED_MARKERS for marker in node.iter_markers())
+
+
+@pytest.fixture(autouse=True)
+def _e2e_baseline_guard(request):
+    """L18：e2e 层基线断言（判定逻辑见 e2e_baseline_violation）。
+
+    - 只对 e2e/erp 用例生效；
+    - `settings` 惰性获取：unit 用例不读本机 `config/settings.yaml`（零开销、零误伤）；
+    - 失败发生在**任何浏览器 fixture 之前**（autouse + 同 scope 优先），
+      报错直接指向"本机配置"，而不是半小时后某个定位器超时。
+    """
+    if not is_guarded_e2e_item(request.node):
+        return
+    cli = request.config.getoption("selfheal")
+    if cli is not None:
+        return
+    violation = e2e_baseline_violation(request.getfixturevalue("settings"), cli)
+    if violation:
+        pytest.fail(violation, pytrace=False)
 
 
 @pytest.fixture(scope="session")
