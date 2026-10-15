@@ -1,10 +1,11 @@
-"""单元测试：低优先级工程一致性项（L16 / L17 起，后续项在本文件续写）。
+"""单元测试：低优先级工程一致性项（L16 / L17 / L18 起，后续项在本文件续写）。
 
 这些项的失效方式都是"静默"的（marker 注册了没人用、CI 缺门禁、本机配置污染结果），
 单靠读代码看不出来，所以断言都落在**真实产物**上：
 
 - L16：5 个自愈闭环 e2e 真的带 `healing` marker（否则 Allure「AI 自愈」分组永不出现）；
-- L17：CI workflow 有 timeout-minutes / concurrency，且第三方 action 不跟随浮动分支。
+- L17：CI workflow 有 timeout-minutes / concurrency，且第三方 action 不跟随浮动分支；
+- L18：e2e 基线守卫拦得住被本机 gitignored 配置污染的 e2e（dry_run / 关自愈）。
 
 收集类断言用**子进程**跑 pytest（真实收集结果，不受本进程 args / marker 表达式影响），
 比 `pytester` 更贴近 CI 实际命令且无插件依赖。
@@ -17,6 +18,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -133,3 +135,108 @@ def test_allure_report_action_pinned_to_verified_tag():
     ]
     allure_refs = [ref for ref in refs if ref.startswith("simple-elf/allure-report-action@")]
     assert allure_refs == ["simple-elf/allure-report-action@v1.15"]
+
+
+# --- L18：e2e 基线守卫（本机 gitignored 配置不得污染 e2e） ---
+
+
+def _fake_settings(*, dry_run: bool = False, enabled: bool = True):
+    from selfheal.config import Settings
+
+    settings = Settings()
+    settings.healing.dry_run = dry_run
+    settings.healing.enabled = enabled
+    return settings
+
+
+def _fake_request(node_markers: tuple[str, ...], *, settings=None, cli_selfheal=None):
+    """最小 fake request：guard 只用到 node.iter_markers / config.getoption / getfixturevalue。"""
+    markers = [SimpleNamespace(name=name) for name in node_markers]
+    return SimpleNamespace(
+        node=SimpleNamespace(iter_markers=lambda: iter(markers)),
+        config=SimpleNamespace(getoption=lambda name: cli_selfheal),
+        getfixturevalue=lambda name: settings,
+    )
+
+
+def test_e2e_baseline_violation_flags_dry_run():
+    """L18：dry_run 打开 = 自愈不真正重试 → e2e 会集体失败，必须显式判为污染。"""
+    from tests.conftest import e2e_baseline_violation
+
+    violation = e2e_baseline_violation(_fake_settings(dry_run=True))
+    assert violation is not None
+    assert "本机配置会污染 e2e" in violation and "dry_run" in violation
+    assert "--no-selfheal" in violation  # 给出显式 CLI 覆盖的出路
+
+
+def test_e2e_baseline_violation_flags_disabled_healing():
+    """L18：本机配置关掉自愈（enabled=false）同样是"跑成了另一种模式"。"""
+    from tests.conftest import e2e_baseline_violation
+
+    violation = e2e_baseline_violation(_fake_settings(enabled=False))
+    assert violation is not None and "enabled=false" in violation
+
+
+def test_e2e_baseline_violation_clean_by_default():
+    """L18：默认配置（dry_run=false + enabled=true）→ 不误报。"""
+    from tests.conftest import e2e_baseline_violation
+
+    assert e2e_baseline_violation(_fake_settings()) is None
+
+
+def test_e2e_baseline_violation_ignores_cli_override():
+    """L18：显式 CLI 覆盖（--selfheal / --no-selfheal）不算污染。"""
+    from tests.conftest import e2e_baseline_violation
+
+    polluted = _fake_settings(dry_run=True, enabled=False)
+    assert e2e_baseline_violation(polluted, cli_selfheal=True) is None
+    assert e2e_baseline_violation(polluted, cli_selfheal=False) is None
+
+
+def test_e2e_baseline_guard_fixture_fails_on_dry_run():
+    """L18：autouse 守卫本体在 e2e 用例 + dry_run 时真的 fail（不是只写了个纯函数）。"""
+    import inspect
+
+    from tests import conftest
+
+    guard = inspect.unwrap(conftest._e2e_baseline_guard)
+    request = _fake_request(("e2e",), settings=_fake_settings(dry_run=True))
+    with pytest.raises(pytest.fail.Exception, match="本机配置会污染 e2e"):
+        guard(request)
+
+
+def test_e2e_baseline_guard_passes_with_cli_override():
+    """L18：CLI 覆盖时守卫放行（显式开关是有意为之，不是污染）。"""
+    import inspect
+
+    from tests import conftest
+
+    guard = inspect.unwrap(conftest._e2e_baseline_guard)
+    for cli in (True, False):
+        request = _fake_request(("e2e",), settings=_fake_settings(dry_run=True), cli_selfheal=cli)
+        assert guard(request) is None
+
+
+def test_e2e_baseline_guard_covers_erp_items():
+    """L18：erp 用例（e2e + erp）同样受守卫保护。"""
+    from tests import conftest
+
+    assert conftest.is_guarded_e2e_item(_fake_request(("e2e", "erp")).node) is True
+    assert conftest.is_guarded_e2e_item(_fake_request(("unit",)).node) is False
+
+
+def test_e2e_baseline_guard_ignores_unit_items():
+    """L18：unit 用例不读本机配置（零开销、零误伤）——settings fixture 根本不被请求。"""
+    import inspect
+
+    from tests import conftest
+
+    called: list[str] = []
+    guard = inspect.unwrap(conftest._e2e_baseline_guard)
+    request = SimpleNamespace(
+        node=SimpleNamespace(iter_markers=lambda: iter([SimpleNamespace(name="unit")])),
+        config=SimpleNamespace(getoption=lambda name: None),
+        getfixturevalue=lambda name: called.append(name) or _fake_settings(dry_run=True),
+    )
+    assert guard(request) is None
+    assert called == []
