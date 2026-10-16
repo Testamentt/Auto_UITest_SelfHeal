@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -112,14 +113,34 @@ def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
     return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
 
 
-def _migrate_legacy_tables(conn: sqlite3.Connection) -> list[str]:
-    """旧库缺列补齐；返回**本进程实际补上**的列（table.column），供日志/测试断言。
+@dataclass(frozen=True)
+class MigrationReport:
+    """一次 ``_migrate_legacy_tables`` 的审计结果（R4：忽略项单独记账，不进 ``added``）。
+
+    - ``added``：**本进程**实际补上的列（``table.column``），决定是否 warning；
+    - ``ignored``：因多进程竞态（``duplicate column name``，另一进程在"读列 → ALTER"窗口内
+      已补同名列）被忽略的列。本进程没补列，因此**不计入 ``added``**、不触发"有补列才
+      warning"的语义；但必须可审计——否则该场景只在 info 级留痕，事后无法从返回值判断
+      "迁移到底发生了什么"。
+    """
+
+    added: list[str]
+    ignored: list[str]
+
+
+def _migrate_legacy_tables(conn: sqlite3.Connection) -> MigrationReport:
+    """旧库缺列补齐；返回 :class:`MigrationReport`（补了哪些列 + 哪些列因竞态被忽略）。
 
     M5：ALTER 是 check-then-act，多进程首次升级会撞车（另一进程已补同名列）——
     ``duplicate column name`` 视为竞态已解决，忽略该列继续；其它 OperationalError
     原样上抛（真实迁移故障不得被吞掉，R4）。
+
+    R4：被忽略的列进 ``report.ignored`` 并逐条记 info（本进程未补列，故不计入 ``added``，
+    不改变"有补列或有去重才 warning"的既有语义）；调用方可据此区分"无缺列"与
+    "缺列已被别的进程补齐"两种都为空 ``added`` 的情形。
     """
     added: list[str] = []
+    ignored: list[str] = []
     for table, wanted in (("repairs", _REPAIR_COLUMNS), ("popups", _POPUP_COLUMNS)):
         existing = _existing_columns(conn, table)
         for name, decl in wanted.items():
@@ -130,11 +151,13 @@ def _migrate_legacy_tables(conn: sqlite3.Connection) -> list[str]:
             except sqlite3.OperationalError as exc:
                 if "duplicate column name" not in str(exc).lower():
                     raise
-                # 竞态：另一进程在"读列 → ALTER"窗口内已补上该列；不计入 added（本进程没补）
+                # 竞态：另一进程在"读列 → ALTER"窗口内已补上该列；不计入 added（本进程没补），
+                # 但计入 ignored 供审计（R4）
+                ignored.append(f"{table}.{name}")
                 logger.info("迁移竞态：%s.%s 已由其它进程补齐，跳过", table, name)
                 continue
             added.append(f"{table}.{name}")
-    return added
+    return MigrationReport(added=added, ignored=ignored)
 
 
 def _has_duplicate_rows(conn: sqlite3.Connection, table: str, keys: str) -> bool:
@@ -192,7 +215,13 @@ def _normalize_utc_iso(raw: str | None, field: str) -> str | None:
 
 
 class SqliteKnowledgeStore:
-    """基于 SQLite 的知识库实现（遵循 KnowledgeBackend 接口）。"""
+    """基于 SQLite 的知识库实现（遵循 KnowledgeBackend 接口）。
+
+    :attr:`last_migration_report`：本次打开（``__init__``）的 :class:`MigrationReport` 快照，
+    供排查"旧库到底补了哪些列 / 哪些列因竞态被忽略"（R4；日志之外的可编程审计入口）。
+    """
+
+    last_migration_report: MigrationReport
 
     def __init__(self, path: str):
         self._path = path
@@ -207,17 +236,29 @@ class SqliteKnowledgeStore:
         self._conn.executescript(_SCHEMA)
         # V5 复核：先迁移（补列 + 清历史重复行），再建索引——顺序反了旧库直接 OperationalError
         # M5：迁移/去重都先探测后写入（无缺列、无重复行时不发写语句），新库打开不再白拿写锁
-        added = _migrate_legacy_tables(self._conn)
+        migration = _migrate_legacy_tables(self._conn)
+        # R4：忽略项（竞态）留字段级审计快照，供打开后排查 / 测试断言
+        self.last_migration_report = migration
         deduped = _dedupe_legacy_rows(self._conn)
         # 旧库的 idx_popups_signature 可能是非唯一索引：先删再建（幂等），
         # 否则 add_popup 的 ON CONFLICT(signature) 找不到唯一约束会运行时报错。
         self._conn.execute("DROP INDEX IF EXISTS idx_popups_signature")
         self._conn.executescript(_INDEXES)
         self._conn.commit()
-        if added or deduped:
+        if migration.added or deduped:
             # R4：迁移不是静默行为，留下审计日志（补了哪些列、清了几行重复）
             logger.warning(
-                "知识库 schema 迁移完成 path=%s 补列=%s 去重行=%s", path, added or "无", deduped
+                "知识库 schema 迁移完成 path=%s 补列=%s 去重行=%s 竞态忽略列=%s",
+                path,
+                migration.added or "无",
+                deduped,
+                migration.ignored or "无",
+            )
+        elif migration.ignored:
+            # R4：只有竞态忽略项时同样记账（不触发 warning：本进程没改任何结构，
+            # "有补列或有去重才 warning"的既有语义保持不变），但审计信息不丢
+            logger.info(
+                "知识库 schema 迁移无本进程改动 path=%s 竞态忽略列=%s", path, migration.ignored
             )
 
     def add_repair(self, case: RepairCase) -> None:

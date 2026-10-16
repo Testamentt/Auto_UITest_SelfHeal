@@ -308,8 +308,108 @@ def test_migrate_ignores_duplicate_column_race(tmp_path, monkeypatch):
     conn.executescript(sqlite_store_module._SCHEMA)  # 列已齐：等价于"另一进程刚补完"
     # 把列快照强制为空 → 每个期望列都尝试 ALTER → 全部命中 duplicate column name
     monkeypatch.setattr(sqlite_store_module, "_existing_columns", lambda c, t: set())
-    assert sqlite_store_module._migrate_legacy_tables(conn) == []  # 全部忽略，无异常、不计入 added
+    report = sqlite_store_module._migrate_legacy_tables(conn)
+    assert report.added == []  # 全部忽略，无异常、不计入 added（本进程没补列）
     conn.close()
+
+
+def test_migrate_ignored_columns_are_auditable(tmp_path, monkeypatch, caplog):
+    """R4（K4）：竞态忽略的列进 ``ignored`` 并有 info 日志——不再"只有 added 一个出口"。
+
+    修复前返回值只有 ``added``（本进程补的列），竞态场景与"旧库无缺列"无法区分，
+    仅靠 info 日志留痕；审计/排查拿不到结构化的"忽略项"。
+    """
+    import selfheal.knowledge.sqlite_store as sqlite_store_module
+
+    conn = sqlite3.connect(str(tmp_path / "race-audit.db"))
+    conn.row_factory = sqlite3.Row
+    conn.executescript(sqlite_store_module._SCHEMA)
+    monkeypatch.setattr(sqlite_store_module, "_existing_columns", lambda c, t: set())
+    with caplog.at_level(logging.INFO):
+        report = sqlite_store_module._migrate_legacy_tables(conn)
+    conn.close()
+
+    expected = [f"repairs.{name}" for name in sqlite_store_module._REPAIR_COLUMNS] + [
+        f"popups.{name}" for name in sqlite_store_module._POPUP_COLUMNS
+    ]
+    assert report.ignored == expected  # 逐列可审计（表名.列名）
+    assert report.added == []  # 语义未变：被忽略 ≠ 本进程补列
+    assert any(
+        r.levelno == logging.INFO and "迁移竞态" in r.getMessage()
+        for r in caplog.records
+        if r.name.endswith("knowledge.sqlite_store")
+    )
+
+
+def test_migrate_report_partitions_added_and_ignored(tmp_path, monkeypatch):
+    """R4：``added`` / ``ignored`` 是互补的两个出口（真实补列与竞态忽略各归其位）。"""
+    import selfheal.knowledge.sqlite_store as sqlite_store_module
+
+    conn = sqlite3.connect(str(tmp_path / "mixed.db"))
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE repairs (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " original_selector TEXT NOT NULL, new_selector TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE popups (id INTEGER PRIMARY KEY AUTOINCREMENT, signature TEXT NOT NULL)"
+    )
+    # 只对 repairs 造假：其列快照为空 → 逐个 ALTER 真补；popups 保留真实快照 → 补缺列
+    real_existing = sqlite_store_module._existing_columns
+    monkeypatch.setattr(
+        sqlite_store_module,
+        "_existing_columns",
+        lambda c, t: set() if t == "repairs" else real_existing(c, t),
+    )
+    report = sqlite_store_module._migrate_legacy_tables(conn)
+    conn.close()
+    assert report.added == [f"repairs.{name}" for name in sqlite_store_module._REPAIR_COLUMNS] + [
+        f"popups.{name}" for name in sqlite_store_module._POPUP_COLUMNS
+    ]
+    assert report.ignored == []
+    assert set(report.added).isdisjoint(report.ignored)  # 两个出口不重叠
+
+
+def test_store_exposes_migration_report(tmp_path, caplog):
+    """R4：store 打开后暴露 ``last_migration_report``，并在 warning 日志里带上忽略项。"""
+    db = tmp_path / "legacy-report.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE repairs (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " original_selector TEXT NOT NULL, new_selector TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE popups (id INTEGER PRIMARY KEY AUTOINCREMENT, signature TEXT NOT NULL)"
+    )
+    conn.commit()
+    conn.close()
+
+    with caplog.at_level(logging.WARNING):
+        store = SqliteKnowledgeStore(str(db))
+    try:
+        report = store.last_migration_report
+        assert report.added  # 旧库缺列 → 本进程补列
+        assert report.ignored == []
+        assert "补列=" in caplog.text and "竞态忽略列=无" in caplog.text
+    finally:
+        store.close()
+
+
+def test_store_ignored_only_case_logs_info_not_warning(tmp_path, monkeypatch, caplog):
+    """R4：仅竞态忽略（本进程无补列、无去重）时只记 info，不误报 warning。"""
+    import selfheal.knowledge.sqlite_store as sqlite_store_module
+
+    monkeypatch.setattr(sqlite_store_module, "_existing_columns", lambda c, t: set())
+    with caplog.at_level(logging.INFO):
+        store = SqliteKnowledgeStore(str(tmp_path / "race-store.db"))
+    try:
+        assert store.last_migration_report.added == []
+        assert store.last_migration_report.ignored  # 忽略项有记账
+        migration_records = [r for r in caplog.records if r.name.endswith("knowledge.sqlite_store")]
+        assert set(r.levelno for r in migration_records) == {logging.INFO}  # 无 warning
+        assert "竞态忽略列=" in caplog.text
+    finally:
+        store.close()
 
 
 def test_migrate_other_operational_error_propagates(tmp_path, monkeypatch):
