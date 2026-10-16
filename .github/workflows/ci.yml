@@ -99,8 +99,9 @@ jobs:
           printf 'browser:\n  channel: chromium\nhealing:\n  fix_proposals: true\n' > config/settings.yaml
 
       - name: Integration / e2e tests (-m e2e)
-        run: pytest -m "e2e and not erp" --trace-healing --alluredir=allure-results
+        run: pytest -m "e2e and not erp and not live" --trace-healing --alluredir=allure-results
         # erp 用例（T23 管伊佳 ERP）需本地被测环境，CI 排除（本地/演示环境运行）
+        # L19：live 用例外呼付费模型（test_llm_smoke / test_visual_smoke），CI 不跑
 
       - name: Upload fix proposals (T22 草稿 PR 数据源)
         if: always()
