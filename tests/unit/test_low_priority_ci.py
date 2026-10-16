@@ -1,11 +1,12 @@
-"""单元测试：低优先级工程一致性项（L16 / L17 / L18 起，后续项在本文件续写）。
+"""单元测试：低优先级工程一致性项（L16 / L17 / L18 / L19）。
 
 这些项的失效方式都是"静默"的（marker 注册了没人用、CI 缺门禁、本机配置污染结果），
 单靠读代码看不出来，所以断言都落在**真实产物**上：
 
 - L16：5 个自愈闭环 e2e 真的带 `healing` marker（否则 Allure「AI 自愈」分组永不出现）；
 - L17：CI workflow 有 timeout-minutes / concurrency，且第三方 action 不跟随浮动分支；
-- L18：e2e 基线守卫拦得住被本机 gitignored 配置污染的 e2e（dry_run / 关自愈）。
+- L18：e2e 基线守卫拦得住被本机 gitignored 配置污染的 e2e（dry_run / 关自愈）；
+- L19：真实模型冒烟被 `live` marker 隔离（默认 e2e 过滤不跑付费调用）。
 
 收集类断言用**子进程**跑 pytest（真实收集结果，不受本进程 args / marker 表达式影响），
 比 `pytester` 更贴近 CI 实际命令且无插件依赖。
@@ -35,6 +36,12 @@ HEALING_E2E_FILES = (
     "tests/e2e/test_popup_flow.py",
     "tests/e2e/test_strategy_threshold_e2e.py",
     "tests/e2e/test_ab_scenarios.py",
+)
+
+# L19：真实模型调用（外呼付费 API）的两个冒烟模块（须带 live marker）
+LIVE_SMOKE_FILES = (
+    "tests/e2e/test_llm_smoke.py",
+    "tests/e2e/test_visual_smoke.py",
 )
 
 
@@ -240,3 +247,70 @@ def test_e2e_baseline_guard_ignores_unit_items():
     )
     assert guard(request) is None
     assert called == []
+
+
+# --- L19：live marker 把真实模型调用隔离出常规 e2e ---
+
+
+def module_level_markers(path: str) -> set[str]:
+    """静态解析模块级 `pytestmark = ...` 的 marker 名集合（不 import，环境无关）。"""
+    import ast
+
+    tree = ast.parse((REPO_ROOT / path).read_text(encoding="utf-8"))
+    markers: set[str] = set()
+    for node in tree.body:
+        targets = node.targets if isinstance(node, ast.Assign) else []
+        if not any(getattr(t, "id", None) == "pytestmark" for t in targets):
+            continue
+        # 兼容 `pytestmark = pytest.mark.e2e` 与 `[pytest.mark.e2e, pytest.mark.live]`
+        values = node.value.elts if isinstance(node.value, ast.List) else [node.value]
+        for value in values:
+            if (
+                isinstance(value, ast.Attribute)
+                and isinstance(value.value, ast.Attribute)
+                and value.value.attr == "mark"
+            ):
+                markers.add(value.attr)
+    return markers
+
+
+def test_live_marker_registered_in_pyproject():
+    """L19：`live` 必须注册（--strict-markers 下未注册会让全仓收集直接报错）。"""
+    import tomllib
+
+    config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    markers = config["tool"]["pytest"]["ini_options"]["markers"]
+    assert any(str(m).startswith("live:") for m in markers)
+
+
+def test_live_smoke_modules_declare_live_marker():
+    """L19：两个真实模型冒烟模块的模块级 pytestmark 同时含 e2e 与 live。"""
+    for path in LIVE_SMOKE_FILES:
+        markers = module_level_markers(path)
+        assert {"e2e", "live"} <= markers, f"{path} 模块级 marker 缺 live/e2e：{sorted(markers)}"
+
+
+def test_live_marker_covers_smoke_cases_and_is_excluded_by_default():
+    """L19：`-m live` 收得到冒烟用例，默认过滤 `-m "e2e and not live"` 一条都不收。"""
+    plain = run_pytest("--collect-only", "-q", *LIVE_SMOKE_FILES)
+    assert plain.returncode == 0, plain.stdout + plain.stderr
+    every = collected_nodeids(plain.stdout)
+    assert every, "前置条件失败：冒烟模块没收集到用例（缺 key 不应阻断收集）"
+
+    live = run_pytest("--collect-only", "-q", "-m", "live", *LIVE_SMOKE_FILES)
+    assert live.returncode == 0, live.stdout + live.stderr
+    assert collected_nodeids(live.stdout) == every
+
+    default = run_pytest(
+        "--collect-only", "-q", "-m", "e2e and not erp and not live", *LIVE_SMOKE_FILES
+    )
+    assert default.returncode == 5, default.stdout + default.stderr  # 5 = 无测试被收集
+    assert collected_nodeids(default.stdout) == set()
+
+
+def test_ci_e2e_step_excludes_live():
+    """L19：CI 的 e2e 步骤真的带 `not live` 过滤（防"marker 打了但 CI 仍外呼付费模型"）。"""
+    steps = _workflow()["jobs"]["e2e"]["steps"]
+    e2e_runs = [str(s["run"]) for s in steps if "run" in s and "pytest -m" in str(s["run"])]
+    assert e2e_runs, "前置条件失败：e2e job 里没找到 pytest -m 步骤"
+    assert any("not live" in run for run in e2e_runs), e2e_runs

@@ -48,6 +48,9 @@ markers = [
     "e2e: 端到端测试（需要 Playwright 浏览器内核）",
     "healing: 自愈闭环相关测试",
     "erp: 管伊佳 ERP 被测系统用例（需本地 ERP 环境，CI 不跑；T23）",
+    # L19：真实模型调用（外呼付费 API）。CI / 常规本地 e2e 用
+    # `-m "e2e and not erp and not live"` 排除；显式 `-m live` 才跑。
+    "live: 真实模型调用（外呼付费 API，需 api key；默认被 e2e 过滤排除）",
 ]
 
 [tool.ruff]

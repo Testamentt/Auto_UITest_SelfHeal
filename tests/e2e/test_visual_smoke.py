@@ -2,14 +2,17 @@
 
 直接构造 VisualStrategy + 真实视觉客户端，对演示页截图做视觉定位，验证
 qwen3-vl-flash 能识别"登录按钮"并返回候选集中真实存在的定位器。
-无 key / 无 openai 时整模块跳过，不影响 CI。
+无 key / 无 openai 时跳过，不影响 CI。
+
+L19：本模块是**真实模型调用**（外呼付费 API），打 `live` marker——常规 e2e
+（`-m "e2e and not erp and not live"`）不会跑到它，显式 `-m live` 才跑。
 """
 
 import os
 
 import pytest
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.live]
 
 try:
     import openai  # noqa: F401
@@ -18,11 +21,16 @@ try:
 except ImportError:
     _HAS_OPENAI = False
 
-if not (os.getenv("DASHSCOPE_API_KEY") and _HAS_OPENAI):
-    pytest.skip(
-        "未设置 DASHSCOPE_API_KEY 或未安装 openai，跳过真实 VLM 冒烟",
-        allow_module_level=True,
-    )
+
+@pytest.fixture(autouse=True)
+def _require_vision_env():
+    """无 DASHSCOPE_API_KEY / 未装 openai → 跳过（L19 改造：模块级 skip → 用例级 skip）。
+
+    模块级 skip 会在缺依赖的环境**收集不到**用例，`-m live` 隔离无法验证；
+    本模块 `import openai` 本身是容错的（try/except），故收集恒可见、运行仍安全跳过。
+    """
+    if not (os.getenv("DASHSCOPE_API_KEY") and _HAS_OPENAI):
+        pytest.skip("未设置 DASHSCOPE_API_KEY 或未安装 openai（llm extra），跳过真实 VLM 冒烟")
 
 
 def test_visual_locate_login_button(healing_page):
@@ -33,7 +41,7 @@ def test_visual_locate_login_button(healing_page):
     from tests.e2e.pages.demo_page import DemoPage
 
     client = get_vision_for_settings(load_settings())
-    assert client is not None  # 有 key + openai（否则已被模块级 skip）
+    assert client is not None  # 有 key + openai（否则已被 _require_vision_env skip）
 
     demo = DemoPage(healing_page)
     demo.open()

@@ -7,6 +7,9 @@
   精简 DOM 索引给出登录按钮的真实稳定定位器，并拿到真实置信度数据点（T5 收缩标定输入）。
 
 无 OPENAI_API_KEY 时自动跳过，不影响 CI。
+
+L19：本模块是**真实模型调用**（外呼付费 API），打 `live` marker——常规 e2e
+（`-m "e2e and not erp and not live"`）不会跑到它，显式 `-m live` 才跑。
 """
 
 import os
@@ -15,10 +18,19 @@ import pytest
 
 from tests.e2e.pages.demo_page import DemoPage
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.live]
 
-if not os.getenv("OPENAI_API_KEY"):
-    pytest.skip("未设置 OPENAI_API_KEY，跳过真实 LLM 冒烟", allow_module_level=True)
+
+@pytest.fixture(autouse=True)
+def _require_llm_env():
+    """无 OPENAI_API_KEY → 跳过（L19 改造：由模块级 skip 改为用例级 skip）。
+
+    模块级 skip 会让本模块在无 key 环境**收集不到**任何用例，`-m live` 的隔离
+    就无从验证、也看不见"哪些用例要付费"；改为 fixture 级 skip 后：收集恒可见，
+    运行仍安全跳过（语义不变：无 key 不跑真实模型）。
+    """
+    if not os.getenv("OPENAI_API_KEY"):
+        pytest.skip("未设置 OPENAI_API_KEY，跳过真实 LLM 冒烟")
 
 
 def test_semantic_healing_smoke(healing_page):
@@ -60,7 +72,7 @@ def test_semantic_llm_locate_login_button(healing_page):
     from selfheal.llm.factory import get_llm_for_settings
 
     client = get_llm_for_settings(load_settings())
-    assert client is not None  # 有 OPENAI_API_KEY（否则已被模块级 skip）
+    assert client is not None  # 有 OPENAI_API_KEY（否则已被 _require_llm_env skip）
 
     demo = DemoPage(healing_page)
     demo.open()
