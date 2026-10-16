@@ -1,6 +1,7 @@
 """配置严格性测试（2026-09-03 子代理复核 V4）：extra=forbid 全层下发 + 阈值/dim 校验。
 
-另含 2026-10-08 低优先级修复 L10 的用例：viewport 键名白名单、embedding.method 能力清单。
+另含 2026-10-08 低优先级修复用例：L10（viewport 键名白名单、embedding.method 能力清单）
+与 L11（相对路径以项目根解析）。
 """
 
 from pathlib import Path
@@ -107,3 +108,67 @@ def test_embedding_fastembed_rejected_until_implemented():
         EmbeddingConfig(method="fastembed")
     with pytest.raises(ValidationError, match="尚未实现"):
         Settings.model_validate({"embedding": {"method": "fastembed"}})
+
+
+# --- L11：相对路径以项目根解析（换 CWD 不分叉） ---
+
+
+def test_relative_paths_resolved_against_project_root_regardless_of_cwd(tmp_path, monkeypatch):
+    """L11 核心：换工作目录后，同一份配置解析出的路径仍指向项目根（不再随 CWD 分叉）。"""
+    from selfheal.config import PROJECT_ROOT
+
+    cfg = tmp_path / "settings.yaml"
+    cfg.write_text(
+        "browser:\n  trace_dir: reports/traces\nknowledge:\n  path: .cache/knowledge.db\n",
+        encoding="utf-8",
+    )
+    first = load_settings(cfg)
+    assert Path(first.browser.trace_dir).is_absolute()
+    assert Path(first.knowledge.path).is_absolute()
+    assert Path(first.browser.trace_dir) == (PROJECT_ROOT / "reports/traces").resolve()
+    assert Path(first.knowledge.path) == (PROJECT_ROOT / ".cache" / "knowledge.db").resolve()
+
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    monkeypatch.chdir(other)
+    second = load_settings(cfg)
+    assert second.browser.trace_dir == first.browser.trace_dir
+    assert second.knowledge.path == first.knowledge.path
+
+
+def test_relative_paths_from_example_resolve_to_project_root():
+    """L11：仓库示例配置（settings.example.yaml）的相对路径同样落在项目根，而非 CWD。"""
+    from selfheal.config import PROJECT_ROOT
+
+    loaded = load_settings(EXAMPLE)
+    assert Path(loaded.browser.trace_dir) == (PROJECT_ROOT / "reports" / "traces").resolve()
+    assert Path(loaded.knowledge.path) == (PROJECT_ROOT / ".cache" / "knowledge.db").resolve()
+
+
+def test_explicit_absolute_paths_are_left_untouched(tmp_path):
+    """L11：显式绝对路径原样保留（用户有意指向仓库外时不得被"纠正"）。"""
+    db = tmp_path / "shared" / "knowledge.db"
+    cfg = tmp_path / "settings.yaml"
+    cfg.write_text(
+        f"browser:\n  trace_dir: {tmp_path.as_posix()}/my-traces\n"
+        f"knowledge:\n  path: {db.as_posix()}\n",
+        encoding="utf-8",
+    )
+    loaded = load_settings(cfg)
+    assert Path(loaded.knowledge.path) == db
+    assert Path(loaded.browser.trace_dir) == tmp_path / "my-traces"
+
+
+def test_missing_config_file_also_resolves_paths(tmp_path, monkeypatch):
+    """L11：配置文件缺失时的默认配置同样按项目根解析（换 CWD 也不分叉）。"""
+    from selfheal.config import PROJECT_ROOT
+
+    monkeypatch.chdir(tmp_path)
+    loaded = load_settings(tmp_path / "nope.yaml")
+    assert Path(loaded.browser.trace_dir) == (PROJECT_ROOT / "reports" / "traces").resolve()
+
+
+def test_programmatic_settings_keep_literal_relative_defaults():
+    """L11：直接构造的 Settings() 不做隐式改造——只有 load_settings 有"项目根"语境。"""
+    assert Settings().knowledge.path == ".cache/knowledge.db"
+    assert Settings().browser.trace_dir == "reports/traces"

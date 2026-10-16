@@ -14,9 +14,22 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "settings.yaml"
 
+# 项目根（仓库根）：`config/` 的上一级。L11 —— 相对路径配置的统一解析基点。
+# 用本文件位置推导而非 CWD：编程式 pydantic 默认值（如 `.cache/knowledge.db`）此前按 CWD
+# 解析，从不同目录运行会各自新建一套知识库，命中率与沉淀结果随之分叉。
+PROJECT_ROOT = DEFAULT_CONFIG_PATH.parents[1]
+
 # 已实现的向量化方法（L10）：Literal 只负责挡拼写，能力清单在此声明——
 # 未列入 _IMPLEMENTED 的取值在加载期报错，避免"配了却没实现"的死配置（R4）。
 _IMPLEMENTED_EMBEDDING_METHODS = frozenset({"ngram"})
+
+# 已知的"相对路径"配置字段（L11）：`段名.字段名 -> 相对路径是否还叠加项目根`。
+# 这些字段指向**仓库内**的产物目录/文件（trace 输出、知识库 db），一律以项目根解析；
+# 显式绝对路径原样保留（用户有意指向仓库外，例如共享盘或临时目录）。
+_PATH_FIELDS: tuple[tuple[str, str], ...] = (
+    ("browser", "trace_dir"),
+    ("knowledge", "path"),
+)
 
 # 加载本地 .env（已被 .gitignore 忽略，绝不提交）；不覆盖已存在的同名环境变量。
 # 未安装 python-dotenv 时静默跳过（此时仅从系统环境变量读取密钥）。
@@ -329,11 +342,49 @@ class Settings(_StrictModel):
     sut: SutConfig = SutConfig()  # T23：被测系统（管伊佳 ERP）
 
 
+def _resolve_relative(raw: str) -> str:
+    """把已知路径字段的**相对**取值解析到 `PROJECT_ROOT`；绝对路径原样返回（L11）。
+
+    - 空串 / 空白：原样返回（空值由消费方判断，不在这里编造路径）；
+    - `~` 展开后再判断绝对性（`Path.is_absolute()` 不认 `~`）；
+    - 解析失败（非法路径）抛 ``ValueError`` 并带上原值：宁可加载失败，也不返回一个
+      看似正常却指向 CWD 的路径（R4：避免静默失败）。
+    """
+    if not raw or not raw.strip():
+        return raw
+    try:
+        candidate = Path(raw.strip()).expanduser()
+        if candidate.is_absolute():
+            return str(candidate)
+        return str((PROJECT_ROOT / candidate).resolve())
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"配置路径无法解析为绝对路径: {raw!r}（项目根 {PROJECT_ROOT}）") from exc
+
+
+def _resolve_known_paths(settings: Settings) -> Settings:
+    """就地归一 `_PATH_FIELDS` 声明的相对路径（L11），返回同一实例便于链式使用。"""
+    for section_name, field_name in _PATH_FIELDS:
+        section = getattr(settings, section_name)
+        setattr(section, field_name, _resolve_relative(getattr(section, field_name)))
+    return settings
+
+
 def load_settings(path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
-    """加载并校验配置；文件不存在时返回默认配置（便于骨架阶段运行）。"""
+    """加载并校验配置；文件不存在时返回默认配置（便于骨架阶段运行）。
+
+    相对路径解析（L11）：`browser.trace_dir`、`knowledge.path` 这类**指向仓库内产物**的
+    路径，若配置里写的是相对路径，则在此统一以 `PROJECT_ROOT`（仓库根，由本文件位置
+    推导）解析为绝对路径；显式绝对路径不做改动。
+
+    为什么在加载期做：此前相对路径由各消费方按**进程当前工作目录（CWD）**解析，
+    于是"在项目根跑"与"在 tests/ 下跑"会各自生成一份 `reports/traces` 与
+    `.cache/knowledge.db`——知识库分叉后跨目录命中率骤降，且现象隐蔽（像是"没学到"）。
+    对显式传参的构造（如 `Settings()` 的类默认值）不做隐式改造：那里没有"项目根"语境，
+    保持字面值最不意外；需要绝对路径请走本函数。
+    """
     path = Path(path)
     if not path.exists():
-        return Settings()
+        return _resolve_known_paths(Settings())
     with path.open("r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
-    return Settings.model_validate(raw)
+    return _resolve_known_paths(Settings.model_validate(raw))
