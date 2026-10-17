@@ -131,6 +131,78 @@ def test_attach_file_requires_existing_file(tmp_path, monkeypatch):
     assert bridge.attach_file(tmp_path / "missing.zip", name="x") is False  # 文件缺失 → False
 
 
+# --- L20：attach_file 的类型弱校验（字符串 getattr 拼错静默 False） ---
+
+
+def _capture_attachment_type(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        bridge.allure.attach,
+        "file",
+        lambda path, name, attachment_type: captured.update(attachment_type=attachment_type),
+    )
+    return captured
+
+
+def test_attach_file_default_type_is_zip(tmp_path, monkeypatch):
+    """默认行为不变：不传 type_name → ZIP（既有调用点 attach_file(path, name=...) 不受影响）。"""
+    captured = _capture_attachment_type(monkeypatch)
+    real = tmp_path / "trace.zip"
+    real.write_bytes(b"PK\x03\x04")
+    assert bridge.attach_file(real, name="trace") is True
+    assert captured["attachment_type"] == bridge.allure.attachment_type.ZIP
+
+
+def test_attach_file_accepts_whitelisted_type_name(tmp_path, monkeypatch):
+    """白名单内的类型名（Literal 值）→ 解析成对应 allure 常量并成功附着。"""
+    captured = _capture_attachment_type(monkeypatch)
+    real = tmp_path / "shot.png"
+    real.write_bytes(b"\x89PNG")
+    assert bridge.attach_file(real, name="截图", type_name="PNG") is True
+    assert captured["attachment_type"] == bridge.allure.attachment_type.PNG
+
+
+def test_attach_file_accepts_attachment_type_constant(tmp_path, monkeypatch):
+    """L20 建议的另一条路：直接传 allure.attachment_type 常量（原样使用，不做白名单换算）。"""
+    captured = _capture_attachment_type(monkeypatch)
+    real = tmp_path / "result.json"
+    real.write_text("{}", encoding="utf-8")
+    assert (
+        bridge.attach_file(real, name="结果", type_name=bridge.allure.attachment_type.JSON) is True
+    )
+    assert captured["attachment_type"] is bridge.allure.attachment_type.JSON
+
+
+def test_attach_file_typo_warns_instead_of_silent_false(tmp_path, monkeypatch, caplog):
+    """L20：拼错类型名 → 显式 warning（含非法值与可选值），且绝不调用 allure（不再静默）。"""
+    calls = []
+    monkeypatch.setattr(bridge.allure.attach, "file", lambda **kwargs: calls.append(kwargs))
+    real = tmp_path / "trace.zip"
+    real.write_bytes(b"PK\x03\x04")
+    with caplog.at_level("WARNING"):
+        assert bridge.attach_file(real, name="trace", type_name="ZIPP") is False  # type: ignore[arg-type]
+    assert calls == []  # 非法类型不附着
+    assert "未知附件类型" in caplog.text and "ZIPP" in caplog.text
+    assert "ZIP" in caplog.text  # 日志里给出可选值清单
+
+
+def test_attach_file_typo_warns_even_without_allure(tmp_path, monkeypatch, caplog):
+    """L20：无 allure 环境同样先做白名单校验——拼写错误不因环境而降级为静默 False。"""
+    monkeypatch.setattr(bridge, "_HAS_ALLURE", False)
+    real = tmp_path / "trace.zip"
+    real.write_bytes(b"PK\x03\x04")
+    with caplog.at_level("WARNING"):
+        assert bridge.attach_file(real, name="trace", type_name="zip") is False  # 小写也是拼错
+    assert "未知附件类型" in caplog.text
+
+
+def test_attachment_type_whitelist_matches_installed_allure():
+    """L20：白名单必须是已安装 allure 成员的子集（防"白名单写了 allure 没有的名字"）。"""
+    available = {name for name in dir(bridge.allure.attachment_type) if not name.startswith("_")}
+    assert set(bridge.ATTACHMENT_TYPE_NAMES) <= available
+    assert "ZIP" in bridge.ATTACHMENT_TYPE_NAMES  # 默认值必须在白名单里
+
+
 def test_attach_json_disabled_without_allure(monkeypatch):
     monkeypatch.setattr(bridge, "_HAS_ALLURE", False)
     assert bridge.attach_json({"a": 1}) is False  # no-op 不抛
