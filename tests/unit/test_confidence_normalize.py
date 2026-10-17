@@ -8,6 +8,7 @@
 """
 
 import json
+import logging
 
 import pytest
 
@@ -322,3 +323,74 @@ def test_lookup_knowledge_uses_source_strategy_threshold():
     assert out is not None
     assert out.strategy == "knowledge"
     assert out.confidence == 0.65
+
+
+# --- 7. L12：阈值段未登记策略名 warning（行为不变） ---
+
+
+def _candidate_ctx() -> HealingContext:
+    return HealingContext(
+        scene=Scene(url="x", dom_snapshot=_DOM_STRONG),
+        original_selector="#submit-btn-old",
+        description="登录按钮",
+        dom_fingerprint=None,
+        page_fingerprint="",
+    )
+
+
+def test_unknown_threshold_keys_log_warning_once(caplog):
+    """L12：strategy_thresholds / strategy_early_accept 的未登记策略名各记一次 warning。
+
+    与 strategy_order 的未知名处理（#8）对称；重复调度不刷屏（实例级去重）。
+    """
+    s = Settings()
+    s.healing.strategy_thresholds = {"heuristic_strategy": 0.7}
+    s.healing.strategy_early_accept = {"visual_v2": 0.9}
+    gen = _fix_gen(s, llm=FakeLLMClient(['{"selector":"x","confidence":0.9}']))
+    with caplog.at_level(logging.WARNING, logger="selfheal.agent.fix_generator"):
+        gen.best_candidate(_candidate_ctx())
+        gen.best_candidate(_candidate_ctx())
+    messages = [r.getMessage() for r in caplog.records if "未登记策略名" in r.getMessage()]
+    assert len(messages) == 2  # 两个未知名各一条，重复调度不再新增
+    assert any("heuristic_strategy" in m and "strategy_thresholds" in m for m in messages)
+    assert any("visual_v2" in m and "strategy_early_accept" in m for m in messages)
+
+
+def test_unknown_threshold_keys_keep_fallback_behavior(caplog):
+    """L12 行为不变：未知名键仍宽待 → 该策略回退全局阈值，采纳判定与未配置时完全一致。"""
+    baseline = _fix_gen(Settings()).best_candidate(_candidate_ctx())
+
+    s = Settings()
+    s.healing.strategy_thresholds = {"heuristic_strategy": 0.99}  # 名字写错：不该影响 heuristic
+    s.healing.strategy_early_accept = {"visual_v2": 0.99}  # 同上：不影响 visual
+    with caplog.at_level(logging.WARNING, logger="selfheal.agent.fix_generator"):
+        best = _fix_gen(s).best_candidate(_candidate_ctx())
+
+    assert best is not None and baseline is not None
+    assert (best.strategy, best.confidence, best.selector) == (
+        baseline.strategy,
+        baseline.confidence,
+        baseline.selector,
+    )
+    # 回退全局阈值仍生效：0.7 仍是 heuristic 的采纳阈值（accept_threshold 直接可验）
+    assert s.healing.accept_threshold("heuristic") == s.healing.confidence_threshold
+    assert s.healing.early_accept_for("visual") == s.healing.early_accept_threshold
+
+
+def test_registered_threshold_keys_do_not_warn(caplog):
+    """L12：已登记策略名不产生噪声 warning（避免"告警常态化"掩盖真实笔误）。"""
+    s = Settings()
+    s.healing.strategy_thresholds = {"heuristic": 0.7}
+    s.healing.strategy_early_accept = {"heuristic": 0.9}
+    with caplog.at_level(logging.WARNING, logger="selfheal.agent.fix_generator"):
+        _fix_gen(s).best_candidate(_candidate_ctx())
+    assert not [r for r in caplog.records if "未登记策略名" in r.getMessage()]
+
+
+def test_unknown_threshold_key_warns_through_generate(caplog):
+    """L12：warning 经由真实入口 generate() 也能看到（不是只有直接调 best_candidate 才触发）。"""
+    s = Settings()
+    s.healing.strategy_thresholds = {"heuristic_strategy": 0.7}
+    with caplog.at_level(logging.WARNING, logger="selfheal.agent.fix_generator"):
+        _fix_gen(s).generate(_candidate_ctx())
+    assert any("未登记策略名" in r.getMessage() for r in caplog.records)
