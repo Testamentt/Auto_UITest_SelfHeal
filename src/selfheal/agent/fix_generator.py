@@ -2,6 +2,10 @@
 
 产出 FixProposal（知识缓存命中 / 最佳候选 / 根因），由 PersistenceHandler 做阈值路由。
 策略注册表由 orchestrator 注入（共享同一 dict，测试 monkeypatch 仍生效）。
+
+2026-10-08 低优先级修复：
+- L12：`strategy_thresholds` / `strategy_early_accept` 的未登记策略名与 `strategy_order`
+  同样记 warning（此前静默回退全局，"阈值配了没生效"无从察觉）；回退行为不变。
 """
 
 from __future__ import annotations
@@ -17,6 +21,9 @@ from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.knowledge.schema import RepairQuery
 
 logger = logging.getLogger(__name__)
+
+# L12：按策略阈值配置的键名清单（与 strategy_order 的未知名 warning 对称）
+_THRESHOLD_KEY_FIELDS = ("strategy_thresholds", "strategy_early_accept")
 
 
 def counting_proxy(client, key: str, stats: dict):
@@ -73,6 +80,8 @@ class FixGenerator:
         self._embedding = embedding
         self._page = page
         self._strategy_registry = strategy_registry
+        # L12：已告警过的阈值键（实例级，只提示一次，避免每轮调度刷屏）
+        self._warned_threshold_keys: set[tuple[str, str]] = set()
 
     def generate(
         self, context: HealingContext, failure=None, use_knowledge: bool = True
@@ -169,12 +178,37 @@ class FixGenerator:
             )
         return None
 
+    def _warn_unknown_threshold_keys(self) -> None:
+        """L12：`strategy_thresholds` / `strategy_early_accept` 里的未登记策略名各记一次 warning。
+
+        与 `strategy_order` 的未知名处理（#8）对称：都走 warning + 继续运行。行为**不变**——
+        未知名仍"宽待"（`accept_threshold` / `early_accept_for` 回退全局阈值），因为阈值段
+        允许先于策略实现落地（先调配置再看行为）；但静默会让"阈值配了没生效"变成纯粹的
+        错觉（例如把键写成 `heuristic_strategy` 时表现为"配置似乎不起作用"）。
+        每个 (来源字段, 策略名) 只提示一次：本方法每轮调度都会调用，重复告警会淹没日志。
+        """
+        healing = self._settings.healing
+        for field_name in _THRESHOLD_KEY_FIELDS:
+            for key in getattr(healing, field_name):
+                marker = (field_name, key)
+                if key in self._strategy_registry or marker in self._warned_threshold_keys:
+                    continue
+                self._warned_threshold_keys.add(marker)
+                logger.warning(
+                    "healing.%s 含未登记策略名 %r，已按全局阈值回退（可用: %s）",
+                    field_name,
+                    key,
+                    list(self._strategy_registry),
+                )
+
     def best_candidate(self, context: HealingContext) -> RepairCandidate | None:
         """按 strategy_order 逐个尝试策略取最优；置信度达"早接受"阈值即短路（T1，省 LLM/VLM）。
 
         T5：短路阈值按策略独立（strategy_early_accept 缺省回退全局 early_accept_threshold）；
         候选置信度已由各策略产出点经 calibrate 统一到同一采纳标尺，best 比较天然可比。
+        L12：调度前先对阈值段做一次未知名提示（不影响回退全局的既有行为）。
         """
+        self._warn_unknown_threshold_keys()
         best: RepairCandidate | None = None
         for name in self._settings.healing.strategy_order:
             strategy_cls = self._strategy_registry.get(name)

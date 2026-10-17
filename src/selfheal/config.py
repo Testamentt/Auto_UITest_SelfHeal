@@ -169,7 +169,8 @@ class HealingConfig(_StrictModel):
       应 > confidence_threshold。策略链全失败时无条件触发 LLM 归因（不依赖本阈值）。
     - strategy_thresholds / strategy_early_accept（T5）: 按策略独立阈值。键为策略名
       （heuristic / semantic / visual，可插拔注册表），缺省回退全局 confidence_threshold /
-      early_accept_threshold。未知名键宽待（回退全局），便于先调配置再看行为。
+      early_accept_threshold。未知名键宽待（回退全局，便于先调配置再看行为），但由
+      `agent/fix_generator.py` 在调度时记一次 warning（L12，与 strategy_order 的处理对称）。
     - shrink_self_reported（T5）: 置信度归一化的可选保守收缩。开启后对自报型策略
       （LLM 语义自报段）做 raw² 收缩，缓解自报虚高被直接采纳；默认关闭（行为与 T4 后
       完全一致），待真实模型校准数据沉淀后再启用（见 agent/confidence.py）。
