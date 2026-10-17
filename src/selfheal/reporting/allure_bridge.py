@@ -7,7 +7,9 @@
 - write_environment：`--alluredir` 启用时写 environment.properties（报告环境页）。
 - feature_label_for / apply_dynamic_labels：pytest marker → allure 标签映射
   （优先级 erp > healing > e2e > unit，多 marker 只取最高一个，避免标签爆炸）。
-- attach_json / attach_file：best-effort 证据附件（自愈记录 / Playwright trace）。
+- attach_json / attach_file：best-effort 证据附件（自愈记录 / Playwright trace）；
+  L20：attach_file 的 type_name 走 `ATTACHMENT_TYPE_NAMES` 白名单（或直接传常量），
+  拼错显式 warning + False，不再静默丢附件。
 
 Allure 标签使用 **dynamic API**（须在测试上下文中调用，见 conftest autouse fixture）：
 allure.label 的 hook 机制在收集期无 item 上下文，dynamic 在 setup 期生效（实测确认）。
@@ -21,7 +23,7 @@ import os
 import platform
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 if TYPE_CHECKING:  # 仅类型检查，避免运行期依赖
     from selfheal.config import Settings
@@ -34,6 +36,32 @@ try:  # 一次性探测：未装 allure-pytest 时全部 API 为 no-op（[dev] e
     _HAS_ALLURE = True
 except ImportError:  # pragma: no cover - 无 allure 环境（降级为纯 HTML 看板）
     _HAS_ALLURE = False
+
+# L20：合法附件类型白名单（与 allure 的 AttachmentType 成员一一对应）。
+# 单一事实源：Literal 供类型检查 / IDE 补全，ATTACHMENT_TYPE_NAMES 供运行期校验。
+AttachmentTypeName = Literal[
+    "BMP",
+    "CSV",
+    "GIF",
+    "HTML",
+    "JPG",
+    "JSON",
+    "MP4",
+    "OGG",
+    "PCAP",
+    "PDF",
+    "PNG",
+    "SVG",
+    "TEXT",
+    "TIFF",
+    "TSV",
+    "URI_LIST",
+    "WEBM",
+    "XML",
+    "YAML",
+    "ZIP",
+]
+ATTACHMENT_TYPE_NAMES: tuple[str, ...] = get_args(AttachmentTypeName)
 
 # marker → feature 映射；优先级从高到低（多 marker 只取最高，避免标签爆炸）
 _FEATURE_PRIORITY: tuple[str, ...] = ("erp", "healing", "e2e", "unit")
@@ -127,15 +155,45 @@ def attach_json(payload: dict, name: str = "附件") -> bool:
         return False
 
 
-def attach_file(path: str | os.PathLike, name: str, type_name: str = "ZIP") -> bool:
-    """文件证据附件（trace zip 等；best-effort：无 allure / 文件缺失 / 失败 → False）。"""
+def attach_file(path: str | os.PathLike, name: str, type_name: AttachmentTypeName = "ZIP") -> bool:
+    """文件证据附件（trace zip 等；best-effort：无 allure / 文件缺失 / 失败 → False）。
+
+    type_name（L20）：只接受 `ATTACHMENT_TYPE_NAMES` 白名单里的类型名，或直接传
+    `allure.attachment_type.<NAME>` 常量。此前是 `str` + `getattr`——拼错（如 "ZIPP"）
+    会被 `getattr` 的 AttributeError 吞进 except，静默返回 False（附件静默丢失）。
+
+    非法类型的处理选择 **warning + False**（而不是抛错），理由：
+    - 本函数是报告层 best-effort 证据附件，调用点在 fixture teardown / 采集流程里；
+      抛错会把"附件没贴上"升级成"用例失败"，违反 D15 零侵入与"附件失败不影响测试"
+      的既有契约；
+    - R4 的"不静默"由两条兜住：静态层 `Literal` 让 IDE / 类型检查直接标红拼写错误，
+      运行期再显式 warning 一次（含可选值清单），日志里能直接看到是哪个附件丢了。
+    """
+    if isinstance(type_name, str) and type_name not in ATTACHMENT_TYPE_NAMES:
+        # 白名单校验放在最前：即使当前环境没装 allure，拼写错误也要显式告警而非静默 False
+        logger.warning(
+            "未知附件类型 %r（可选：%s）→ 跳过附件 %s",
+            type_name,
+            "/".join(ATTACHMENT_TYPE_NAMES),
+            path,
+        )
+        return False
     if not _HAS_ALLURE or not os.path.exists(path):
+        return False
+    attachment_type = (
+        getattr(allure.attachment_type, type_name, None)
+        if isinstance(type_name, str)
+        else type_name  # 常量形式（allure.attachment_type.ZIP）原样使用
+    )
+    if attachment_type is None:
+        # 白名单里有、但当前 allure 版本没有该成员（版本漂移）——同样不静默
+        logger.warning("当前 allure 无附件类型 %r（版本漂移？）→ 跳过附件 %s", type_name, path)
         return False
     try:
         allure.attach.file(
             str(path),
             name=name,
-            attachment_type=getattr(allure.attachment_type, type_name),
+            attachment_type=attachment_type,
         )
         return True
     except Exception:  # noqa: BLE001 - 附件失败不影响测试
