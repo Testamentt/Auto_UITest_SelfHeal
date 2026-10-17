@@ -333,11 +333,13 @@ class SqliteKnowledgeStore:
         3. 给了 ``dom_fingerprint`` 时，在满足 1/2 的序列里取**首个指纹匹配者**（不因指纹
            相同而跳过置信度更高者）；未给指纹或无匹配时取序列首个。
 
-        R3 脏数据策略：``NULL`` 与负值在**写入侧**已归一为 ``0.0``，历史库里的 ``NULL`` 行由
-        读侧 ``_normalize_confidence`` 归零并记 debug（会话内不写回库）。排序键即归一后的值
-        （``NULL``/负值 = ``0.0``、``> 1.0`` 保留原值由消费者 fail-closed 拒绝），与内存端
-        ``_normalized_case`` 逐值对齐。故"读出 0.0"既可能是真 0.0，也可能是 NULL/负值归一
-        而来——两者语义等价（无有效置信度）。
+        R3 脏数据策略：``NULL`` 与负值在**写入侧**已归一为 ``0.0``；历史库里遗留的 ``NULL``
+        行，其排序键即列值 ``NULL``（SQLite 在 ``DESC`` 中把 NULL 排最末，故仅在候选项全部
+        同为 NULL 时才可能被选中），读出时由 ``_normalize_confidence`` 归零并记 debug
+        （会话内不写回库）。内存端排序用 ``_normalized_case``（``NULL``/负值 = ``0.0``），
+        与"归一后再比较"的结论一致；``> 1.0`` 保留原值，交给消费者 fail-closed 拒绝
+        （``agent/fix_generator.lookup_knowledge`` 的 ``0.0 <= conf <= 1.0`` 门槛）。
+        故"读出 0.0"既可能是真 0.0，也可能是 NULL/负值归一而来——两者语义等价（无有效置信度）。
 
         边界：选择器无命中返回 ``None``；并列次序的稳定性由
         ``test_find_repair_tie_break_stable_and_matches_memory`` 锁定，``NULL``/负值一致性由
