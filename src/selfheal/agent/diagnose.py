@@ -10,26 +10,24 @@ not_visible / covered / timeout 需运行时信息（is_visible / 交互状态�
 
 Phase 2 的 LLM 诊断（diagnose_llm.LLMDiagnoser）继承本类，
 本规则式保留为降级基底（LLM 不可用时回退到它）。
+
+M10（分层倒置修复）：`FailureContext` 的定义已上移到中立 DTO 层 `selfheal.contracts`
+（engine 层也要构造它，DTO 留在 agent 会让下层反向依赖上层）；本模块保留 re-export，
+`from selfheal.agent.diagnose import FailureContext` 继续可用（零破坏）。
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
 from selfheal.collect.collector import Scene
+from selfheal.contracts import FailureContext
+
+__all__ = ["Diagnoser", "FailureContext"]
 
 # 从选择器中提取可辨识主键：#id、[attr="v"]、纯文本里的单词等。
 # 含中文片段（m1）：中文 id（如 #登录按钮）此前提取不到任何 key → 恒判 unknown。
 _SELECTOR_KEY_RE = re.compile(r"[A-Za-z][\w-]*|[一-鿿]+")
-
-
-@dataclass
-class FailureContext:
-    """定位失败的上下文（供 LLM 诊断参考，可空）。"""
-
-    failure_type: str | None = None  # 异常类型名，如 TimeoutError
-    message: str | None = None  # 异常信息
 
 
 def _selector_keys(selector: str) -> list[str]:
