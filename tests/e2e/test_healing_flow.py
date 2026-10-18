@@ -8,7 +8,7 @@
 
 import pytest
 
-from selfheal.engine.healing_locator import HealingPage
+from selfheal.plugin.healing_page import HealingPage  # M10-②：装配层在 plugin/
 from tests.e2e.pages.demo_page import DemoPage
 
 pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # L16：Allure feature 落「AI 自愈」分组

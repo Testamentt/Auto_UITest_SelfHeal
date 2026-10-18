@@ -9,8 +9,8 @@ T6：开启 healing.action_wait 后，动作（click）执行前自动做短稳�
 import pytest
 
 from selfheal.config import Settings
-from selfheal.engine.healing_locator import HealingPage
 from selfheal.knowledge.store import KnowledgeStore
+from selfheal.plugin.healing_page import HealingPage  # M10-②：装配层在 plugin/
 from tests.e2e.pages.popup_page import PopupPage
 
 pytestmark = pytest.mark.e2e

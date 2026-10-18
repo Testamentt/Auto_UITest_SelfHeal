@@ -1,8 +1,16 @@
-"""自愈定位器 —— 插件层代理（见 RULE.md 决策 D5 / D6）。
+"""自愈定位器 —— 引擎层原语（见 RULE.md 决策 D5 / D6；装配层在 plugin/）。
+
+**分层位置（M10-②）**：本模块只提供 engine 原语——`HealingLocator`（动作包装 + 链式
+重放）、`HealingFailedError`、链式常量与 `_safe_close`。import 仅允许
+`contracts`（中立 DTO）+ engine 内部（`popup_guard` / `smart_wait`）+ `config`；
+**不再** import agent / knowledge / reporting——装配这些上层的职责已上移到
+`selfheal/plugin/healing_page.py`（`HealingPage` = 插件组合根）。因此
+`import selfheal.engine.healing_locator` 不会在 import 期拉起整个 Agent 层。
+编排器依赖改用本模块的窄 Protocol `HealRunner`（结构化类型），engine 无需知道其实现。
 
 设计要点：
-- **接口兼容代理**：HealingPage / HealingLocator 与 Playwright 的 Page / Locator 接口兼容，
-  面向 Page 接口编写的 POM 代码，开 / 关自愈都能运行（你的第 1 点：POM 无缝切换）。
+- **接口兼容代理**：`HealingLocator` 与 Playwright 的 Locator 接口兼容，面向 Page/Locator
+  接口编写的 POM 代码，开 / 关自愈都能运行（你的第 1 点：POM 无缝切换）。
 - **只拦截小集合动作 + 链式定位**：HEALABLE 动作包"失败→自愈→重试"；链式定位
   （locator()/first/nth/filter/get_by_* 等）递归包裹并记录链操作，自愈后重放整条链
   （你的第 2 点：链式调用同样具备自愈能力）。其余 API 原样透传。
@@ -18,21 +26,44 @@ import contextlib
 import logging
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
-from selfheal.agent.diagnose import FailureContext
-from selfheal.agent.orchestrator import HealOutcome, SelfHealOrchestrator
-from selfheal.config import HealingConfig, Settings
+from selfheal.config import HealingConfig
+from selfheal.contracts import FailureContext, HealOutcome
 from selfheal.engine.popup_guard import PopupGuard
 from selfheal.engine.smart_wait import wait_until_stable as _wait_until_stable
-from selfheal.knowledge.base import KnowledgeBackend
-from selfheal.knowledge.factory import build_knowledge_store
-from selfheal.reporting.hooks import HealingReporter
 
 if TYPE_CHECKING:  # 仅类型检查时导入
     from playwright.sync_api import Locator, Page
 
 logger = logging.getLogger(__name__)
+
+
+class HealRunner(Protocol):
+    """engine 层对自愈编排器的最小依赖面（M10-②：窄接口替代 import agent 的类型）。
+
+    由 `agent.orchestrator.SelfHealOrchestrator` 结构化满足（无需显式继承）；
+    测试里的编排器替身同样满足。engine 只关心这三件事：跑一次闭环、提交 / 丢弃暂存修复。
+    """
+
+    def run(
+        self,
+        original_selector: str,
+        description: str | None = None,
+        failure: FailureContext | None = None,
+        use_knowledge: bool = True,
+    ) -> HealOutcome:
+        """执行一次完整自愈闭环，返回结果。"""
+        ...
+
+    def commit_pending(self, attempt_id: str) -> None:
+        """重试验证成功后沉淀暂存的修复（B1）。"""
+        ...
+
+    def discard_pending(self, attempt_id: str | None) -> None:
+        """显式丢弃一条不会被 commit 的暂存（M9）。"""
+        ...
+
 
 # 运行期可选依赖 playwright：未安装时降级，使纯逻辑单测可导入本模块
 try:  # pragma: no cover - 取决于运行环境是否安装 playwright
@@ -184,7 +215,7 @@ class HealingLocator:
         page: Page,
         selector: str,
         cfg: HealingConfig,
-        orchestrator: SelfHealOrchestrator,
+        orchestrator: HealRunner | None,
         *,
         fallback: str | None = None,
         description: str | None = None,
@@ -433,89 +464,7 @@ class HealingLocator:
         _wait_until_stable(self._locator, timeout_ms, stable_ms, poll_ms)
 
 
-class HealingPage:
-    """带自愈能力的 Page 代理（插件层）。
-
-    仅扩展 locator()（增加 description / fallback 两个自愈增强参数），其余 API 全部透传。
-    POM 面向 Page 接口编写，开关自愈都能跑；enabled=False 时行为与原生 Page 一致。
-    """
-
-    def __init__(
-        self,
-        page: Page,
-        settings: Settings,
-        *,
-        knowledge: KnowledgeBackend | None = None,
-        reporter: HealingReporter | None = None,
-        enabled_override: bool | None = None,
-    ):
-        self._page = page
-        self._settings = settings
-        self._enabled = settings.healing.enabled if enabled_override is None else enabled_override
-        self._reporter = reporter or HealingReporter()
-        # H2（2026-10-08 审查）：自建的知识库由本实例负责关闭——此前把同一个对象交给
-        # orchestrator 后，orchestrator 视其为"注入资源"（owns=False）而不关闭，
-        # HealingPage.close() 也只关 orchestrator → SQLite 连接随每个页面实例泄漏。
-        self._owns_knowledge = False
-        if self._enabled:
-            # 仅开启时构建知识库 / 闭环 / 弹窗处理（关闭时零开销、等同原生 Page，不产生文件副作用）
-            self._knowledge = knowledge or build_knowledge_store(settings)
-            self._owns_knowledge = knowledge is None
-            self._orchestrator = SelfHealOrchestrator(
-                page, settings, self._knowledge, self._reporter
-            )
-            self._popup_guard = PopupGuard(page, self._knowledge)
-        else:
-            self._knowledge = knowledge
-            self._orchestrator = None
-            self._popup_guard = None
-
-    @property
-    def healing_enabled(self) -> bool:
-        return self._enabled
-
-    @property
-    def reporter(self) -> HealingReporter:
-        return self._reporter
-
-    def close(self) -> None:
-        """释放自愈资源（orchestrator 自建的 LLM/VLM 客户端 + 本实例自建的知识库连接）。
-
-        注入的 knowledge 由注入方负责；关闭后本实例不可再用于自愈。幂等。
-        """
-        if self._orchestrator is not None:
-            self._orchestrator.close()
-        if self._owns_knowledge and self._knowledge is not None:
-            _safe_close(self._knowledge)
-            self._owns_knowledge = False
-
-    def locator(
-        self,
-        selector: str,
-        *,
-        description: str | None = None,
-        fallback: str | None = None,
-        **kwargs: Any,
-    ) -> HealingLocator:
-        """返回自愈定位器。description / fallback 为自愈增强参数（关闭时被接受但忽略）。"""
-        raw = self._page.locator(selector, **kwargs)
-        return HealingLocator(
-            raw,
-            self._page,
-            selector,
-            self._settings.healing,
-            self._orchestrator,
-            fallback=fallback,
-            description=description,
-            enabled=self._enabled,
-            popup_guard=self._popup_guard,
-        )
-
-    def __getattr__(self, name: str) -> Any:
-        # L1：与 HealingLocator 同源的代理递归风险——内部字段未就绪（构造中途 / 拷贝协议
-        # 探测 `__setstate__` 等）时若写成 `self._page`，会再次进入 __getattr__ 无限递归。
-        try:
-            page = object.__getattribute__(self, "_page")
-        except AttributeError:
-            raise AttributeError(name) from None
-        return getattr(page, name)
+# 装配层（HealingPage）已上移到 selfheal/plugin/healing_page.py（M10-②）：
+# engine 只提供原语，不再在 import 期拉起 agent / knowledge / reporting。
+# 旧路径 selfheal.engine.healing_locator.HealingPage 不再提供（无兼容 shim，避免分层倒置回流）；
+# 迁移方式：from selfheal.plugin.healing_page import HealingPage（或 from selfheal.plugin import HealingPage）。

@@ -444,7 +444,7 @@ def _offline_settings() -> Settings:
 
 def test_healing_page_closes_self_built_knowledge(monkeypatch):
     """H2：未注入时 HealingPage 自建的知识库必须由 close() 释放（此前无人关 → 连接泄漏）。"""
-    from selfheal.engine import healing_locator as hl_mod
+    from selfheal.plugin import healing_page as hl_mod  # M10-②：装配层在 plugin/
 
     store = _TrackedStore()
     monkeypatch.setattr(hl_mod, "build_knowledge_store", lambda settings: store)
@@ -457,7 +457,7 @@ def test_healing_page_closes_self_built_knowledge(monkeypatch):
 
 def test_healing_page_leaves_injected_knowledge_alone(monkeypatch):
     """H2：注入的知识库由注入方关闭（所有权边界不变）。"""
-    from selfheal.engine import healing_locator as hl_mod
+    from selfheal.plugin import healing_page as hl_mod  # M10-②：装配层在 plugin/
 
     store = _TrackedStore()
     monkeypatch.setattr(hl_mod, "build_knowledge_store", lambda settings: pytest.fail("不应自建"))
