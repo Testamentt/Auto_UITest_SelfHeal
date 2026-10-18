@@ -2,8 +2,12 @@
 
 - HealOutcome / HealingContext / FixProposal：管线共享的不可变 DTO。
   独立成模块避免 orchestrator ↔ 协作者（fix_generator / persistence）循环导入。
+  M10：`HealOutcome` 的定义已上移到中立 DTO 层 `selfheal.contracts`（engine 也要构造它，
+  DTO 留在 agent 会让下层反向依赖上层）；本模块保留 re-export，既有
+  `from selfheal.agent.context import HealOutcome` 继续可用（零破坏）。
 - ContextAssembler：Pipeline 拆分的第一个协作者——专职「采集 → 高风险页豁免 →
-  指纹 → 元素上下文三级回退」，产出 HealingContext。
+  指纹 → 元素上下文三级回退」，产出 HealingContext；同时持有采集器生命周期
+  （close() 摘除监听，L3）。
 - selector_exists：缓存验证 / verified 判定共用的页面查询助手。
 """
 
@@ -23,28 +27,20 @@ from selfheal.agent.dom import (
 from selfheal.agent.strategies.base import RepairCandidate
 from selfheal.collect.collector import Scene, SceneCollector
 from selfheal.config import Settings
+from selfheal.contracts import HealOutcome
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免运行期强依赖 playwright
     from playwright.sync_api import Page
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class HealOutcome:
-    """一次自愈的最终结果。
-
-    - proposed_selector（T14 dry_run）: 仅报告模式下建议采用的定位器（不实际应用）。
-    - attempt_id（B1）: 策略修复成功后生成的暂存标识；引擎层重试成功后以此 commit_pending。
-    """
-
-    success: bool
-    new_selector: str | None = None
-    confidence: float = 0.0
-    strategy: str | None = None
-    root_cause: str | None = None
-    proposed_selector: str | None = None
-    attempt_id: str | None = None
+__all__ = [
+    "ContextAssembler",
+    "FixProposal",
+    "HealOutcome",
+    "HealingContext",
+    "selector_exists",
+]
 
 
 @dataclass(frozen=True)
