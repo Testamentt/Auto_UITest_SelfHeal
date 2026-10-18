@@ -5,9 +5,9 @@ browser:
   headless: true
   channel: chrome          # chrome=系统已装 Chrome（免下载内核）/ chromium=Playwright 自带内核
   slow_mo: 0               # 毫秒，演示时可适当调大
-  viewport: { width: 1280, height: 800 }
+  viewport: { width: 1280, height: 800 }   # 仅支持 width / height；未知键、拼错键或非正尺寸会在加载期报错
   trace: false             # 录制 Playwright trace（Phase 4 视频回放选型）；用 playwright show-trace 回放
-  trace_dir: reports/traces
+  trace_dir: reports/traces   # 相对路径在加载期解析为项目根下的绝对路径（不受启动时 CWD 影响）
 
 # LLM（已定选型，见 docs/architecture.md「已定选型」）：DeepSeek OpenAI 兼容端点
 # 注意：base_url 与 model 必须与 api_key_env 指向的密钥**属同一平台**，否则一律 401
@@ -22,16 +22,18 @@ llm:
   timeout_s: 15.0           # 单次调用超时（秒）；推理型模型响应慢时可放宽
   max_tokens: 2000          # 单次输出上限（token）
   max_retries: 2            # 显式重试次数（一次失败最多重试 2 次；0=不重试）
+  max_tokens_field: max_tokens   # max_tokens | max_completion_tokens：后者供只认新字段名的推理模型族使用（会同时省略 temperature）
 
-# VLM（已定选型）：通义 qwen3-vl-plus；base_url 默认 DashScope 公共 compatible-mode 端点
-# （可移植默认）。如用专属百炼 MaaS 实例端点，请在本机 settings.yaml 覆盖（勿写进模板/代码）
+# VLM：**本项目当前选型** = CommandCode 网关的 deepseek/deepseek-v4.1-flash（实测支持图片输入，见 docs/roadmap.md D18）；
+# 代码默认值仍是通义 qwen3-vl-plus + DashScope 公共 compatible-mode 端点（可移植基线）。
+# 换 VLM 只需改本段（model / api_key_env / base_url 三者必须同平台），专属百炼 MaaS 端点同样在此覆盖。
 vision:
   enabled: true             # 视觉能力总开关；False 或缺少 key 时视觉策略被跳过
   provider: openai
-  model: qwen3-vl-plus      # 首选；备选 qwen3.8-flash（模型更替只改此配置）
-  api_key_env: DASHSCOPE_API_KEY   # 从环境变量名读取密钥，勿写明文
-  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  timeout_s: 60.0           # plus 级模型响应慢，默认放宽（20s 曾导致 ERP 场景超时）
+  model: qwen3-vl-plus      # 代码默认（可移植基线）；本项目当前值见本机 settings.yaml：deepseek/deepseek-v4.1-flash
+  api_key_env: DASHSCOPE_API_KEY   # 代码默认变量名；本项目当前用 COMMANDCODE_API_KEY（与 LLM 共用）
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1   # 代码默认端点；本项目当前为 https://api.commandcode.ai/provider/v1
+  timeout_s: 60.0           # plus 级模型响应慢，默认放宽（20s 曾导致 ERP 场景超时）；推理型 VLM 可用时建议 120
   max_tokens: 1000
   max_retries: 2
   max_image_bytes: 1500000  # 单请求图片体积护栏；超限经 Pillow 降质/缩放转 JPEG（缺 Pillow 记 warning 发原图）
@@ -72,7 +74,7 @@ knowledge:
 # 本地确定性 Embedding（知识库语义化 A）：n-gram，零网络/零费用/<10ms；v2 fastembed 见文档
 embedding:
   enabled: true
-  method: ngram
+  method: ngram             # 仅 ngram / fastembed 两个合法值；fastembed 为 v2 预留，写了会在加载期报错（避免静默失效）
   dim: 512
 
 # T23 被测系统（管伊佳 ERP）：UI 测试目标为前端；后端 API 仅用于测试数据造数/清理（非被测对象）。
