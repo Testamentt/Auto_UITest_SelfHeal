@@ -213,7 +213,7 @@ def pom(page):
 @pytest.fixture
 def healing_page(settings, knowledge, context, request):
     """自愈页面插件。开关：CLI > settings.healing.enabled。"""
-    from selfheal.engine.healing_locator import HealingPage  # 惰性导入
+    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（M10-②：装配层在 plugin/）
 
     cli = request.config.getoption("selfheal")
     page = HealingPage(context.new_page(), settings, knowledge=knowledge, enabled_override=cli)
@@ -225,7 +225,7 @@ def healing_page(settings, knowledge, context, request):
 @pytest.fixture
 def disabled_page(settings, context):
     """强制关闭自愈的页面，用于验证"关闭=原生行为"。"""
-    from selfheal.engine.healing_locator import HealingPage  # 惰性导入
+    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（M10-②：装配层在 plugin/）
 
     yield HealingPage(context.new_page(), settings, enabled_override=False)
 
@@ -239,7 +239,7 @@ def offline_healing_page(settings, context):
     使 D6 兜底用例变成"模型心情驱动"的抖动用例（全量跑实测：同一用例在全量中点到 ghost、
     单文件跑却走 fallback）。需要"确定性不可自愈"的场景请用本 fixture，并断言模型调用为 0。
     """
-    from selfheal.engine.healing_locator import HealingPage  # 惰性导入
+    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（M10-②：装配层在 plugin/）
 
     # 不污染 session 级 settings：深拷贝后关闭模型与持久化知识库
     offline = settings.model_copy(deep=True)
@@ -291,7 +291,7 @@ def erp_page(settings, knowledge, context):
 
     import pytest as _pytest
 
-    from selfheal.engine.healing_locator import HealingPage  # 惰性导入
+    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（M10-②：装配层在 plugin/）
     from tests.e2e.pages.erp.home_page import ErpHomePage
     from tests.e2e.pages.erp.login_page import ErpLoginPage
 

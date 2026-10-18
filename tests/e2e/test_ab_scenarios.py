@@ -36,7 +36,7 @@ ab_variants = pytest.mark.parametrize(
 @pytest.fixture
 def ab_page(request, settings, knowledge, context):
     """A/B 双变体页面（复用 healing_page/disabled_page 语义，支持参数化选择）。"""
-    from selfheal.engine.healing_locator import HealingPage  # 惰性导入
+    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（M10-②：装配层在 plugin/）
 
     if request.param == "disabled":
         page = HealingPage(
