@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from selfheal.agent.dom import (
+from selfheal.dom import (
     CrossCheck,
     Element,
     cross_validate_interactive,

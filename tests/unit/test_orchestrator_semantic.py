@@ -2,7 +2,7 @@
 
 import pytest
 
-from selfheal.agent.dom import (
+from selfheal.dom import (
     ElementContext,
     compute_repair_key,
     extract_element_context,

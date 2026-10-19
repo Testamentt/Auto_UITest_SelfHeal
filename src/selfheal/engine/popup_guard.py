@@ -15,21 +15,41 @@
 3. 实测校正（Playwright 语义）：`selector_builder` 产出的 `text="关闭"` 是**精确匹配**
    （带引号的 text 选择器：整串相等且大小写敏感），`text=关闭` 才是子串匹配；
    故沉淀选择器本身不是通配风险，风险在"未限定作用域"与"关键词子串误判"两点。
+
+分层（M10-③）：本模块属 engine 层，只依赖 `selfheal.dom`（中立 DOM 工具）+
+`selfheal.contracts`（中立 DTO）。弹窗特征的**持久化**由 knowledge 层实现，engine 只声明
+窄 Protocol `PopupKnowledge`（结构化类型，`KnowledgeBackend` 天然满足），
+因此 `import selfheal.engine.popup_guard` 不会拉起 knowledge / agent / reporting。
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
-from selfheal.agent.dom import Element, build_stable_selector
-from selfheal.knowledge.base import KnowledgeBackend
-from selfheal.knowledge.schema import PopupFeature
+from selfheal.contracts import PopupFeature
+from selfheal.dom import Element, build_stable_selector
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免运行期强依赖 playwright
     from playwright.sync_api import Locator, Page
 
 logger = logging.getLogger(__name__)
+
+
+class PopupKnowledge(Protocol):
+    """弹窗特征知识库的最小依赖面（M10-③）。
+
+    只声明 PopupGuard 真正用到的两个方法，engine 因此无需 import knowledge 层；
+    `knowledge.base.KnowledgeBackend` 结构化满足本 Protocol（无需显式继承）。
+    """
+
+    def find_popup(self, signature: str) -> PopupFeature | None:
+        """按弹窗签名检索已沉淀的关闭方式；未命中返回 None。"""
+        ...
+
+    def add_popup(self, feature: PopupFeature) -> None:
+        """沉淀一条弹窗特征（关闭方式），供后续同签名弹窗直接复用。"""
+        ...
 
 # 常见弹窗容器特征（role / aria / 类名 / id 含弹窗语义）
 _POPUP_CONTAINER_SELECTOR = (
@@ -103,7 +123,7 @@ def _is_close_hint(label: str, testid: str, text: str) -> bool:
 class PopupGuard:
     """检测并自动关闭干扰弹窗；命中知识优先，未命中启发式找关闭按钮。"""
 
-    def __init__(self, page: Page, knowledge: KnowledgeBackend | None = None):
+    def __init__(self, page: Page, knowledge: PopupKnowledge | None = None):
         self._page = page
         self._knowledge = knowledge
 

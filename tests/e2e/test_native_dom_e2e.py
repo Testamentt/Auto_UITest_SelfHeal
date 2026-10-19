@@ -9,7 +9,7 @@
 
 import pytest
 
-from selfheal.agent.dom import build_stable_selector, interactive_candidates
+from selfheal.dom import build_stable_selector, interactive_candidates
 from selfheal.agent.strategies.heuristic import HeuristicStrategy
 from selfheal.collect.collector import SceneCollector
 from tests.e2e.pages.demo_page import DemoPage

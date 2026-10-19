@@ -1,8 +1,18 @@
-"""知识库数据模型。"""
+"""知识库数据模型。
+
+`PopupFeature` 的定义位于中立契约层 `selfheal.contracts`（M10-③）：它的产出方是
+engine 层的 `popup_guard`，持久化方是 knowledge 层——DTO 留在 knowledge 会让 engine
+反向依赖 knowledge（分层倒置）。本模块保留 re-export，
+`from selfheal.knowledge.schema import PopupFeature` 继续可用（零破坏）。
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from selfheal.contracts import PopupFeature
+
+__all__ = ["PopupFeature", "RepairCase", "RepairQuery"]
 
 
 @dataclass
@@ -32,15 +42,6 @@ class RepairCase:
     last_hit_at: str | None = None
     is_verified: bool = False
     created_at: str | None = None
-
-
-@dataclass
-class PopupFeature:
-    """一条弹窗特征：如何识别 + 如何关闭。"""
-
-    signature: str  # 识别特征（文本 / 结构指纹）
-    dismiss_selector: str  # 关闭按钮定位器
-    category: str = "generic"  # permission / ad / system ...
 
 
 @dataclass(frozen=True)

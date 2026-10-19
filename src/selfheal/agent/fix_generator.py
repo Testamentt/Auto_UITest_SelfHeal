@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 
 from selfheal.agent.context import FixProposal, HealingContext, HealOutcome, selector_exists
-from selfheal.agent.dom import compute_repair_key
+from selfheal.dom import compute_repair_key
 from selfheal.agent.strategies import SemanticStrategy, VisualStrategy
 from selfheal.agent.strategies.base import RepairCandidate
 from selfheal.config import Settings

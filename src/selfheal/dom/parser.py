@@ -166,7 +166,7 @@ def cross_validate_interactive(static: list[Element], native: list[Element]) -> 
     一致的静态/原生口径说明自解析 HTMLParser 未偏离真实 DOM 结构。
     """
     # 惰性导入：selector_builder 顶层 import parser（Element），此处再顶层互导会成环
-    from selfheal.agent.dom.selector_builder import build_stable_selector
+    from selfheal.dom.selector_builder import build_stable_selector
 
     static_keys = {s for el in static if (s := build_stable_selector(el))}
     native_keys = {s for el in native if (s := build_stable_selector(el))}

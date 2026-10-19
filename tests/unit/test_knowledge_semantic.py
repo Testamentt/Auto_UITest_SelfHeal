@@ -2,7 +2,7 @@
 
 import pytest
 
-from selfheal.agent.dom import compute_page_fingerprint, compute_repair_key
+from selfheal.dom import compute_page_fingerprint, compute_repair_key
 from selfheal.knowledge.schema import RepairCase, RepairQuery
 from selfheal.knowledge.sqlite_store import SqliteKnowledgeStore
 from selfheal.knowledge.store import KnowledgeStore

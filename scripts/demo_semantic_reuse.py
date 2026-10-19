@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
 from selfheal.agent.diagnose import FailureContext  # noqa: E402
-from selfheal.agent.dom import (  # noqa: E402
+from selfheal.dom import (  # noqa: E402
     ElementContext,
     compute_page_fingerprint,
     compute_repair_key,

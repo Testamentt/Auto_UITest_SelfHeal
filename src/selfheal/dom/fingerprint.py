@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import hashlib
 
-from selfheal.agent.dom.parser import parse_interactive_elements
-from selfheal.agent.dom.selector_builder import build_stable_selector
+from selfheal.dom.parser import parse_interactive_elements
+from selfheal.dom.selector_builder import build_stable_selector
 
 
 def _url_path(url: str) -> str:

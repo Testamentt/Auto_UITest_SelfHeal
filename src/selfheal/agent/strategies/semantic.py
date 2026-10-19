@@ -19,7 +19,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 
 from selfheal.agent.confidence import KEY_SEMANTIC_L3, KEY_SEMANTIC_LLM, calibrate
-from selfheal.agent.dom import (
+from selfheal.dom import (
     ElementContext,
     build_compact_dom,
     build_stable_selector,

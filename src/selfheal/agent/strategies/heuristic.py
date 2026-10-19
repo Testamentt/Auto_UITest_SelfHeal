@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 
 from selfheal.agent.confidence import KEY_HEURISTIC, calibrate
-from selfheal.agent.dom import (
+from selfheal.dom import (
     Element,
     build_stable_selector,
     interactive_candidates,
