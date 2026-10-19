@@ -10,8 +10,8 @@ provider 无关的 LLM 抽象层反向依赖 agent 层（llm→agent 分层违�
 
 from __future__ import annotations
 
-from selfheal.agent.dom.parser import parse_interactive_elements
-from selfheal.agent.dom.selector_builder import build_stable_selector
+from selfheal.dom.parser import parse_interactive_elements
+from selfheal.dom.selector_builder import build_stable_selector
 
 
 def build_compact_dom(dom: str | None, max_elems: int = 60, max_text: int = 24) -> list[str]:

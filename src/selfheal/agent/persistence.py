@@ -11,7 +11,7 @@ from collections import OrderedDict
 from datetime import datetime, timezone
 
 from selfheal.agent.context import FixProposal, HealingContext, HealOutcome, selector_exists
-from selfheal.agent.dom import compute_repair_key
+from selfheal.dom import compute_repair_key
 from selfheal.config import Settings
 from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.knowledge.schema import RepairCase

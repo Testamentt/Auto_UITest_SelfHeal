@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from selfheal.agent.dom import dom_fingerprint
+from selfheal.dom import dom_fingerprint
 from selfheal.config import Settings
 from selfheal.knowledge.factory import build_knowledge_store
 from selfheal.knowledge.schema import PopupFeature, RepairCase

@@ -8,7 +8,7 @@
 
 import pytest
 
-from selfheal.agent.dom import (
+from selfheal.dom import (
     Element,
     cross_validate_interactive,
     interactive_candidates,

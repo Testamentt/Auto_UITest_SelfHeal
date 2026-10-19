@@ -18,7 +18,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from selfheal.agent.dom import (
+from selfheal.dom import (
     ElementContext,
     compute_page_fingerprint,
     dom_fingerprint,

@@ -10,7 +10,7 @@
 
 import pytest
 
-from selfheal.agent.dom.parser import _VOID_TAGS, Element, parse_interactive_elements
+from selfheal.dom.parser import _VOID_TAGS, Element, parse_interactive_elements
 
 pytestmark = pytest.mark.unit
 

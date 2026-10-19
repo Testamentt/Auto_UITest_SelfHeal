@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 
-from selfheal.agent.dom.parser import Element
+from selfheal.dom.parser import Element
 
 # 可安全用作 CSS id 选择器的字符集（其余走属性选择器，防特殊字符破坏 CSS，审查 nit）
 _SAFE_ID_RE = re.compile(r"[\w-]+")

@@ -5,9 +5,10 @@
 - safe_float / safe_str：容错提取字段，避免模型格式不稳定导致崩溃。
 
 依赖 DOM 解析的"模型输入准备"（build_compact_dom，构造精简 DOM）已上移至
-`selfheal.agent.dom.compact`——此前本模块 import selfheal.agent.dom，让 provider
-无关的 LLM 抽象层反向依赖 agent 层（llm→agent 分层违规）。调用方（diagnose_llm /
-semantic）改从 agent.dom 导入 build_compact_dom，本模块回归零 agent 依赖。
+`selfheal.dom.compact`（M10-③ 前为 `selfheal.agent.dom.compact`）——此前本模块
+import `selfheal.agent.dom`，让 provider 无关的 LLM 抽象层反向依赖 agent 层（llm→agent
+分层违规）。调用方（diagnose_llm / semantic）改从 `selfheal.dom` 导入 build_compact_dom，
+本模块回归零 agent 依赖。
 """
 
 from __future__ import annotations

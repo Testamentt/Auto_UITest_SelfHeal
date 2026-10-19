@@ -3,7 +3,7 @@
 import pytest
 
 import selfheal.agent.orchestrator as orch_mod
-from selfheal.agent.dom import ElementContext, compute_repair_key
+from selfheal.dom import ElementContext, compute_repair_key
 from selfheal.agent.orchestrator import HealOutcome, SelfHealOrchestrator
 from selfheal.agent.strategies.base import RepairCandidate
 from selfheal.collect.collector import Scene

@@ -282,7 +282,7 @@ class _El:
 
 def test_stable_selector_escapes_quotes_and_newlines():
     """M11：值里带引号会生成非法选择器，必须转义；换行折成空格。"""
-    from selfheal.agent.dom.selector_builder import build_stable_selector
+    from selfheal.dom.selector_builder import build_stable_selector
 
     assert build_stable_selector(_El(attrs={"data-testid": 'a"b'})) == '[data-testid="a\\"b"]'
     assert build_stable_selector(_El(text='点"我"呀')) == 'text="点\\"我\\"呀"'
