@@ -34,6 +34,14 @@
     <button type="button" id="real-secondary" data-testid="secondary" aria-label="备用入口">备用入口</button>
   </form>
 
+  <!-- 链式自愈演示（M15-3）：外层 #panel 是稳定"根"（容器），内层按钮是"已失效"的旧 id。
+       页面里**不存在** #inner-btn-old，真实按钮改用 #inner-btn-v2（文本稳定）——恰好构造出
+       「根 ok、叶子失效」的链式定位，供 e2e 验证"修根重放链 / 二次自愈修叶子"。 -->
+  <section id="panel">
+    <h3>面板</h3>
+    <button type="button" id="inner-btn-v2">面板按钮</button>
+  </section>
+
   <div id="result" aria-live="polite"></div>
 
   <script>
@@ -44,6 +52,8 @@
       .addEventListener("click", function (e) { e.preventDefault(); setResult("secondary"); });
     document.getElementById("ghost-btn")
       .addEventListener("click", function (e) { e.preventDefault(); setResult("ghost"); });
+    document.getElementById("inner-btn-v2")
+      .addEventListener("click", function (e) { e.preventDefault(); setResult("panel-clicked"); });
   </script>
 </body>
 </html>
