@@ -10,23 +10,42 @@ Phase 5 A 语义化后，本策略成为调度链的 **L3 语义向量检索**�
 - 其余 0.75 < sim ≤ 0.92 → 仅写 `reports/review-queue.md` 人审清单，返回 None 降级 L4（不阻塞流水线）。
 
 不可用（无 client / 无 description / 调用异常 / 解析失败）一律返回 None。
+
+**R5 意图依据闸门（`_description_has_basis`）**：
+LLM 段的既有护栏只保证"selector 真实存在 + 置信度合法"，**不保证描述与页面有关**：真实模型对
+完全无关的描述（`#ghost-btn-old` + `zzz_不存在的描述`）仍会高置信挑一个候选并被采纳（实测见
+docs/backlog/low-priority.md §三 R5）。本闸门补上这一下限——描述与页面**任一**候选的
+词元/子串都无交集 → 判定"描述无意图依据"，记 debug 后返回 None（交下一策略/人审），不采纳候选。
+
+- **刻意不照搬视觉段的 C4 融合降权** `conf × (0.4 + 0.6 × l2)`：该公式把"字面重叠度"当置信度系数，
+  而语义定位的前提恰是「描述可能与候选文案同义但字面不重叠」。实测（本机夹具）`#submit-btn-old`
+  + `登录按钮` 的 l2 仅约 0.2，融合后 0.9 → 0.468 会跌破 0.6 阈值——真实语义冒烟
+  （tests/e2e/test_llm_smoke.py::test_semantic_llm_locate_login_button）会因此误伤失败。
+  故本闸门只做**布尔下限**（有/无依据），不动采纳置信度，避免误杀合法改述场景。
+- **依据只看描述，不看原选择器**：原选择器与候选的字面重叠正是误采纳的来源
+  （`#ghost-btn-old` → `#ghost-btn` 共享 ghost/btn），计入依据会让本缺陷原样复现。
+- **后续若要按真实数据标定**（backlog 提到的"意图重叠下限 / 描述信息量"）：采集/标定点在
+  `agent/confidence.py` 的 `CALIBRATORS[KEY_SEMANTIC_LLM]`（把 l2 作为第二输入做数据标定映射），
+  本闸门仅承担"零依据"这一最保守的拒绝，不在此处拍阈值。
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 
 from selfheal.agent.confidence import KEY_SEMANTIC_L3, KEY_SEMANTIC_LLM, calibrate
+from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
+from selfheal.agent.strategies.heuristic import _FIELDS, _tokenize
+from selfheal.collect.collector import Scene
 from selfheal.dom import (
+    Element,
     ElementContext,
     build_compact_dom,
     build_stable_selector,
     interactive_candidates,
 )
-from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
-from selfheal.collect.collector import Scene
 from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.llm.base import ChatMessage, LLMClient
 from selfheal.llm.embedding import EmbeddingClient
@@ -37,6 +56,10 @@ L3_MIN_SIM = 0.75
 L3_VERIFIED_SIM = 0.92
 L3_FRESH_SIM = 0.80
 L3_FRESH_DAYS = 7
+
+# R5 意图依据闸门：子串口径的最短有效匹配长度。
+# 单字符子串（如候选文本"登"落在描述"登录按钮"里）是噪声，不构成"意图依据"。
+INTENT_BASIS_MIN_SPAN = 2
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +84,39 @@ def _is_fresh(created_at: str | None, days: int = L3_FRESH_DAYS) -> bool:
         return age.total_seconds() <= days * 86400
     except ValueError:
         return False
+
+
+def _description_has_basis(description: str, elements: Iterable[Element]) -> bool:
+    """R5 意图依据闸门：描述能否在页面候选中找到**任何**词元/子串落点。
+
+    判定口径（只回答"有没有依据"，不回答"依据强弱"，也不判"LLM 选对了没"）：
+    - **词元交集**：与 `heuristic._tokenize` 同一分词器（同层直接复用，防两处分词漂移），
+      描述词元与候选任一字段词元有交集即算有依据；
+    - **子串交集**：候选字段值与描述互为子串，且匹配片段长度 ≥ `INTENT_BASIS_MIN_SPAN`
+      （单字符子串属噪声，不算依据）；
+    - **字段口径**：与 L2 打分同一组字段（`heuristic._FIELDS`：data-testid / id / aria-label /
+      text / name / placeholder）——闸门与 L2 判据必须同源，否则两者对"同一页面"的结论会互相打架；
+    - **任一候选即可**：只看描述是否"指向本页某处"，不要求它指向 LLM 挑中的那个
+      （"选得对不对"要真实数据标定，见模块 docstring，不在本闸门职责内）；
+    - **不看原选择器**：见模块 docstring（`#ghost-btn-old` → `#ghost-btn` 的字面重叠是缺陷来源）。
+
+    调用方已保证 description 非空；此处再挡一次是为了函数自洽（纯空白 → False，即无依据）。
+    """
+    desc = (description or "").strip().lower()
+    if not desc:
+        return False
+    desc_tokens = _tokenize(desc)
+    for el in elements:
+        for name in _FIELDS:
+            value = (el.field(name) or "").strip().lower()
+            if not value:
+                continue
+            if desc_tokens & _tokenize(value):
+                return True
+            span = len(value) if value in desc else len(desc) if desc in value else 0
+            if span >= INTENT_BASIS_MIN_SPAN:
+                return True
+    return False
 
 
 class SemanticStrategy(RepairStrategy):
@@ -172,10 +228,19 @@ class SemanticStrategy(RepairStrategy):
             return None
         # 护栏白名单：页面中真实存在、可由 build_stable_selector 生成的稳定定位器。
         # T8：候选来源优先 Playwright 原生解析（有 page 采集），静态 DOM 快照解析兜底。
-        real_selectors = {
-            s for el in interactive_candidates(scene) if (s := build_stable_selector(el))
-        }
+        candidates = interactive_candidates(scene)
+        real_selectors = {s for el in candidates if (s := build_stable_selector(el))}
         if not real_selectors:
+            return None
+        # R5 意图依据闸门（见模块 docstring）：描述与页面候选毫无词元/子串交集 → 拒绝。
+        # 位置在模型调用**之前**：拒绝与否只取决于描述与页面，不依赖模型输出，
+        # 既然"无依据"必然不采纳，就不必为它付一次模型调用与延迟。
+        if not _description_has_basis(description, candidates):
+            logger.debug(
+                "语义 LLM 段拒绝：描述与页面候选无词元/子串交集（description=%r，候选 %d 个）",
+                description,
+                len(candidates),
+            )
             return None
 
         rows = build_compact_dom(scene.dom_snapshot)
