@@ -54,7 +54,9 @@ def test_no_short_circuit_when_below_threshold():
     reply = json.dumps({"selector": '[data-testid="go-btn"]', "confidence": 0.9})
     fake_llm = FakeLLMClient(responses=[reply])
 
-    best = _orch(llm=fake_llm)._best_candidate(scene, "#totally-unrelated-xyz", "提交订单")
+    # 描述须为 R5 意图闸门提供依据（词元 go），又不能构成 _score 的强子串信号
+    # （`Go`/`go-btn` 会命中 0.85+ 强信号把启发式短路打开，就测不到"未短路"分支）
+    best = _orch(llm=fake_llm)._best_candidate(scene, "#totally-unrelated-xyz", "go 按钮")
 
     assert fake_llm.calls  # semantic 被调用（未短路）
     assert best is not None

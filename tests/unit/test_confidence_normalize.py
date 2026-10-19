@@ -194,8 +194,10 @@ def test_semantic_llm_strategy_shrink_wired():
     reply = json.dumps({"selector": '[data-testid="submit-btn"]', "confidence": 0.9})
     shrunk = SemanticStrategy(client=FakeLLMClient([reply]), shrink_self_reported=True)
     raw = SemanticStrategy(client=FakeLLMClient([reply]), shrink_self_reported=False)
-    assert shrunk.repair(scene, "#old", "提交订单").confidence == 0.81
-    assert raw.repair(scene, "#old", "提交订单").confidence == 0.9
+    # 描述须与夹具候选有词元/子串交集（_DOM_CANDIDATE 的 aria-label），否则会先被
+    # R5 意图依据闸门拒绝（semantic._description_has_basis），测不到 shrink 接线本身。
+    assert shrunk.repair(scene, "#old", "登录按钮").confidence == 0.81
+    assert raw.repair(scene, "#old", "登录按钮").confidence == 0.9
 
 
 def test_heuristic_strategy_identity_wired():
