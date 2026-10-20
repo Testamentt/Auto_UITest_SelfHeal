@@ -8,13 +8,13 @@
 
 import pytest
 
+from selfheal.collect.collector import Scene
 from selfheal.dom import (
     Element,
     cross_validate_interactive,
     interactive_candidates,
     parse_interactive_elements_native,
 )
-from selfheal.collect.collector import Scene
 
 pytestmark = pytest.mark.unit
 

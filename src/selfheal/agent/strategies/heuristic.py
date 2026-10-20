@@ -17,14 +17,14 @@ from __future__ import annotations
 import re
 
 from selfheal.agent.confidence import KEY_HEURISTIC, calibrate
+from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
+from selfheal.collect.collector import Scene
 from selfheal.dom import (
     Element,
     build_stable_selector,
     interactive_candidates,
     parse_interactive_elements,  # score_selector（C4 静态交叉校验）专用
 )
-from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
-from selfheal.collect.collector import Scene
 
 # 词元：连续字母数字 或 连续中文（CJK）。
 # 注意：与 llm/embedding.py 的 _TOKEN_RE（单中文字符）粒度不同是有意的——

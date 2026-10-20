@@ -51,6 +51,7 @@ class PopupKnowledge(Protocol):
         """沉淀一条弹窗特征（关闭方式），供后续同签名弹窗直接复用。"""
         ...
 
+
 # 常见弹窗容器特征（role / aria / 类名 / id 含弹窗语义）
 _POPUP_CONTAINER_SELECTOR = (
     "[role='dialog'],[aria-modal='true'],.modal,.popup,.dialog,"
