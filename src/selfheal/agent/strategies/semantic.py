@@ -119,6 +119,33 @@ def _description_has_basis(description: str, elements: Iterable[Element]) -> boo
     return False
 
 
+def _comparable_embedding(embedding, text: str) -> bytes | None:
+    """L6：把文本向量化为「可比较」的 bytes；不可比较 → None（跳过检索 / 不落库）。
+
+    契约（与 `agent/persistence.py` 的同名助手一致）：
+    - 文本为空/纯空白 → 不向量化直接 None（省一次无意义计算）；
+    - `embed()` 返回空 bytes（L6 的"不可比较"标记）→ None，无论客户端自报什么；
+    - 客户端自报 `is_comparable(data)` 为假 → None（L6 在 `llm/embedding.py` 落地后的正式口径）；
+      签名不符（如无参）时记 debug 并退化为本地判据，不让调用方炸在半路；
+    - 客户端尚无 `is_comparable()`（当前 `NgramEmbedding`）→ 本地判据：**全零向量**也不可比较
+      （余弦未定义；纯标点文本如 "×" 即产出全零向量）。
+    """
+    if not (text or "").strip():
+        return None
+    data = embedding.embed(text)
+    if not data:
+        return None
+    checker = getattr(embedding, "is_comparable", None)
+    if callable(checker):
+        try:
+            return data if checker(data) else None
+        except TypeError:  # 期望 is_comparable(bytes) -> bool；不符则退化为本地判据（不静默）
+            logger.debug(
+                "is_comparable() 签名不符（期望 is_comparable(bytes)->bool），退化本地判据"
+            )
+    return data if any(data) else None
+
+
 class SemanticStrategy(RepairStrategy):
     name = "semantic"
 
@@ -159,7 +186,13 @@ class SemanticStrategy(RepairStrategy):
 
     def _knowledge_semantic(self, original_selector: str) -> RepairCandidate | None:
         """L3：知识库向量检索 → 采纳或建议（不采纳返回 None，由编排继续 L4）。"""
-        query_vec = self._embedding.embed(self._element_context.query_text)
+        # L6：查询向量不可比较（空文本 / 不可比较标记 / 全零向量）→ 直接跳过 L3。
+        # 上游 is_empty 已挡过"完全空上下文"，此处挡的是"文本非空但向量退化"（纯标点等），
+        # 以及 L6 在 llm/embedding.py 落地后的显式不可比较标记——不必白跑一次检索。
+        query_vec = _comparable_embedding(self._embedding, self._element_context.query_text)
+        if query_vec is None:
+            logger.debug("L3 跳过：查询文本为空或向量不可比较（不进入知识库检索）")
+            return None
         hits = self._knowledge.find_semantic(
             query_vec,
             self._page_fingerprint,
