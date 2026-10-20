@@ -11,13 +11,40 @@ from collections import OrderedDict
 from datetime import datetime, timezone
 
 from selfheal.agent.context import FixProposal, HealingContext, HealOutcome, selector_exists
-from selfheal.dom import compute_repair_key
 from selfheal.config import Settings
+from selfheal.dom import compute_repair_key
 from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.knowledge.schema import RepairCase
 from selfheal.reporting.hooks import HealingRecord, HealingReporter
 
 logger = logging.getLogger(__name__)
+
+
+def _comparable_embedding(embedding, text: str) -> bytes | None:
+    """L6：把文本向量化为「可比较」的 bytes；不可比较 → None（不落库）。
+
+    契约（与 `agent/strategies/semantic.py` 的同名助手一致）：
+    - 文本为空/纯空白 → 不向量化直接 None（省一次无意义计算）；
+    - `embed()` 返回空 bytes（L6 的"不可比较"标记）→ None，无论客户端自报什么；
+    - 客户端自报 `is_comparable(data)` 为假 → None（L6 在 `llm/embedding.py` 落地后的正式口径）；
+      签名不符（如无参）时记 debug 并退化为本地判据，不让调用方炸在半路；
+    - 客户端尚无 `is_comparable()`（当前 `NgramEmbedding`）→ 本地判据：**全零向量**也不可比较
+      （余弦未定义），入库后只会成为 L3 分桶里的死数据。
+    """
+    if not (text or "").strip():
+        return None
+    data = embedding.embed(text)
+    if not data:
+        return None
+    checker = getattr(embedding, "is_comparable", None)
+    if callable(checker):
+        try:
+            return data if checker(data) else None
+        except TypeError:  # 期望 is_comparable(bytes) -> bool；不符则退化为本地判据（不静默）
+            logger.debug(
+                "is_comparable() 签名不符（期望 is_comparable(bytes)->bool），退化本地判据"
+            )
+    return data if any(data) else None
 
 
 class PersistenceHandler:
@@ -144,8 +171,16 @@ class PersistenceHandler:
                         context.page_fingerprint, element_context.tag_path
                     )
                 if self._embedding is not None:
-                    embedding = self._embedding.embed(element_context.query_text)
-                    embedding_version = self._embedding.embedding_version
+                    # L6：文本为空 / 向量不可比较 → 不写 embedding（embedding=None +
+                    # embedding_version=None），避免零长/全零 BLOB 进库污染 L3 分桶。
+                    embedding = _comparable_embedding(self._embedding, element_context.query_text)
+                    if embedding is None:
+                        logger.debug(
+                            "跳过 embedding 写入：查询文本为空或向量不可比较（repair_key=%s）",
+                            repair_key,
+                        )
+                    else:
+                        embedding_version = self._embedding.embedding_version
             self._knowledge.add_repair(
                 RepairCase(
                     original_selector=context.original_selector,

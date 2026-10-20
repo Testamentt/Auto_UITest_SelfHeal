@@ -1,4 +1,4 @@
-"""单元测试：2026-10-08 代码审查修复回归（H1/H2/H3/M2/M6/M7/M9/M11 + 配置值域）。
+"""单元测试：2026-10-08 代码审查修复回归（H1/H2/H3/M2/M6/M7/M9/M11/L6 + 配置值域）。
 
 每条用例标题都带发现项编号，便于与 `docs/reviews/2026-10-08-code-review.md` 对齐。
 不依赖浏览器（engine 侧一律用 fake page / fake playwright）。
@@ -516,3 +516,184 @@ class _OrchStub:
 
     def discard_pending(self, attempt_id):
         return None
+
+
+# --- L6：embedding 不可比较 → 调用方短路（检索侧 / 写入侧） ---
+#
+# 背景（docs/backlog/low-priority.md §一 L6）：空文本会产出退化向量（余弦未定义），
+# `llm/embedding.py` 起把这种向量标为"不可比较"（空 bytes 标记，另有 `is_comparable()`）；
+# 调用方必须短路，否则 L3 白跑一次检索、写入侧还会把零长/全零 BLOB 落进知识库。
+# 队列第 03 条落地 `is_comparable()` 之前，调用方按"有无该方法"两条路径都要成立。
+
+
+class _Embedding:
+    """可控向量客户端（dual-path：有 / 无 `is_comparable()`）。"""
+
+    embedding_version = "test-v1"
+
+    def __init__(self, data: bytes, *, comparable: bool | None = None):
+        self._data = data
+        self.calls: list[str] = []
+        if comparable is not None:  # 只在这类实例上挂方法，模拟 L6 落地后的客户端
+            self.is_comparable = lambda _data: comparable
+
+    def embed(self, text: str) -> bytes:
+        self.calls.append(text)
+        return self._data
+
+
+class _EmbeddingWrongArity:
+    """契约不符的客户端：`is_comparable()` 无参（调用方须退化而非炸在半路）。"""
+
+    embedding_version = "test-v1"
+
+    def __init__(self, data: bytes):
+        self._data = data
+
+    def is_comparable(self):
+        return False
+
+    def embed(self, text: str) -> bytes:
+        return self._data
+
+
+class _RecordingKnowledge:
+    """L3 检索侧：记录 find_semantic 是否被调用（证明"短路"真的没进检索）。"""
+
+    def __init__(self):
+        self.calls: list[bytes] = []
+
+    def find_semantic(self, query_vec, page_fingerprint, embedding_version, k=1, threshold=0.75):
+        self.calls.append(query_vec)
+        return []
+
+    def bump_hit(self, repair_key):  # pragma: no cover - 短路路径不会走到
+        raise AssertionError("短路时不应更新热度")
+
+
+class _CapturingKnowledge:
+    """写入侧：记录落库的 RepairCase。"""
+
+    def __init__(self):
+        self.cases = []
+
+    def add_repair(self, case):
+        self.cases.append(case)
+
+
+def _l6_context():
+    from selfheal.agent.context import HealingContext
+    from selfheal.collect.collector import Scene
+    from selfheal.dom import ElementContext
+
+    return HealingContext(
+        scene=Scene(url="demo://page"),
+        original_selector="#old",
+        description=None,
+        dom_fingerprint=None,
+        page_fingerprint="pg1",
+        element_context=ElementContext(text="登录", tag_path="html>body>button:nth-of-type(1)"),
+    )
+
+
+def _l6_scene():
+    from selfheal.collect.collector import Scene
+
+    return Scene(
+        url="x",
+        dom_snapshot='<html><body><button aria-label="登录按钮">登录</button></body></html>',
+    )
+
+
+# 行：embed 输出 / 客户端自报可比性（None=无 is_comparable）/ 是否应进入检索或落库
+_L6_MATRIX = [
+    (b"\x00\x3f\x80\x3f", None, True),  # 无 is_comparable + 正常向量 → 照常
+    (b"", None, False),  # 无 is_comparable + 空 bytes 标记 → 短路
+    (b"\x00" * 8, None, False),  # 无 is_comparable + 全零向量（余弦未定义）→ 短路
+    (b"\x00\x3f\x80\x3f", True, True),  # 有 is_comparable=True → 照常
+    (b"\x00\x3f\x80\x3f", False, False),  # 有 is_comparable=False → 以它为准短路
+    (b"", True, False),  # 自报 True 但返回空标记 → 仍不可比较（空 bytes 优先）
+]
+
+
+@pytest.mark.parametrize(("data", "comparable", "expect_retrieval"), _L6_MATRIX)
+def test_l3_skips_retrieval_when_query_vector_not_comparable(
+    data, comparable, expect_retrieval, caplog
+):
+    """L6 检索侧：不可比较的查询向量直接跳过 L3（不白跑一次 find_semantic）。"""
+    import logging
+
+    from selfheal.agent.strategies.semantic import SemanticStrategy
+
+    knowledge = _RecordingKnowledge()
+    strategy = SemanticStrategy(
+        knowledge=knowledge,
+        embedding=_Embedding(data, comparable=comparable),
+        page_fingerprint="pg1",
+        element_context=_l6_context().element_context,
+    )
+    with caplog.at_level(logging.DEBUG, logger="selfheal.agent.strategies.semantic"):
+        cand = strategy.repair(_l6_scene(), "#old", description="登录")
+
+    assert cand is None  # 未注入 LLM client：本用例只关心 L3 是否被短路
+    assert (knowledge.calls != []) is expect_retrieval
+    assert any("L3 跳过" in r.getMessage() for r in caplog.records) is (not expect_retrieval)
+
+
+@pytest.mark.parametrize(("data", "comparable", "expect_written"), _L6_MATRIX)
+def test_persist_skips_embedding_when_vector_not_comparable(
+    data, comparable, expect_written, caplog
+):
+    """L6 写入侧：不可比较向量不落库（embedding=None + embedding_version=None）。
+
+    既有富化行为不变：可比较时照旧写入 bytes 与版本号；结构上下文照旧产出 L1 repair_key。
+    """
+    import logging
+
+    from selfheal.agent.context import HealOutcome
+
+    client = _Embedding(data, comparable=comparable)
+    knowledge = _CapturingKnowledge()
+    settings = Settings()
+    settings.healing.enabled = True
+    handler = PersistenceHandler(
+        settings, knowledge=knowledge, reporter=object(), embedding=client, page=None
+    )
+    context = _l6_context()
+    with caplog.at_level(logging.DEBUG, logger="selfheal.agent.persistence"):
+        handler._persist(
+            context,
+            HealOutcome(success=True, new_selector="#new", confidence=0.9, strategy="semantic"),
+        )
+
+    case = knowledge.cases[0]  # 修复案例照常入库（本改动只影响 embedding 两个字段）
+    assert case.repair_key  # 既有行为：结构上下文仍产出 L1 键
+    if expect_written:
+        assert case.embedding == data and case.embedding_version == "test-v1"
+    else:
+        assert case.embedding is None and case.embedding_version is None
+        assert any("跳过 embedding 写入" in r.getMessage() for r in caplog.records)
+
+
+def test_comparable_embedding_helper_contract_is_shared():
+    """两个同名助手（semantic / persistence）契约一致，防两处漂移。"""
+    from selfheal.agent.persistence import _comparable_embedding as persist_helper
+    from selfheal.agent.strategies.semantic import _comparable_embedding as semantic_helper
+
+    for helper in (semantic_helper, persist_helper):
+        client = _Embedding(b"\x00\x3f\x80\x3f")
+        assert helper(client, "   ") is None  # 空文本不向量化
+        assert client.calls == []
+        assert helper(client, "登录") == b"\x00\x3f\x80\x3f"
+        assert client.calls == ["登录"]
+
+
+def test_comparable_embedding_falls_back_on_wrong_arity(caplog):
+    """`is_comparable()` 签名不符（无参）→ 记 debug 后退化为本地判据，不炸在半路。"""
+    import logging
+
+    from selfheal.agent.strategies.semantic import _comparable_embedding
+
+    with caplog.at_level(logging.DEBUG, logger="selfheal.agent.strategies.semantic"):
+        assert _comparable_embedding(_EmbeddingWrongArity(b"\x00\x3f\x80\x3f"), "登录")
+    assert any("签名不符" in r.getMessage() for r in caplog.records)
