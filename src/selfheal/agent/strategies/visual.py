@@ -11,10 +11,10 @@ dom.build_stable_selector 生成），编造的定位器直接拒绝。
 from __future__ import annotations
 
 from selfheal.agent.confidence import KEY_VISUAL, calibrate
-from selfheal.dom import build_stable_selector, interactive_candidates
 from selfheal.agent.strategies.base import RepairCandidate, RepairStrategy
 from selfheal.agent.strategies.heuristic import score_selector
 from selfheal.collect.collector import Scene
+from selfheal.dom import build_stable_selector, interactive_candidates
 from selfheal.llm.base import VisionClient
 from selfheal.llm.io import extract_json, safe_float, safe_str
 

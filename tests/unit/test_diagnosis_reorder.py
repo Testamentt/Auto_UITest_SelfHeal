@@ -3,11 +3,11 @@
 import pytest
 
 import selfheal.agent.orchestrator as orch_mod
-from selfheal.dom import ElementContext, compute_repair_key
 from selfheal.agent.orchestrator import HealOutcome, SelfHealOrchestrator
 from selfheal.agent.strategies.base import RepairCandidate
 from selfheal.collect.collector import Scene
 from selfheal.config import HealingConfig, Settings
+from selfheal.dom import ElementContext, compute_repair_key
 from selfheal.knowledge.schema import RepairCase
 from selfheal.knowledge.store import KnowledgeStore
 

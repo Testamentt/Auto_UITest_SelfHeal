@@ -2,15 +2,15 @@
 
 import pytest
 
+from selfheal.agent.orchestrator import HealOutcome, SelfHealOrchestrator
+from selfheal.agent.strategies.semantic import SemanticStrategy
+from selfheal.collect.collector import Scene
+from selfheal.config import Settings
 from selfheal.dom import (
     ElementContext,
     compute_repair_key,
     extract_element_context,
 )
-from selfheal.agent.orchestrator import HealOutcome, SelfHealOrchestrator
-from selfheal.agent.strategies.semantic import SemanticStrategy
-from selfheal.collect.collector import Scene
-from selfheal.config import Settings
 from selfheal.knowledge.schema import RepairCase
 from selfheal.knowledge.store import KnowledgeStore
 from selfheal.llm.embedding import NgramEmbedding
