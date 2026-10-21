@@ -5,6 +5,8 @@
 - 自愈开关：CLI `--selfheal` / `--no-selfheal` 优先于 `settings.healing.enabled`。
 - L18：e2e/erp 用例带基线守卫——本机配置开了 `healing.dry_run` / 关掉自愈会直接 fail
   并提示"本机配置会污染 e2e"，而不是让 e2e 集体失败后靠猜。
+- trace 开关：CLI `--trace-healing` / `--no-trace-healing` 优先于 `settings.browser.trace`；
+  同一取值以 provider 形式注入 `HealingPage`（L4），使采集器的"是否在录制"判定显式化。
 
 注意：engine（含 playwright）在 fixture 内**惰性导入**，使 `-m unit` 无需安装 playwright 即可收集运行。
 """
@@ -134,6 +136,18 @@ def _e2e_baseline_guard(request):
         pytest.fail(violation, pytrace=False)
 
 
+def _trace_active_provider(config, settings):
+    """trace 录制状态 provider（L4）：CLI 覆盖优先，否则 `settings.browser.trace`。
+
+    与 `context` fixture 里 `tracing.start` 的判定**同源**（同一 CLI / 配置取值），
+    保证采集器拿到的"当前是否在录制"与外层实际录制状态一致——采集器据此显式判定，
+    不再依赖 `tracing.stop()` 抛错的异常探测（Playwright 版本相关的实现细节）。
+    provider 在每次 capture 时求值（会话内 CLI 取值不变，故结果稳定）。
+    """
+    cli = config.getoption("trace_healing")
+    return lambda: settings.browser.trace if cli is None else cli
+
+
 @pytest.fixture(scope="session")
 def knowledge(tmp_path_factory) -> KnowledgeBackend:
     """会话级共享知识库（临时 SQLite：验证持久化，且不污染仓库）。"""
@@ -212,11 +226,17 @@ def pom(page):
 
 @pytest.fixture
 def healing_page(settings, knowledge, context, request):
-    """自愈页面插件。开关：CLI > settings.healing.enabled。"""
+    """自愈页面插件。开关：CLI > settings.healing.enabled；trace 状态经 provider 注入（L4）。"""
     from selfheal.plugin.healing_page import HealingPage  # 惰性导入（M10-②：装配层在 plugin/）
 
     cli = request.config.getoption("selfheal")
-    page = HealingPage(context.new_page(), settings, knowledge=knowledge, enabled_override=cli)
+    page = HealingPage(
+        context.new_page(),
+        settings,
+        knowledge=knowledge,
+        enabled_override=cli,
+        trace_active=_trace_active_provider(request.config, settings),
+    )
     _session_reporters.append(page.reporter)  # B3：登记 reporter 供会话结束聚合写看板
     yield page
     page.close()  # M3：释放自愈资源（orchestrator 自建资源；注入的会话级 knowledge 由 fixture 关闭）
@@ -231,7 +251,7 @@ def disabled_page(settings, context):
 
 
 @pytest.fixture
-def offline_healing_page(settings, context):
+def offline_healing_page(settings, context, request):
     """**离线**自愈页面：自愈开启，但关闭 LLM / VLM / embedding（只跑规则式 + 启发式策略）。
 
     2026-10-08（修复轮新发现）：真实模型可用后，"故意不可自愈"的场景不再确定——
@@ -247,7 +267,12 @@ def offline_healing_page(settings, context):
     offline.vision.enabled = False
     offline.embedding.enabled = False
     offline.knowledge.backend = "memory"
-    page = HealingPage(context.new_page(), offline, enabled_override=True)
+    page = HealingPage(
+        context.new_page(),
+        offline,
+        enabled_override=True,
+        trace_active=_trace_active_provider(request.config, offline),
+    )
     _session_reporters.append(page.reporter)
     try:
         yield page
@@ -285,7 +310,7 @@ def erp_api(settings):
 
 
 @pytest.fixture
-def erp_page(settings, knowledge, context):
+def erp_page(settings, knowledge, context, request):
     """ERP 被测页面：HealingPage（自愈开）+ UI 登录态（租户账号，.env 凭证）。"""
     import os
 
@@ -301,7 +326,12 @@ def erp_page(settings, knowledge, context):
     if not username or not password:
         _pytest.skip(f"ERP 租户凭证未配置（{sut.username_env}/{sut.password_env}）")
 
-    page = HealingPage(context.new_page(), settings, knowledge=knowledge)
+    page = HealingPage(
+        context.new_page(),
+        settings,
+        knowledge=knowledge,
+        trace_active=_trace_active_provider(request.config, settings),  # L4：trace 状态显式注入
+    )
     # 评审 R4（2026-09-03）：与 healing_page 同款——ERP 用例自愈记录进会话聚合
     # （dashboard / healing-records.json / T19 通知），否则审计看板缺 ERP 数据。
     _session_reporters.append(page.reporter)

@@ -27,6 +27,7 @@ from selfheal.agent.persistence import PersistenceHandler
 from selfheal.agent.strategies import HeuristicStrategy, SemanticStrategy, VisualStrategy
 from selfheal.agent.strategies.base import RepairStrategy
 from selfheal.config import Settings
+from selfheal.contracts import TraceActiveProvider
 from selfheal.knowledge.base import KnowledgeBackend
 from selfheal.knowledge.factory import build_knowledge_store
 from selfheal.llm import get_embedding_for_settings
@@ -63,6 +64,8 @@ class SelfHealOrchestrator:
     """编排「感知-诊断-决策-修复」闭环（A1 重构后降为 Router + 组合根）。
 
     knowledge / reporter 可注入（默认自建），便于测试替换与跨用例复用知识库。
+    trace_active（L4）为 trace 录制状态 provider，透传给上下文组装器/采集器；
+    close() 级联收口采集器监听（L3）。
     """
 
     def __init__(
@@ -73,6 +76,7 @@ class SelfHealOrchestrator:
         reporter: HealingReporter | None = None,
         llm_client: LLMClient | None = None,
         vision_client: VisionClient | None = None,
+        trace_active: TraceActiveProvider | None = None,
     ):
         self._page = page
         self._settings = settings
@@ -80,6 +84,7 @@ class SelfHealOrchestrator:
         self._knowledge = None
         self._llm_client = None
         self._vision_client = None
+        self._assembler = None
         self._owns_knowledge = self._owns_llm = self._owns_vision = False
         try:
             self._knowledge = knowledge or build_knowledge_store(settings)
@@ -106,7 +111,8 @@ class SelfHealOrchestrator:
                 else None
             )
             # 三个协作者（A1）：上下文组装 / 修复提案 / 持久化审计
-            self._assembler = ContextAssembler(page, settings)
+            # L4：trace 录制状态 provider 透传给采集器（None 时回退异常探测）
+            self._assembler = ContextAssembler(page, settings, trace_active)
             self._fix_gen = FixGenerator(
                 settings,
                 self._knowledge,
@@ -166,8 +172,11 @@ class SelfHealOrchestrator:
         """释放本实例**自建**的资源（知识库连接 / LLM / VLM 客户端，审查 M3）。
 
         注入的 knowledge / llm_client / vision_client 由注入方负责关闭（owns 标记）。
+        同时收口采集器生命周期（L3：摘除页面上的网络监听，幂等）。
         释放失败不掩盖业务（best-effort）；幂等（重复 close 安全）。
         """
+        if self._assembler is not None:
+            self._assembler.close()  # L3：HealingPage.close() → 本方法 → 摘除网络监听
         if self._owns_knowledge:
             _safe_close(self._knowledge)
         if self._owns_llm:
