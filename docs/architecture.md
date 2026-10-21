@@ -109,11 +109,13 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 **已落地**：Phase 1–5 全部能力；T11 现场内联 trace；T13–T17 风险控制；T18 Allure 桥 + GitHub Pages 发布；
 T19 通知基建（cron 未启用）；T20 A/B 对比实证；T21 xdist 并行（分片聚合 + SQLite WAL）；
 T22 草稿 PR；T23 ERP 迁移；**2026-10-08 加固**（H1–H6 / M1–M16：模型层护栏与异常分级、弹窗作用域、
-资源所有权、暂存与幂等窗口、知识库双后端语义对齐、CI 门禁补齐、人审入口脚本）。
+资源所有权、暂存与幂等窗口、知识库双后端语义对齐、CI 门禁补齐、人审入口脚本）；
+**2026-10-10 收尾**（L1–L20 工程细节、M10 分层倒置修复、M15-3 链式自愈 e2e、R1–R5 残余项、R5 语义意图闸门）。
 
 **仍规划**（明细见 [TODO.md](TODO.md) 与 [backlog/low-priority.md](backlog/low-priority.md)）：
-engine / collect 反向依赖的分层重构（M10）；语义 LLM 段的 L2 交叉校验（backlog R5）；
-iframe / Shadow DOM 自愈评估 spike；自愈指标跨运行时间序列；T19 定时回归 cron；T20 A/B 实证报告与 T21 `-n 2` e2e 收官。
+iframe / Shadow DOM 自愈评估 spike；自愈指标跨运行时间序列；T19 定时回归 cron；T20 A/B 实证报告与 T21 `-n 2` e2e 收官；
+backlog §五登记的新残余项（R6 视觉成本重估、R7 链节点级描述、R8 链式低置信兜底、R9 链式用例知识库串扰、
+R10 意图闸门按数据标定、R11 ab 夹具 provider、R13 CI 加固）。
 
 ## 已定选型与遗留 TBD
 
@@ -132,4 +134,3 @@ iframe / Shadow DOM 自愈评估 spike；自愈指标跨运行时间序列；T19
 
 - 视觉定位的控件画像（当前为候选集选择）。
 - 语义向量 v2（fastembed 本地模型），规模大时评估 sqlite-vec / Chroma。
-- 分层重构（M10）：装配点从 `engine/` 上移至独立插件层，`agent/dom/` 下沉中立包。
