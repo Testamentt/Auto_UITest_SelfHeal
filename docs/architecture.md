@@ -25,11 +25,15 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 ┌──────────────────────────────────────────────────────────────────────┐
 │ 展示层 reporting/     Allure 桥 · 自愈看板 · 修复审计 · 成本与指标      │
 ├──────────────────────────────────────────────────────────────────────┤
+│ 装配层 plugin/         HealingPage（自愈 Page 代理）· 组装知识库与闭环  │
+├──────────────────────────────────────────────────────────────────────┤
 │ AI 自愈 Agent agent/  大脑                                          │
 │   orchestrator 编排 │ context 组装 │ fix_generator 提案 │ persistence 阈值路由 │
 │   diagnose 规则式 · diagnose_llm LLM 精判 │ strategies/ 启发式·语义·视觉 │
-│   dom/ 解析·指纹·候选 │ confidence 置信度归一化                       │
+│   confidence 置信度归一化                                            │
 │   支撑：llm/ 模型抽象（LLM+VLM，provider 无关）· knowledge/ 知识库       │
+├──────────────────────────────────────────────────────────────────────┤
+│ 中立层 contracts.py / dom/   DTO（FailureContext · HealOutcome）· DOM 解析/指纹/候选 │
 ├──────────────────────────────────────────────────────────────────────┤
 │ 数据采集层 collect/    截图 · DOM 快照 · 网络日志（限长 200）· 现场内联 trace │
 ├──────────────────────────────────────────────────────────────────────┤
@@ -37,11 +41,15 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
+**依赖方向（M10 后固定，有 AST 护栏用例）**：只允许自上而下——`reporting`/`plugin` → `agent` →（`llm`/`knowledge`/`dom`/`contracts`）；
+`engine`、`collect` 只依赖 `contracts`/`dom`/`config`，**import 闭包里不出现 `agent`/`knowledge`/`reporting`**
+（实测 `sys.modules` 为空，见 `tests/unit/test_layering.py`）。
+
 ## 自愈闭环
 
 由 `src/selfheal/agent/orchestrator.py` 编排（A1 重构后降为 Router + 组合根）：
 
-1. **执行监控**：`engine/healing_locator.py` 的动作包装捕获定位超时 / 不可交互异常（`HealingPage.locator()` 与 HEALABLE 动作）。
+1. **执行监控**：`plugin/healing_page.py` 的 `HealingPage.locator()` 与 `engine/healing_locator.py` 的 HEALABLE 动作包装捕获定位超时 / 不可交互异常（M10 前 `HealingPage` 在 engine，装配依赖因此倒置）。
 2. **现场采集**：`collect/collector.py` 抓截图、DOM 快照、网络日志与现场内联 trace（`Scene.trace_path`），与 conftest 整用例 trace 互补。
 3. **智能诊断**：`agent/diagnose.py` 规则式粗分（零成本恒跑）+ `agent/diagnose_llm.py` LLM 精判（根因白名单 5 值；模型不可用自动降级规则式）。
 4. **多策略修复**：`agent/strategies/` 按配置顺序尝试；Phase 5 起调度链为

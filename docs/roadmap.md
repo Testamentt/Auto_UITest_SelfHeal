@@ -71,12 +71,16 @@
 | D17 | 文档治理 | `docs/README.md` 为文档唯一入口（分区 + 写作规范 + 双轨说明）；`sessions/plans/reviews` 只读；低优先待办入 `docs/backlog/`、模板入 `docs/templates/`；同一事实只允许一个归属地，其余改指针 | 2026-10-08 文档体检：格式不一、前后错位、跨文件重复、散落多处 |
 | D18 | 视觉模型切换 | VLM 由通义 `qwen3-vl-plus`（DashScope）改为 **CommandCode 网关的 `deepseek/deepseek-v4.1-flash`**（与 LLM 同网关同凭据）；凭据变量由 `DASHSCOPE_API_KEY` 改名为 `COMMANDCODE_API_KEY`；代码默认值仍保留 qwen3-vl-plus + DashScope 公共端点作为可移植基线（仅本机 `config/settings.yaml` 覆盖） | ① 用项目自身客户端实测该模型**支持图片输入**（合成图 6 位随机数字识别正确）；② 真实视觉冒烟 `1 passed`、`confidence=0.873`（原 qwen3-vl-plus 0.921）、耗时 8.6s vs 60s 级；③ 与 LLM 同平台可少一套端点与计费口径。代价：推理模型每次视觉调用含 reasoning token，成本单价需按新平台重估（登记于 backlog） |
 
+| D19 | 分层倒置修复（M10） | 新增装配层 `selfheal/plugin/`（`HealingPage` 自 engine 上移）+ 中立 DTO 层 `selfheal/contracts.py`（`FailureContext`/`HealOutcome`）+ `agent/dom/` 下沉为 `selfheal/dom/`；`engine/popup_guard.py` 用窄 Protocol `PopupKnowledge` 去掉对 knowledge 的依赖；分层不变量改由 AST 扫描用例守护（含 llm/knowledge 不得 import agent、engine/collect 不得 import agent/knowledge/reporting、dom 不得 import 任何业务层） | 反向依赖让"能力建设层"实际拉起整个大脑与知识库：单测无法隔离、替换/裁剪困难。实测改后 `import selfheal.engine.healing_locator` / `collect.collector` / `engine.popup_guard` / `dom` 的 `sys.modules` 闭包里 agent/knowledge/reporting **全为空**；护栏做过"故意违规必失败"验证 |
+
 ## 待解决问题
 
-- **低优先与延期项**（[backlog/low-priority.md](backlog/low-priority.md)，全部未开工）：L1–L20、
-  M10（engine/collect 反向依赖 agent/knowledge/reporting，需独立计划 + 文档双轨）、M15 第 3 条（链式自愈 e2e 需先加 DOM 夹具）。
-- **语义 LLM 段缺 L2 交叉校验**：视觉段有 C4 融合降权，语义段没有——实测模型会给"与页面无关的描述"高置信候选并被采纳
-  （证据与备选方案见 backlog R5）。照搬视觉段公式会误伤合法场景，需先设计"意图重叠下限"判据并用真实数据标定。
+- **低优先与延期项**：L1–L20、M10、M15-3、R1–R5 **已于 2026-10-10 全部修复**
+  （[backlog/low-priority.md](backlog/low-priority.md) 有逐项改法与队列条目号；提交按每天 2 条推送）。
+  本轮新登记的残余项见该文件 §五（R6 视觉成本重估、R7 链节点级描述、R8 链式低置信兜底、R9 链式用例知识库串扰、
+  R10 意图闸门按数据标定、R11 ab 夹具 provider、R12 学习镜像同步、R13 CI 加固）。
+- **语义 LLM 段意图闸门（R5，已修保守版）**：现在能拦下"与页面零依据"的描述（模型调用前）；
+  "有依据但选对错元素"仍放行，需真实数据标定（落点：`agent/confidence.py` 的 `CALIBRATORS[KEY_SEMANTIC_LLM]`）。
 - **真实模型标定**：T5 置信度收缩（`shrink_self_reported`）仍是经验值 raw²；已采数据点（LLM 自报 1.0 / VLM 0.921），
   待多场景数据后按段标定（当前默认关闭，零回归）。
 - **视觉控件画像**：当前只做"候选集内选择"，画像能力（模板 + 语义）仍属 TBD。
