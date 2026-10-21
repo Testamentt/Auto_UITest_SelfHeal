@@ -18,16 +18,16 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from selfheal.agent.strategies.base import RepairCandidate
+from selfheal.collect.collector import Scene, SceneCollector
+from selfheal.config import Settings
+from selfheal.contracts import HealOutcome, TraceActiveProvider
 from selfheal.dom import (
     ElementContext,
     compute_page_fingerprint,
     dom_fingerprint,
     extract_element_context,
 )
-from selfheal.agent.strategies.base import RepairCandidate
-from selfheal.collect.collector import Scene, SceneCollector
-from selfheal.config import Settings
-from selfheal.contracts import HealOutcome
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免运行期强依赖 playwright
     from playwright.sync_api import Page
@@ -80,18 +80,39 @@ def selector_exists(page: Any, selector: str) -> bool:
 
 
 class ContextAssembler:
-    """A1 协作者：专职组装运行上下文（采集 → 豁免 → 指纹 → 元素上下文）。"""
+    """A1 协作者：专职组装运行上下文（采集 → 豁免 → 指纹 → 元素上下文）。
 
-    def __init__(self, page: Page | None, settings: Settings):
+    同时持有采集器的**生命周期**：close() 摘除挂在页面上的网络监听（L3），
+    由 SelfHealOrchestrator.close() 级联调用。
+    """
+
+    def __init__(
+        self,
+        page: Page | None,
+        settings: Settings,
+        trace_active: TraceActiveProvider | None = None,
+    ):
         self._page = page
         self._settings = settings
-        # T11：采集器顺带产出失败现场内联 trace（trace_dir 与 browser.trace_dir 一致）
-        self._collector = SceneCollector(page, settings.browser.trace_dir)
+        # T11 现场内联 trace + L4：录制状态由外层显式注入（provider 读取 CLI 覆盖 / 配置），
+        # 未注入（None）时才由采集器回退 tracing.stop() 异常探测（Playwright 版本相关的旧行为）。
+        self._collector = SceneCollector(
+            page, settings.browser.trace_dir, trace_active=trace_active
+        )
         # 失败上下文缓存（一次提取，L1/L3/persist 复用，避免全量 DOM 解析多次）。
         # 键 = (url, selector)：SPA 多页面流程同 selector 不同元素不误用（审查 M4）；
         # OrderedDict 做 LRU 上限 _CONTEXT_CACHE_LIMIT，防长流程内存膨胀。
         self._failure_context_cache: OrderedDict[tuple[str, str], ElementContext] = OrderedDict()
         self._context_cache_limit = 256
+
+    def close(self) -> None:
+        """生命周期收口（L3）：摘除采集器挂在页面上的网络监听（幂等）。
+
+        链路：`HealingPage.close()` → `SelfHealOrchestrator.close()` → 本方法。
+        收口后页面不再被监听，同页重建采集器不会因旧实例的挂载而重复计数；
+        已采集到的网络日志仍在最后一次 capture() 的结果里带出（证据不丢）。
+        """
+        self._collector.detach()
 
     def assemble(self, selector: str, description: str | None = None) -> HealingContext:
         """采集当前现场并组装上下文；excluded 标记 T13 高风险页豁免命中。"""

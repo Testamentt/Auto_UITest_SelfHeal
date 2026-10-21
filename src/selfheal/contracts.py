@@ -12,6 +12,9 @@ engine / collect 的 import 闭包不再拉起 agent / knowledge / reporting
 - `HealOutcome`：一次自愈的最终结果（闭环输出，engine 侧据此决定重试/兜底）。
 - `PopupFeature`：弹窗特征 DTO——`engine/popup_guard` 产出、`knowledge/` 持久化，双方共用；
   定义留在此处（而非 knowledge）是为了让 engine 不反向依赖 knowledge。
+- `TraceActiveProvider`：trace 录制状态的 provider 类型（L4）——由外层（conftest / 夹具）
+  注入 `collect.SceneCollector(trace_active=…)`，并经 agent / plugin 逐层透传，
+  使"是否在录制"成为显式状态而非异常探测。
 
 **零破坏**：原位置保留 re-export，既有 import 路径全部继续可用——
 `from selfheal.agent.diagnose import FailureContext`、`from selfheal.agent.context import HealOutcome`
@@ -22,7 +25,13 @@ engine / collect 的 import 闭包不再拉起 agent / knowledge / reporting
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+
+# trace 录制状态 provider（L4）：返回"当前是否正在录制 trace"。
+# 与 `collect/collector.py::SceneCollector(trace_active=…)` 的形参同形（调用处按关键字传参），
+# 由 conftest 等外层按 CLI 覆盖（--trace-healing / --no-trace-healing）与配置取值构造。
+TraceActiveProvider = Callable[[], bool]
 
 
 @dataclass
@@ -59,4 +68,4 @@ class PopupFeature:
     category: str = "generic"  # permission / ad / system ...
 
 
-__all__ = ["FailureContext", "HealOutcome", "PopupFeature"]
+__all__ = ["FailureContext", "HealOutcome", "PopupFeature", "TraceActiveProvider"]

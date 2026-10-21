@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from selfheal.agent.orchestrator import SelfHealOrchestrator
 from selfheal.config import Settings
+from selfheal.contracts import TraceActiveProvider
 from selfheal.engine.healing_locator import HealingLocator, _safe_close
 from selfheal.engine.popup_guard import PopupGuard
 from selfheal.knowledge.base import KnowledgeBackend
@@ -56,6 +57,7 @@ class HealingPage:
         knowledge: KnowledgeBackend | None = None,
         reporter: HealingReporter | None = None,
         enabled_override: bool | None = None,
+        trace_active: TraceActiveProvider | None = None,
     ):
         self._page = page
         self._settings = settings
@@ -70,7 +72,7 @@ class HealingPage:
             self._knowledge = knowledge or build_knowledge_store(settings)
             self._owns_knowledge = knowledge is None
             self._orchestrator = SelfHealOrchestrator(
-                page, settings, self._knowledge, self._reporter
+                page, settings, self._knowledge, self._reporter, trace_active=trace_active
             )
             self._popup_guard = PopupGuard(page, self._knowledge)
         else:
