@@ -64,12 +64,17 @@ AutoAiSelfHeal 是一个**带 AI 自愈能力的 UI 自动化测试框架**。�
 
 ```
 展示层        src/selfheal/reporting/   Allure 附件、自愈记录、HTML 看板
+装配层        src/selfheal/plugin/      HealingPage（自愈 Page 代理）+ 组装知识库与闭环
 AI 自愈 Agent src/selfheal/agent/       大脑：orchestrator 编排闭环，diagnose 诊断，strategies/ 多策略修复
   ├ LLM 抽象  src/selfheal/llm/         provider 无关的模型接入层（LLM + VLM）
   └ 知识库    src/selfheal/knowledge/   弹窗特征库 + 修复案例库
+中立层        src/selfheal/contracts.py · dom/   DTO（FailureContext/HealOutcome）· DOM 解析/指纹/候选
 数据采集层    src/selfheal/collect/     截图 / DOM 快照 / 网络日志 / 执行轨迹
 能力建设层    src/selfheal/engine/      Playwright 封装、自愈定位器、智能等待、弹窗处理
 ```
+
+**依赖只能自上而下**（M10 起有 AST 护栏用例守护）：`reporting`/`plugin` → `agent` →（`llm`/`knowledge`/`dom`/`contracts`）；
+`engine`、`collect` 只许依赖 `contracts`/`dom`/`config`，import 闭包里不得出现 `agent`/`knowledge`/`reporting`。
 
 ### 自愈闭环（核心流程）
 
@@ -124,6 +129,9 @@ AutoAiSelfHeal/
 ├── pyproject.toml              # 依赖 + pytest/ruff 配置（含 unit/e2e/healing/erp marker）
 ├── config/settings.example.yaml# 运行时配置示例（复制为 settings.yaml 使用）
 ├── src/selfheal/               # 框架主体（见「架构」分层）
+│   ├── plugin/                 #   装配层：HealingPage（自愈 Page 代理）+ 组装知识库与闭环
+│   ├── contracts.py / dom/     #   中立层：DTO 与 DOM 解析/指纹（engine、collect 只许依赖它们）
+│   └── agent/ collect/ engine/ llm/ knowledge/ reporting/   # 其余分层
 ├── tests/                      # unit/（-m unit）与 e2e/（-m e2e），conftest.py 提供 fixture
 ├── scripts/                    # ab_compare 对比 · verify_case 人审标记 · notify 通知 · propose_pr 草稿 PR
 ├── docs/                       # 先读 docs/README.md（文档地图与写作规范）
@@ -141,6 +149,8 @@ AutoAiSelfHeal/
 
 - 项目已完成 Phase 1–5（最小闭环 → AI 大脑 → 沉淀进阶 → 证据指标 → 语义化与风险控制），
   模块均已实现并有 unit/e2e 双覆盖；新增代码遵循既有分层与命名，不要跨层直接耦合。
+- **分层铁律（M10 起有 AST 护栏用例）**：装配点只在 `src/selfheal/plugin/`；`engine/`、`collect/` 只许依赖
+  `contracts.py` / `dom/` / `config`，**禁止** import `agent` / `knowledge` / `reporting`（改错会被 `tests/unit/test_layering.py` 拦下）。
 - 遗留与待办见 **`docs/TODO.md`**（唯一待办入口：T1–T23 状态、踩坑记录、候补池）。
   低优先级/延期项明细见 `docs/backlog/low-priority.md`；阶段与决策见 `docs/roadmap.md`。
 - **文档规范**：新增/修改文档前先读 `docs/README.md`（文档地图 + 写作规范 + 双轨说明）；

@@ -6,11 +6,11 @@
 > 图例：⬜ 待办 · 🟡 进行中 · ✅ 完成 · 🔴 阻断项 · 🟠 部分完成
 > 历史来源：[reviews/2026-08-04-phase3-retrospective.md](reviews/2026-08-04-phase3-retrospective.md)、[reviews/2026-08-15-code-review.md](reviews/2026-08-15-code-review.md)、[reviews/2026-09-03-code-review.md](reviews/2026-09-03-code-review.md)、[reviews/2026-10-08-code-review.md](reviews/2026-10-08-code-review.md)
 
-## 📌 2026-10-08 全量审查：High / Medium 已修复，Low 未开工
+## 📌 2026-10-08 全量审查：High / Medium / Low 与残余项均已修复
 
 > 报告：[reviews/2026-10-08-code-review.md](reviews/2026-10-08-code-review.md)（H1–H6 / M1–M16 / L1–L20）·
 > 修复记录：[reviews/2026-10-08-fix-report.md](reviews/2026-10-08-fix-report.md) ·
-> 未开工明细：[backlog/low-priority.md](backlog/low-priority.md)
+> 明细与进度：[backlog/low-priority.md](backlog/low-priority.md)
 
 - [x] **High 6 项** ✅ 2026-10-08
   - H1 弹窗关闭限定容器 + 关闭信号分级（防误点业务控件）；H2 `HealingPage` 自建知识库所有权与关闭；
@@ -24,11 +24,17 @@
     M9 暂存淘汰 / 幂等窗口有界 + `discard_pending`；M11 选择器字面量转义；M12 ERP 用例缺环境时 skip；
     M13 CI 固定 `channel=chromium`；M14 CI 增 `ruff format --check` + `--strict-markers` + 未分类测试门禁；
     M15 补 VLM 单测与工厂断言失效修正；M16 环境页写实际 trace 开关 + 修复建议表头
-- [ ] **Low 20 项 + 延期 2 项（M10 分层重构、M15-3 链式自愈 e2e）+ 残余 5 项（R1–R5）** ⬜ 未开工
-  - 明细与开工方式见 [backlog/low-priority.md](backlog/low-priority.md)；其中 R5（语义 LLM 段缺 L2 交叉校验）有实测证据，建议优先
-- [x] **验收** ✅ 2026-10-08
-  - `pytest -m unit` **404 passed**（修前 312）；全量 `pytest` **427 passed / 2 skipped / 3 xfailed / 0 failed**；
-    `ruff check .` 0 errors；`ruff format --check .` 全绿（此前 CI 无此门禁）
+- [x] **Low 20 项 + 延期 2 项（M10 分层重构、M15-3 链式自愈 e2e）+ 残余 5 项（R1–R5）** ✅ 2026-10-10
+  - 逐项改法与提交见 [backlog/low-priority.md](backlog/low-priority.md)「修复进度」表；
+    M10 顺带把 `engine/`、`collect/` 的反向依赖清零（新增 `plugin/` 装配层 + `contracts.py` + `dom/` 下沉），
+    R5 用"意图依据"闸门拦下无关描述（模型调用前）。
+  - **推送节奏**：24 + 10 条提交拆成 patch 队列，由 Windows 任务计划程序每天 19:40 推 2 条
+    （应用 → unit + ruff 双门禁 → 通过才 push；队列在 `E:\Project\AutoAiSelfHeal-push-queue`）。
+  - ⬜ 队列推完后需同步学习版镜像（R7.4）——见 backlog §五 R12。
+- [x] **验收** ✅ 2026-10-08（Low 轮后更新）
+  - `pytest -m unit` **404 passed**（修前 312）→ Low 轮后 **566 passed**；全量 `pytest` **427 passed / 2 skipped / 3 xfailed / 0 failed**；
+    `ruff check .` 0 errors；`ruff format --check .` 全绿（此前 CI 无此门禁）；队列每个前缀都单独跑过 `-m unit`，全绿
+
 
 ## 🔥 高优先级（Phase 4 核心：证据 + 指标 + 加固）
 
