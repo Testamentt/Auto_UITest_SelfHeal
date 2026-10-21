@@ -4,12 +4,13 @@
 > **状态**：活文档（L1–L20、R1–R4、M10、M15-3、R5 **均已修复**；本轮新登记的残余项见 §五）
 > **最后更新**：2026-10-10 · 关联：[docs/reviews/2026-10-08-code-review.md](../reviews/2026-10-08-code-review.md)（问题出处）、[docs/reviews/2026-10-08-fix-report.md](../reviews/2026-10-08-fix-report.md)（High/Medium 修复记录）
 
-## 修复进度（2026-10-10）
+## 修复进度（2026-10-21 全部推送完毕）
 
-> 提交按「每天 2 个」的节奏推送：队列在 `E:\Project\AutoAiSelfHeal-push-queue`（Windows 任务计划程序 19:40，
-> 应用 → `pytest -m unit` + ruff 双门禁 → 通过才 push；日志见该目录 `push-log.txt`）。
-> 验收数字：unit 基线 **404 → 566 passed**；队列每个前缀都单独跑过 `pytest -m unit`，全绿。
-> 下表「条目」= 队列 patch 编号，对应提交的时间戳都落在 UTC+8 10:00–20:00 内。
+> 推送方式：本仓库为**公开仓库**，30 条提交按「提交日期 2026-10-12 → 10-21、每天 3 条、时间落在 UTC+8
+> 10:00–21:00」的节奏一次性推送（`git log` 可查）。此前拆好的 patch 队列在 `E:\Project\AutoAiSelfHeal-push-queue\`
+> （每日 19:40 的 Windows 定时任务已于 2026-10-21 停用；任务定义备份在该目录 `scheduled-task-backup.xml`）。
+> 验收数字：unit 基线 **404 → 566 passed**；每条提交单独应用后都跑过 `pytest -m unit`，全绿。
+> 下表的条目号 = 该批提交在队列里的先后顺序（提交主题自带 L / M / R 编号，可 `git log --grep=L7` 之类定位）。
 
 | 项 | 条目 | 项 | 条目 | 项 | 条目 |
 |---|---|---|---|---|---|
