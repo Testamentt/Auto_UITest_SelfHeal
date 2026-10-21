@@ -20,15 +20,15 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
 from selfheal.agent.diagnose import FailureContext  # noqa: E402
+from selfheal.agent.orchestrator import HealOutcome, SelfHealOrchestrator  # noqa: E402
+from selfheal.agent.strategies.semantic import SemanticStrategy  # noqa: E402
+from selfheal.collect.collector import Scene  # noqa: E402
+from selfheal.config import Settings  # noqa: E402
 from selfheal.dom import (  # noqa: E402
     ElementContext,
     compute_page_fingerprint,
     compute_repair_key,
 )
-from selfheal.agent.orchestrator import HealOutcome, SelfHealOrchestrator  # noqa: E402
-from selfheal.agent.strategies.semantic import SemanticStrategy  # noqa: E402
-from selfheal.collect.collector import Scene  # noqa: E402
-from selfheal.config import Settings  # noqa: E402
 from selfheal.knowledge.schema import RepairCase  # noqa: E402
 from selfheal.llm.embedding import NgramEmbedding  # noqa: E402
 
