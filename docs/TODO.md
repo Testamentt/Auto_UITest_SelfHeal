@@ -28,9 +28,10 @@
   - 逐项改法与提交见 [backlog/low-priority.md](backlog/low-priority.md)「修复进度」表；
     M10 顺带把 `engine/`、`collect/` 的反向依赖清零（新增 `plugin/` 装配层 + `contracts.py` + `dom/` 下沉），
     R5 用"意图依据"闸门拦下无关描述（模型调用前）。
-  - **推送节奏**：24 + 10 条提交拆成 patch 队列，由 Windows 任务计划程序每天 19:40 推 2 条
-    （应用 → unit + ruff 双门禁 → 通过才 push；队列在 `E:\Project\AutoAiSelfHeal-push-queue`）。
-  - ⬜ 队列推完后需同步学习版镜像（R7.4）——见 backlog §五 R12。
+  - **推送节奏**：30 条提交已于 **2026-10-21** 全部推送（提交日期按 2026-10-12 → 10-21、每天 3 条、
+    时间落在 UTC+8 10:00–21:00 的节奏分布；`git log` 可查）。此前每日 19:40 的 Windows 推送任务已停用，
+    patch 队列与任务定义备份留在 `E:\Project\AutoAiSelfHeal-push-queue\`。
+  - 🟡 学习版镜像（R7.4）：M10 分层与 D19 的双轨同步本轮进行中——见 backlog §五 R12。
 - [x] **验收** ✅ 2026-10-08（Low 轮后更新）
   - `pytest -m unit` **404 passed**（修前 312）→ Low 轮后 **566 passed**；全量 `pytest` **427 passed / 2 skipped / 3 xfailed / 0 failed**；
     `ruff check .` 0 errors；`ruff format --check .` 全绿（此前 CI 无此门禁）；队列每个前缀都单独跑过 `-m unit`，全绿
