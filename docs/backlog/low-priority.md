@@ -94,7 +94,7 @@
 | R9 | `tests/e2e/test_chain_healing_e2e.py` | session 级知识库会跨用例串扰，链式用例的"修根"一跳结果随历史变化（首跑 flaky 的成因之一） | 需要时改用独立内存知识库夹具（参考 `test_knowledge_reuse.py` 的 fresh 夹具） |
 | R10 | `agent/strategies/semantic.py` 意图闸门 | 只拦"零依据"；"有依据但 LLM 选错元素"仍会放行（设计如此） | 用真实数据标定：把 l2 作第二输入接进 `agent/confidence.py` 的 `CALIBRATORS[KEY_SEMANTIC_LLM]`（落点已写进模块 docstring） |
 | R11 | `tests/e2e/test_ab_scenarios.py::ab_page` | 该 fixture 自建 `HealingPage` 未注入 trace provider → 仍走异常探测兜底（功能等价） | 补一行 provider 注入即可彻底消除探测 |
-| R12 | `docs/architecture.md`、`docs/roadmap.md` + 学习镜像 | M10 分层变更与 R5/M15-3 事实已写入源文档，**学习版镜像需在队列推完后同批同步**（R7.4） | 队列推完后按 `.claude/skills/doc-study-sync` 同步并推送镜像 |
+| R12 | `docs/architecture.md`、`docs/roadmap.md` + 学习镜像 | M10 分层变更与 R5/M15-3 事实已写入源文档，学习版镜像需**同批**同步（R7.4） | ✅ 2026-10-21 已完成：镜像同步至源 `a4f8581`，提交 `d5bed37`（docs_study）——分层图/D19/待解决问题三处同步，印记统一 `a4f8581` |
 | R13 | `.github/workflows/ci.yml` | `notify` / `propose-pr` / `publish` 三个 job 仍无 `timeout-minutes`；`actions/*` 与 `peaceiris` 是 major tag（非精确 pin） | 下一轮 CI 加固时一并收紧 |
 
 ## 六、开工前提醒
