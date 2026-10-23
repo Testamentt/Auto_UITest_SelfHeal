@@ -1,33 +1,14 @@
 # CLAUDE.md
 
-> **定位**：面向 AI 协作者（Claude Code 等）的项目上手说明——规则索引、常用命令、分层速览、开发约定。
-> **状态**：活文档（与实现同步；规则条款以 [RULE.md](RULE.md) 为准）
-> **最后更新**：2026-11-10 · 关联：[RULE.md](RULE.md) 规则源头 · [docs/README.md](docs/README.md) 文档地图
+> **定位**：面向 AI 协作者（Claude Code 等）的项目上手说明——项目速览、常用命令、架构分层、开发约定。
+> **状态**：活文档（与实现同步）
+> **最后更新**：2026-11-11 · 关联：[README.md](README.md) 项目展示 · [docs/architecture.md](docs/architecture.md) 架构 · [docs/decisions.md](docs/decisions.md) 决策记录
 
 本文件为 Claude Code（及其他 AI 协作者）提供本仓库的工作指引。
 
-## 开发规则（强制）
-
-本项目遵循 `RULE.md` 中的 R1–R8 规则（先计划后写入、测试覆盖、临时方案管理、代码质量与文档、变更沉淀、先收敛计划、文档双轨制、敏感文件与不可逆操作纪律），冲突时以 RULE.md 为准。
-
-### 规则索引
-
-| 规则 | 章节 | 触发时机 |
-|---|---|---|
-| 先计划后写入 | R1 | 写入 / 修改任何文件前 |
-| 测试覆盖 | R2 | 新增或修改代码时 |
-| 临时方案管理 | R3 | 采用 Workaround 时 |
-| 代码质量与文档 | R4 | 编写代码与文档时 |
-| 变更沉淀 | R5 | 多轮推进的任务收尾时 |
-| 先收敛计划 | R6 | 复杂任务开工前 |
-| 文档双轨（铁律/双准则/同步SOP/工作区唯一） | R7 | 改技术文档或同步学习文档时 |
-| 敏感文件与不可逆操作纪律 | R8 | 修改 .env / 密钥 / 任何含用户数据的文件前（先读后改、增量优先、事故即报） |
-
-@RULE.md
-
 ## 沟通约定
 
-- 始终使用**中文**回答问题、撰写文档与提交信息；代码、命令、标识符、路径保持英文。详见 `memory.md`。
+- 始终使用**中文**回答问题、撰写文档与提交信息；代码、命令、标识符、路径保持英文。
 
 ## 项目概述
 
@@ -40,7 +21,8 @@ AutoAiSelfHeal 是一个**带 AI 自愈能力的 UI 自动化测试框架**。�
 
 ## 当前方向
 
-阶段路线、决策记录与下一步拆解见 **`docs/roadmap.md`**（活文档，随进展同步更新）。动手前先读它，避免与既定决策冲突。
+阶段路线、决策记录与下一步拆解见 **`docs/decisions.md`**（ADR，随实现同步更新）；架构与运行边界见 `docs/architecture.md`。
+历史评审 / 计划 / 待办归档在 `docs/archive/`（维护者用，根 README 不链接）。
 
 ## 技术选型
 
@@ -54,7 +36,7 @@ AutoAiSelfHeal 是一个**带 AI 自愈能力的 UI 自动化测试框架**。�
 | 报告 | Allure + 自研 HTML | 自愈看板、视频回放 |
 | CI/CD | GitHub Actions | 演示自动化流水线 |
 
-> **provider 已定**（见 `docs/roadmap.md` D7/D13/D18）：LLM=DeepSeek（OpenAI 兼容端点）、VLM 自 2026-10-10 起本项目改用 **CommandCode 网关的 `deepseek/deepseek-v4.1-flash`**（实测支持图片输入；代码默认的通义 `qwen3-vl-plus` / DashScope 公共端点仍保留为可移植基线，备选 qwen3.8-flash）。
+> **provider 已定**（见 `docs/decisions.md` D7/D13/D18）：LLM=DeepSeek（OpenAI 兼容端点）、VLM 自 2026-10-10 起本项目改用 **CommandCode 网关的 `deepseek/deepseek-v4.1-flash`**（实测支持图片输入；代码默认的通义 `qwen3-vl-plus` / DashScope 公共端点仍保留为可移植基线，备选 qwen3.8-flash）。
 > 凭据：本项目当前统一用 `.env` 的 `COMMANDCODE_API_KEY`（LLM/VLM 共用）；代码默认值仍指向 `OPENAI_API_KEY` / `DASHSCOPE_API_KEY`。
 > 所有模型调用**必须**经过 `src/selfheal/llm/` 的抽象接口（`llm/factory.py` 统一构建、`registry` 注册），禁止在业务代码里直接 import 某个 SDK，切换 provider 只改 `config/settings.yaml`。
 
@@ -73,7 +55,7 @@ AI 自愈 Agent src/selfheal/agent/       大脑：orchestrator 编排闭环，d
 能力建设层    src/selfheal/engine/      Playwright 封装、自愈定位器、智能等待、弹窗处理
 ```
 
-**依赖只能自上而下**（M10 起有 AST 护栏用例守护）：`reporting`/`plugin` → `agent` →（`llm`/`knowledge`/`dom`/`contracts`）；
+**依赖只能自上而下**（D19 起有 AST 护栏用例守护）：`reporting`/`plugin` → `agent` →（`llm`/`knowledge`/`dom`/`contracts`）；
 `engine`、`collect` 只许依赖 `contracts`/`dom`/`config`，import 闭包里不得出现 `agent`/`knowledge`/`reporting`。
 
 ### 自愈闭环（核心流程）
@@ -81,7 +63,7 @@ AI 自愈 Agent src/selfheal/agent/       大脑：orchestrator 编排闭环，d
 由 `agent/orchestrator.py` 编排，是本项目最核心的逻辑链路：
 
 1. **执行监控**：`engine/` 执行步骤，捕获定位失败 / 超时 / 不可交互等异常。
-2. **现场采集**：`collect/collector.py` 抓取截图、DOM 快照、网络日志、现场内联 trace（T11：外层录制中导出 `Scene.trace_path` 现场文件，与 conftest `--trace-healing` 整用例录制互补）。
+2. **现场采集**：`collect/collector.py` 抓取截图、DOM 快照、网络日志、现场内联 trace（外层录制中导出 `Scene.trace_path` 现场文件，与 conftest `--trace-healing` 整用例录制互补）。
 3. **智能诊断**：`agent/diagnose.py` 规则式根因粗分（零成本恒跑）+ `agent/diagnose_llm.py` LLM 精判（白名单 5 值；模型不可用时降级规则式）。
 4. **多策略修复**：`agent/strategies/` 依次尝试
    - `heuristic.py` 启发式匹配（多属性组合）
@@ -125,7 +107,7 @@ ruff format --check . # 格式检查（CI 门禁）
 
 ```
 AutoAiSelfHeal/
-├── CLAUDE.md / RULE.md / README.md / memory.md
+├── CLAUDE.md / README.md
 ├── pyproject.toml              # 依赖 + pytest/ruff 配置（含 unit/e2e/healing/erp marker）
 ├── config/settings.example.yaml# 运行时配置示例（复制为 settings.yaml 使用）
 ├── src/selfheal/               # 框架主体（见「架构」分层）
@@ -134,14 +116,10 @@ AutoAiSelfHeal/
 │   └── agent/ collect/ engine/ llm/ knowledge/ reporting/   # 其余分层
 ├── tests/                      # unit/（-m unit）与 e2e/（-m e2e），conftest.py 提供 fixture
 ├── scripts/                    # ab_compare 对比 · resilience_demo 韧性演示 · verify_case 人审标记 · notify 通知 · propose_pr 草稿 PR
-├── docs/                       # 先读 docs/README.md（文档地图与写作规范）
-│   ├── README.md               #   文档地图 · 写作规范 · 双轨说明（唯一入口）
-│   ├── architecture.md         #   架构与关键决策（事实源，参与双轨）
-│   ├── roadmap.md              #   阶段路线与决策记录（事实源，参与双轨）
-│   ├── TODO.md                 #   任务清单（唯一待办入口，活文档）
-│   ├── backlog/                #   低优先级待办明细（TODO.md 的展开）
-│   ├── templates/              #   会话沉淀模板
-│   ├── sessions/ plans/ reviews/  # 沉淀与历史（只读，禁止修改）
+├── docs/                       # 主线文档（根 README 之外的两篇）
+│   ├── architecture.md         #   架构、自愈闭环、风险边界（事实源）
+│   ├── decisions.md            #   架构决策记录（ADR，D1–D21 + T24）
+│   └── archive/                #   历史评审 / 计划 / 会话沉淀 / 待办 / 模板（维护者用）
 └── .github/workflows/ci.yml    # CI：unit 门禁（lint + format + unit）→ e2e → 发布 / 草稿 PR / 告警
 ```
 
@@ -149,13 +127,14 @@ AutoAiSelfHeal/
 
 - 项目已完成 Phase 1–5（最小闭环 → AI 大脑 → 沉淀进阶 → 证据指标 → 语义化与风险控制），
   模块均已实现并有 unit/e2e 双覆盖；新增代码遵循既有分层与命名，不要跨层直接耦合。
-- **分层铁律（M10 起有 AST 护栏用例）**：装配点只在 `src/selfheal/plugin/`；`engine/`、`collect/` 只许依赖
+- **分层铁律（D19 起有 AST 护栏用例）**：装配点只在 `src/selfheal/plugin/`；`engine/`、`collect/` 只许依赖
   `contracts.py` / `dom/` / `config`，**禁止** import `agent` / `knowledge` / `reporting`（改错会被 `tests/unit/test_layering.py` 拦下）。
-- 遗留与待办见 **`docs/TODO.md`**（唯一待办入口：T1–T24 状态、踩坑记录、候补池）。
-  低优先级/延期项明细见 `docs/backlog/low-priority.md`；阶段与决策见 `docs/roadmap.md`。
-- **文档规范**：新增/修改文档前先读 `docs/README.md`（文档地图 + 写作规范 + 双轨说明）；
-  `docs/sessions`、`docs/plans`、`docs/reviews` 是只读历史，不得修改。
-- **自愈是插件，不侵入框架**：经 pytest fixture 按 `settings.healing.enabled` / CLI `--selfheal` 提供；`HealingPage` 与原生 `Page` 接口兼容（代理），POM 代码开/关自愈都能跑；关闭时为原生 Page、零开销。不用 import 替换 / monkeypatch（见 roadmap.md 决策 D5）。
+- 遗留与待办见 **`docs/archive/TODO.md`**（维护者用：任务状态、踩坑记录、候补池）。
+  低优先级 / 延期项明细见 `docs/archive/backlog/low-priority.md`；决策见 `docs/decisions.md`。
+- **文档规范**：主线只有三篇——根 `README.md`（展示）、`docs/architecture.md`（架构）、`docs/decisions.md`（决策）；
+  新增说明优先并入主线，历史 / 待办 / 模板放 `docs/archive/`（根 README 不链接）；
+  `docs/archive/reviews`、`plans`、`sessions` 是只读历史，不得修改。
+- **自愈是插件，不侵入框架**：经 pytest fixture 按 `settings.healing.enabled` / CLI `--selfheal` 提供；`HealingPage` 与原生 `Page` 接口兼容（代理），POM 代码开/关自愈都能跑；关闭时为原生 Page、零开销。不用 import 替换 / monkeypatch（见 docs/decisions.md 决策 D5）。
 - **兜底优先**：`locator(sel, fallback=...)`；AI 不确定（置信度 < 阈值）时按 `healing.on_uncertain` 处理，默认 `use_fallback`，无备用则 fail（决策 D6）。
 - 新增模型能力一律走 `llm/` 抽象 + `registry` 注册，provider 相关配置放进 `config/settings.yaml`。
 - **模型调用韧性统一在 `llm/resilience.py`**（T24）：新增 provider 不各自实现重试；瞬态故障按配置指数退避、
