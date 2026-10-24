@@ -1,7 +1,7 @@
 # 修复报告 — 2026-10-08 审查 High / Medium
 
 > **范围**：`docs/reviews/2026-10-08-code-review.md` 的 **H1–H6 + M1–M16**。
-> **主动延期 2 项**：M10（分层重构，影响面横跨 8+ 文件与文档双轨）、M15 第 3 条（链式自愈 e2e，需先给演示页加 DOM 夹具）——见 [`docs/backlog/low-priority.md`](../backlog/low-priority.md)。
+> **主动延期 2 项**：M10（分层重构，影响面横跨 8+ 文件与文档同步）、M15 第 3 条（链式自愈 e2e，需先给演示页加 DOM 夹具）——见 [`docs/backlog/low-priority.md`](../backlog/low-priority.md)。
 > **Low 20 项**：全部未开工，登记在 [`docs/backlog/low-priority.md`](../backlog/low-priority.md)。
 > **验证**：`pytest -m unit` **404 passed**（修前 312，+92）· `ruff check .` **0 errors** · `ruff format --check .` **128 文件全绿** · 全量 `pytest`（unit+e2e）见第五章。
 > 未提交、未推送（工作区改动待人工 review）。

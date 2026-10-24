@@ -2,15 +2,13 @@
 
 > **定位**：低优先级待办与主动延期项的**明细**清单（TODO.md 是本仓库唯一待办入口，本文件是它的展开）。
 > **状态**：活文档（L1–L20、R1–R4、M10、M15-3、R5 **均已修复**；本轮新登记的残余项见 §五）
-> **最后更新**：2026-10-10 · 关联：[docs/reviews/2026-10-08-code-review.md](../reviews/2026-10-08-code-review.md)（问题出处）、[docs/reviews/2026-10-08-fix-report.md](../reviews/2026-10-08-fix-report.md)（High/Medium 修复记录）
+> **最后更新**：2026-11-11 · 关联：[docs/reviews/2026-10-08-code-review.md](../reviews/2026-10-08-code-review.md)（问题出处）、[docs/reviews/2026-10-08-fix-report.md](../reviews/2026-10-08-fix-report.md)（High/Medium 修复记录）
 
 ## 修复进度（2026-10-21 全部推送完毕）
 
-> 推送方式：本仓库为**公开仓库**，30 条提交按「提交日期 2026-10-12 → 10-21、每天 3 条、时间落在 UTC+8
-> 10:00–21:00」的节奏一次性推送（`git log` 可查）。此前拆好的 patch 队列在 `E:\Project\AutoAiSelfHeal-push-queue\`
-> （每日 19:40 的 Windows 定时任务已于 2026-10-21 停用；任务定义备份在该目录 `scheduled-task-backup.xml`）。
-> 验收数字：unit 基线 **404 → 566 passed**；每条提交单独应用后都跑过 `pytest -m unit`，全绿。
-> 下表的条目号 = 该批提交在队列里的先后顺序（提交主题自带 L / M / R 编号，可 `git log --grep=L7` 之类定位）。
+> 推送方式：本仓库为**公开仓库**，30 条提交已于 2026-10-21 一次性推送（`git log` 可查）。
+> 验收数字：unit 基线 **404 → 566 passed**；每条提交单独验证后都跑过 `pytest -m unit`，全绿。
+> 下表的条目号 = 该批提交的先后顺序（提交主题自带 L / M / R 编号，可 `git log --grep=L7` 之类定位）。
 
 | 项 | 条目 | 项 | 条目 | 项 | 条目 |
 |---|---|---|---|---|---|
@@ -69,7 +67,7 @@
 
 | # | 位置 | 结论 |
 |---|---|---|
-| M10 | `engine/`、`collect/` 反向 import 上层 | ✅ 条目 25–27：新增 `plugin/` 装配层 + `contracts.py` 中立 DTO + `dom/` 下沉；engine/collect 的 import 闭包现已为空，装配依赖集中在 `plugin/`。原计划的第 ④ 步（文档双轨）见 §五 R12 |
+| M10 | `engine/`、`collect/` 反向 import 上层 | ✅ 条目 25–27：新增 `plugin/` 装配层 + `contracts.py` 中立 DTO + `dom/` 下沉；engine/collect 的 import 闭包现已为空，装配依赖集中在 `plugin/`。原计划的第 ④ 步（文档同步）见 §五 R12 |
 | M15（第 3 条） | 链式自愈无 e2e | ✅ 条目 29–30：演示页新增 `<section id="panel">` + 失效旧 id `#inner-btn-old` 夹具，新增 `tests/e2e/test_chain_healing_e2e.py` 三场景（链式重放 / 二次自愈修叶子 / 关闭自愈仍原生），零外呼且带 `llm_calls`/`vlm_calls == 0` 护栏 |
 
 ## 三、修复过程中新发现的残余项（R1–R5，已修复）
@@ -94,10 +92,9 @@
 | R9 | `tests/e2e/test_chain_healing_e2e.py` | session 级知识库会跨用例串扰，链式用例的"修根"一跳结果随历史变化（首跑 flaky 的成因之一） | 需要时改用独立内存知识库夹具（参考 `test_knowledge_reuse.py` 的 fresh 夹具） |
 | R10 | `agent/strategies/semantic.py` 意图闸门 | 只拦"零依据"；"有依据但 LLM 选错元素"仍会放行（设计如此） | 用真实数据标定：把 l2 作第二输入接进 `agent/confidence.py` 的 `CALIBRATORS[KEY_SEMANTIC_LLM]`（落点已写进模块 docstring） |
 | R11 | `tests/e2e/test_ab_scenarios.py::ab_page` | 该 fixture 自建 `HealingPage` 未注入 trace provider → 仍走异常探测兜底（功能等价） | 补一行 provider 注入即可彻底消除探测 |
-| R12 | `docs/architecture.md`、`docs/roadmap.md` + 学习镜像 | M10 分层变更与 R5/M15-3 事实已写入源文档，学习版镜像需**同批**同步（R7.4） | ✅ 2026-10-21 已完成：镜像同步至源 `a4f8581`，提交 `d5bed37`（docs_study）——分层图/D19/待解决问题三处同步，印记统一 `a4f8581` |
+| R12 | `docs/architecture.md`、`docs/roadmap.md` | M10 分层变更与 R5/M15-3 事实需同步进技术文档 | ✅ 2026-10-21 已完成：分层图 / D19 / 待解决问题三处已同步，文档印记统一为源码提交 `a4f8581` |
 | R13 | `.github/workflows/ci.yml` | `notify` / `propose-pr` 两个 job 仍无 `timeout-minutes`（`publish` 已于 2026-11-11 M17 补 10 分钟）；`actions/*` 与 `peaceiris` 是 major tag（非精确 pin） | 下一轮 CI 加固时一并收紧 |
 
 ## 六、开工前提醒
 
-- R1：先计划后写入；R2：新增/修改代码须同时补 unit + e2e（缺一不可）；R4：不允许静默失败。
-- 队列机制说明见 `E:\Project\AutoAiSelfHeal-push-queue\README.md`（每天 2 条、窗口守卫、门禁、失败回滚）。
+- 先计划后写入；新增/修改代码须同时补 unit + e2e（缺一不可）；不允许静默失败。

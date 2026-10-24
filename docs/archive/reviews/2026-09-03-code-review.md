@@ -2,9 +2,9 @@
 
 > **修复状态：✅ 已全部修复（2026-09-03 同日）**——C1（example 移位）/ H1（删残片）/ M1（默认值
 > 外移 + 本地 settings.yaml 承载专属端点）/ M2（erp_page 登记聚合）/ m2–m7+nit 批；m1（llm/io.py
-> 分层倒置）亦于同日子代理复核轮修复（`build_compact_dom` 上移 `agent/dom/compact.py`）。
+> 分层倒置）亦于同日复核轮修复（`build_compact_dom` 上移 `agent/dom/compact.py`）。
 > 验收：ruff 0 errors、unit 312 passed（含复核加固 +19 回归）、example 与 load_settings 双路径实证。
-> 独立复核：5 个子代理（opencode-custom/glm-5.3-flash）确认 10 项结论全部成立，fresh-eyes 新增
+> 独立复核：5 组复核确认 10 项结论全部成立，独立复看新增
 > 12 条发现（0 high / 4 medium / 8 low）已全部修复——清单见 `docs/TODO.md` 复核加固节。
 
 > 审查范围：自上轮审查（`2026-08-15-code-review.md`，提交 2d65417）以来的全部演进——
@@ -22,7 +22,7 @@
 本轮演进质量整体**高于上轮**：T5 置信度归一化（可插拔注册表 + 默认恒等零回归 + 值域钳制）、
 T21 xdist 分片聚合协议（worker 分片 → controller 聚合 → 清理，零回归设计）、T8 双来源交叉校验
 （best-effort 降级 + R4 记 warning + 惰性导入防环）、T23 ERP 基建（角色语义专家确认入档、凭证参数化
-符合 R8 精神、测试数据 finally 清理）都是可直接写进面试的设计。R3 临时方案标记（`agent/llm_io.py` 壳）
+符合 R8 精神、测试数据 finally 清理）都是可直接用于对外讲解的设计。R3 临时方案标记（`agent/llm_io.py` 壳）
 也首次按规范落地。
 
 但存在 **1 个实证 Critical**（配置模板加载即崩）与 **1 个实证 High**（CI 门禁红），另有
@@ -102,7 +102,7 @@ L68-88 是完整第二定义。ruff 报 **F841 + F811 共 2 errors** → CI unit
 
 ---
 
-## 七、亮点（值得在面试中讲）
+## 七、亮点（值得对外讲解）
 
 1. **T5 置信度归一化**（`agent/confidence.py`）：可插拔 `CALIBRATORS` 注册表、默认恒等保证零回归、
    `shrink_self_reported` 显式开关 + raw² 收缩、出口值域钳制（L74-75）、标尺契约表文档化——
@@ -128,7 +128,7 @@ L68-88 是完整第二定义。ruff 报 **F841 + F811 共 2 errors** → CI unit
 | R2 测试覆盖 | ✅ 新功能均带单测；unit 293 全绿；e2e 新增 8 文件（ERP 用例 marker 隔离，CI 排除） |
 | R3 临时方案 | ✅ 首个规范 `TODO(workaround)`（agent/llm_io.py 壳，含原因+回收方式）；⚠️ 应按计划回收（m4） |
 | R4 代码质量 | ✅ docstring 覆盖好、异常路径基本都有日志；⚠️ allure_bridge/propose_pr 个别注释漂移 |
-| R7 文档双轨 | ✅ 本报告落 `docs/reviews/`（沉淀/历史记录，R7.4 明示不参与双轨） |
+| 文档同步 | ✅ 本报告落 `docs/reviews/`（沉淀/历史记录，不参与文档同步） |
 | R8 敏感文件 | ✅ 本轮未触碰 `.env`/密钥；ERP 凭证经 env 参数化；⚠️ 内网 IP 与专属端点入 git（M1，环境特定信息建议外移） |
 
 ---
