@@ -1,7 +1,7 @@
 # Code Review — 全量审查（2026-10-08）
 
 > **修复状态**：✅ **H1–H6 与 M1–M16 已修复**（2026-10-08 同日，见 `2026-10-08-fix-report.md`）；
-> ⏸️ 主动延期 2 项：**M10**（engine/collect 分层重构，需独立计划 + 文档双轨同步）、**M15 第 3 条**（链式自愈 e2e，需先加 DOM 夹具）；
+> ⏸️ 主动延期 2 项：**M10**（engine/collect 分层重构，需独立计划 + 文档同步）、**M15 第 3 条**（链式自愈 e2e，需先加 DOM 夹具）；
 > 📋 **Low 20 项未开工**，登记在 [`docs/backlog/low-priority.md`](../backlog/low-priority.md)。
 > 验收：`pytest -m unit` **404 passed**（修前 312，+92）· `ruff check .` **0 errors** · `ruff format --check .` 全绿 · 全量 `pytest` 见第七章更新。
 > **本报告保持"审查当时"的原始结论**，仅对两处事实做更正：① H1 中关于 `text=` 匹配语义的表述（实测为精确匹配，风险来自未限定作用域与关键词子串）；② 7.1 的根因（不是 key 失效，而是 key 与端点平台不匹配）。
@@ -9,8 +9,8 @@
 > 审查范围：`src/selfheal/` 全部 46 个模块（agent / engine / collect / knowledge / llm / reporting）、
 > `tests/`（conftest + unit + e2e）、`config/`、`pyproject.toml`、`.github/workflows/ci.yml`、`scripts/`。
 > 方法：核心链路（orchestrator / diagnose / strategies / persistence / dom / healing_locator / popup_guard）
-> **逐行精读**；外围模块（engine 其余、collect、knowledge、reporting、llm、tests/CI）由 3 个独立子代理
-> 分片深审 + 上级逐条复核取证；静态门禁与全量测试**实跑**取证。
+> **逐行精读**；外围模块（engine 其余、collect、knowledge、reporting、llm、tests/CI）分片深审，
+> 上级逐条复核取证；静态门禁与全量测试**实跑**取证。
 > 基线（本次实测）：`ruff check .` **0 errors**；`pytest -m unit` **312 passed / 28 deselected（8.49s）**；
 > `ruff format --check .` **2 文件待重排**（CI 未门禁，见 M14）；全量 `pytest`
 > **1 failed / 334 passed / 3 xfailed / 2 errors（438.39s）**——失败与 error 均为**环境类**，
@@ -26,7 +26,7 @@
 工程水准**明显高于同类个人项目**：分层清晰（展示层 / Agent / LLM 抽象 / 采集 / 能力建设）、
 docstring 密度高且写"为什么"、异常分支普遍有语义与注释、资源归属用 `owns_*` 显式区分自建与注入、
 SQL 全参数化、知识库 schema 迁移可重复执行、防幻觉护栏（策略只能从"页面真实候选"中选）真实生效、
-T5 置信度归一化 / T16 flaky 区分 / T21 xdist 分片聚合 / T13 高风险页豁免等设计可直接作为面试素材。
+T5 置信度归一化 / T16 flaky 区分 / T21 xdist 分片聚合 / T13 高风险页豁免等设计可直接作为对外展示素材。
 
 本轮**未发现阻断级缺陷**（无数据损坏、无静默错误结果、无不可恢复失败）。发现的问题集中在三类：
 
@@ -111,7 +111,7 @@ max_tokens: int = 1000
 ```
 - 影响：`config.py:181-182` 的注释已记录 VLM 侧"20s/500 导致 ERP 场景超时/截断而自愈失败"的教训，
   LLM 侧仍是 15s/2000 且**不可配**；用户在 `llm:` 段写 `timeout_s` 会被 `extra='forbid'` 直接拒绝
-  （子代理实测 `ValidationError`）。长回复模型超时 → `UnavailableError` → 诊断退规则式、语义策略静默失效，
+  （复核实测 `ValidationError`）。长回复模型超时 → `UnavailableError` → 诊断退规则式、语义策略静默失效，
   表现为"自愈偶尔不灵"。
 - 修复建议：`LLMConfig` 增 `timeout_s: float = Field(gt=0)`、`max_tokens: int = Field(gt=0)`，
   factory 透传，`config/settings.example.yaml` 同步（并给 `VisionConfig` 的两个字段补 `Field(gt=0)`）。
@@ -243,7 +243,7 @@ verified_rate=(verified / success) if success else 0.0 # ← 分子未与 succes
 
 ---
 
-## 五、亮点（值得在面试中讲）
+## 五、亮点（值得对外讲解）
 
 1. **防幻觉护栏是真的**（`agent/strategies/semantic.py:175-199`、`visual.py:39-63`）：
    模型只能从"页面真实候选稳定定位器"集合中挑，编造的 selector 与越界置信度一律拒绝——
@@ -276,7 +276,7 @@ verified_rate=(verified / success) if success else 0.0 # ← 分子未与 succes
 | R4 代码质量与文档 | ⚠️ docstring 密度高、异常语义清楚；但多处长 `except Exception` 无日志（M8）、`store.py:101` 注释与实现相反（M4）、`TODO.md` 计数漂移（L15） |
 | R5 变更沉淀 | ✅ 本报告落 `docs/reviews/2026-10-08-code-review.md`，含五要素（见第八章） |
 | R6 先收敛计划 | ✅ 审查为只读任务，边界清晰，无需计划模式 |
-| R7 文档双轨 | ✅ `docs/reviews/` 属沉淀/历史记录，R7.4 明示不参与双轨；本轮未改技术文档，无需镜像同步 |
+| 文档同步 | ✅ `docs/reviews/` 属沉淀/历史记录，不参与文档同步；本轮未改技术文档，无需同步 |
 | R8 敏感文件 | ✅ 未修改任何密钥/用户数据文件；探针脚本只在进程内使用密钥并全程掩码，未写入仓库；未进行任何 git 推送 |
 
 ---

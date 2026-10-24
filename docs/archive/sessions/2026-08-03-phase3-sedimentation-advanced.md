@@ -1,6 +1,6 @@
 # 会话沉淀 · Phase 3 沉淀与进阶（知识库持久化 + 弹窗 + 智能等待 + 视觉）
 
-> 适用前提见 `RULE.md` R5：多轮推进任务，随进展同步更新。
+> 适用前提：多轮推进任务，随进展同步更新。
 > 日期：2026-08-03 · 关联分支/PR：feat/phase3-sedimentation
 
 ## 当前目标
@@ -9,7 +9,7 @@ Phase 3：补齐"沉淀与进阶"能力——知识库 SQLite 持久化（含 DO
 
 ## 关键约束
 
-- 遵循 R1–R6；模型调用经 `llm/` 抽象层；配置集中 `config.py`。
+- 遵循工程约定；模型调用经 `llm/` 抽象层；配置集中 `config.py`。
 - **密钥参数化**：视觉 key 走 `DASHSCOPE_API_KEY` 环境变量，绝不硬编码 / 提交 git；`.gitignore` 增 `.cache/`、`*.env`。
 - 无 key / 无 openai 时全链路优雅降级，行为与 Phase 2 等价。
 

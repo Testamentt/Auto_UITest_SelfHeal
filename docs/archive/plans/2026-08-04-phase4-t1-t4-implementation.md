@@ -84,7 +84,7 @@ evidence_dir.mkdir(parents=True, exist_ok=True)
 ```
 
 ### 验收
-semantic/visual 至少一个真实模型用例通过；`reports/evidence/` 留有真实命中截图与结果（可作面试素材）。
+semantic/visual 至少一个真实模型用例通过；`reports/evidence/` 留有真实命中截图与结果（可作对外展示素材）。
 
 ### 注意
 - 需要真实 API key（🔴 阻断项）。key 仅走环境变量，绝不入库。

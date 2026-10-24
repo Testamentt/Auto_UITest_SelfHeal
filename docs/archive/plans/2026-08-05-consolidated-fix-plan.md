@@ -10,7 +10,7 @@
 
 ## 关键约束
 
-- 遵循 `RULE.md` R1–R6；每阶段结束跑 `pytest -m unit` + `ruff check .` 门禁。
+- 遵循项目工程约定；每阶段结束跑 `pytest -m unit` + `ruff check .` 门禁。
 - 模型调用一律经 `llm/` 抽象层；配置集中在 `config.py`。
 - 不引入大拆大建：正确性修复先行，架构收敛吸收已修复行为，避免返工。
 

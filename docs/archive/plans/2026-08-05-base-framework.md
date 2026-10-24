@@ -16,7 +16,7 @@
 | BrowserManager（chromium/chrome，读 config） | POM 基类（DemoPage/PopupPage 手写、无规范） |
 | conftest session/function fixture + `--selfheal` | 多浏览器 / trace / 失败截图配置 |
 | 演示 POM + e2e | 数据驱动 / 断言层 |
-| 命令式 README | "写你的第一个 POM + 用例"指引 |
+| 命令式 README | "写首个 POM + 用例"指引 |
 
 ## 组件（按优先级）
 
@@ -62,7 +62,7 @@ class BasePage:
 - 示例数据文件；一个 `@pytest.mark.parametrize` 用例。
 
 ### B5 · 用例开发文档
-- README 增「写你的第一个 POM + 用例」（fixture 注入、继承 BasePage、healing 增强参数）。
+- README 增「写首个 POM + 用例」（fixture 注入、继承 BasePage、healing 增强参数）。
 - 或 `docs/writing-tests.md`。
 
 ## 实施顺序
@@ -92,6 +92,6 @@ class BasePage:
 
 - ✅ **B1 BasePage**（2026-08-05）：`engine/base_page.py`（url/open/locator，healing 增强参数按需透传）；DemoPage/PopupPage 重构继承 BasePage；`test_base_page.py` 5 项单测；**重构后 e2e 7 项零回归**。
 - ✅ **B3 fixtures 标准化**（2026-08-05）：conftest 增 `page`（函数级原生页，覆盖 pytest-playwright 自带，用自研 BrowserManager）+ `pom` 工厂；`healing_page`/`disabled_page` 保持兼容。
-- ✅ **B5 用例文档**（2026-08-05）：README「写你的第一个 POM + 用例」段落即交付物。
+- ✅ **B5 用例文档**（2026-08-05）：README「写首个 POM + 用例」段落即交付物。
 - 🟠 **B2 浏览器增强**（Phase 4 部分落地）：Playwright Trace 视频回放 ✅（`browser.trace`/`trace_dir` + `--trace-healing` 整用例录制，T11 2026-08-28 补充采集器现场内联 trace）；`browser_type`（firefox/webkit）与 `record_video`/`screenshot_on_failure` 未做（可后置，多内核需下载）。
 - ⬜ **B4 数据驱动**：未落地（tests 尚无 parametrize 数据驱动用例；`load_test_data`/`parametrize_from_json` 未实现）。

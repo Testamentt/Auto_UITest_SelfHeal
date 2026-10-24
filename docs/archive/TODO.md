@@ -1,7 +1,7 @@
 # TODO — 任务清单（唯一待办入口）
 
 > **定位**：全项目**唯一待办入口**——待办、已完成存档、踩坑记录、候补与落选理由都在这里。
-> **状态**：活文档（随进展勾选/更新，R5）
+> **状态**：活文档（随进展勾选/更新）
 > **最后更新**：2026-11-11 · 关联：[roadmap.md](roadmap.md) 阶段与决策 · [backlog/low-priority.md](backlog/low-priority.md) 低优先明细 · [reviews/2026-10-08-fix-report.md](reviews/2026-10-08-fix-report.md) 最近一轮修复
 > 图例：⬜ 待办 · 🟡 进行中 · ✅ 完成 · 🔴 阻断项 · 🟠 部分完成
 > 历史来源：[reviews/2026-08-04-phase3-retrospective.md](reviews/2026-08-04-phase3-retrospective.md)、[reviews/2026-08-15-code-review.md](reviews/2026-08-15-code-review.md)、[reviews/2026-09-03-code-review.md](reviews/2026-09-03-code-review.md)、[reviews/2026-10-08-code-review.md](reviews/2026-10-08-code-review.md)
@@ -28,13 +28,10 @@
   - 逐项改法与提交见 [backlog/low-priority.md](backlog/low-priority.md)「修复进度」表；
     M10 顺带把 `engine/`、`collect/` 的反向依赖清零（新增 `plugin/` 装配层 + `contracts.py` + `dom/` 下沉），
     R5 用"意图依据"闸门拦下无关描述（模型调用前）。
-  - **推送节奏**：30 条提交已于 **2026-10-21** 全部推送（提交日期按 2026-10-12 → 10-21、每天 3 条、
-    时间落在 UTC+8 10:00–21:00 的节奏分布；`git log` 可查）。此前每日 19:40 的 Windows 推送任务已停用，
-    patch 队列与任务定义备份留在 `E:\Project\AutoAiSelfHeal-push-queue\`。
-  - 🟡 学习版镜像（R7.4）：M10 分层与 D19 的双轨同步本轮进行中——见 backlog §五 R12。
+  - **推送节奏**：30 条提交已于 **2026-10-21** 全部推送（`git log` 可查）。
 - [x] **验收** ✅ 2026-10-08（Low 轮后更新）
   - `pytest -m unit` **404 passed**（修前 312）→ Low 轮后 **566 passed**；全量 `pytest` **427 passed / 2 skipped / 3 xfailed / 0 failed**；
-    `ruff check .` 0 errors；`ruff format --check .` 全绿（此前 CI 无此门禁）；队列每个前缀都单独跑过 `-m unit`，全绿
+    `ruff check .` 0 errors；`ruff format --check .` 全绿（此前 CI 无此门禁）；每条提交都单独跑过 `-m unit`，全绿
 
 
 ## 🔥 高优先级（Phase 4 核心：证据 + 指标 + 加固）
@@ -77,15 +74,15 @@
     m4 agent/llm_io.py 兼容壳按 R3 回收删除（grep 确认无引用）；m5 example 尾注更新（T9 已决策
     不建模）；m6 trace 录制参数抽 `TRACE_RECORDING_KWARGS` 常量（collector/conftest 同源）；
     m7 `interactive_candidates` 改 `is not None`（原生成功即优先，含空结果）；Scene 注解精确化
-  - 遗留：m1 已于同日子代理复核轮修复（`build_compact_dom` 上移 `agent/dom/compact.py`，
+  - 遗留：m1 已于同日复核轮修复（`build_compact_dom` 上移 `agent/dom/compact.py`，
     见下节 V5-⑪）；nit 批（ab_compare 口径 / attach_file 类型 / erp_client pageSize /
     CI PR body 快照注释）未动
   - 验收：ruff 0 errors + unit 293 passed + 配置双路径加载实证
 
-## 🟠 2026-09-03 子代理复核加固项 ✅ 全部修复（2026-09-03 同日）
+## 🟠 2026-09-03 复核加固项 ✅ 全部修复（2026-09-03 同日）
 
-> 背景：两轮 review 完成后，以 5 个子代理（opencode-custom/glm-5.3-flash）对全部修复做独立复核
-> （V1–V5），10 项结论全部 confirmed；fresh-eyes 扫描新增 12 条发现（0 high / 4 medium / 8 low）。
+> 背景：两轮 review 完成后，以 5 组独立复核（V1–V5）对全部修复做交叉验证，10 项结论均确认；
+> 独立复看新增 12 条发现（0 high / 4 medium / 8 low）。
 > 本轮全部修复：**ruff 0 errors、unit 312 passed（+19 回归测试）**。
 
 - [x] **V4-① 嵌套配置模型未设 extra='forbid'**（Medium）✅
@@ -121,11 +118,11 @@
   - `build_compact_dom` 上移 `agent/dom/compact.py`（llm/ 只留纯 I/O 编解码）；
     `test_layering.py` 静态守卫固化"llm/、knowledge/ 禁止 import selfheal.agent"
 - [x] **V5-⑫ `semantic._bump` 静默吞错**（Low）✅
-  - suppress → except + warning 日志（R4"不静默吞错"对齐），失败仍不阻塞采纳
+  - suppress → except + warning 日志（"不静默吞错"约定对齐），失败仍不阻塞采纳
 
 ## 🟡 中优先级
 
-### ⚠️ 踩坑记录（事故沉淀，R8.5）
+### ⚠️ 踩坑记录（事故沉淀）
 
 - **2026-09-03 · PowerShell 5.1 编码事故（CI workflow 乱码）**：
   - 事故：用 PS5.1 `Get-Content -Raw` / `Set-Content -Encoding utf8` 往返处理无 BOM 的 UTF-8

@@ -3,7 +3,7 @@
 > **定位**：本次变更的实施计划与验收口径（任务编号 T24）。事实源仍为 `docs/architecture.md`；
 > 本文件记录**为什么做、怎么做、怎么验**，完成后作为历史留档。
 > **状态**：已完成（2026-11-10；验收见 §5，实现与数字以代码/`reports/resilience-demo.md` 为准）
-> **最后更新**：2026-11-10 · 关联：[architecture.md](../architecture.md) 模型层护栏 · [TODO.md](../TODO.md) T24
+> **最后更新**：2026-11-10 · 关联：[architecture.md](../../architecture.md) 模型层护栏 · [TODO.md](../TODO.md) T24
 
 ## 1. 背景
 

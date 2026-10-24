@@ -1,8 +1,8 @@
 # 项目路线图（Roadmap）
 
-> **定位**：阶段路线与**决策记录**（D 编号）——回答"做到哪了、为什么这么定、下一步做什么"。
-> **状态**：技术文档（事实源，参与文档双轨；任务明细见 [TODO.md](TODO.md)）
-> **最后更新**：2026-10-08 · 关联：[architecture.md](architecture.md) 架构 · [TODO.md](TODO.md) 任务清单 · [backlog/low-priority.md](backlog/low-priority.md) 低优先项 · [reviews/2026-10-08-fix-report.md](reviews/2026-10-08-fix-report.md) 最近一轮加固
+> **定位**：阶段路线与决策记录的历史快照——决策现行版见 [../decisions.md](../decisions.md)，架构见 [../architecture.md](../architecture.md)。
+> **状态**：历史快照（只读；事实源已移至 `docs/architecture.md` / `docs/decisions.md`；任务明细见 [TODO.md](TODO.md)）
+> **最后更新**：2026-11-11（归档）· 关联：[architecture.md](../architecture.md) 架构 · [TODO.md](TODO.md) 任务清单 · [backlog/low-priority.md](backlog/low-priority.md) 低优先项 · [reviews/2026-10-08-fix-report.md](reviews/2026-10-08-fix-report.md) 最近一轮加固
 
 ## 当前目标
 
@@ -19,8 +19,8 @@
 
 ## 关键约束
 
-- 遵循 [`RULE.md`](../RULE.md) R1–R8：先计划后写入、测试双覆盖（`-m unit` + `-m e2e`）、临时方案三步管理、
-  代码质量与文档、变更沉淀、先收敛计划、文档双轨、敏感文件纪律。
+- 工程约束：先计划后落地、测试双覆盖（`-m unit` + `-m e2e`）、临时方案显式标记并登记回收计划、
+  文档与代码同批更新、敏感文件先读后改。
 - 模型调用一律经 `llm/` 抽象层（`factory` 构建 + `registry` 注册）；配置集中在 `src/selfheal/config.py`（pydantic 严格校验）。
 - **默认配置（无 API key / 未装 openai）下行为与 Phase 1 等价**：诊断退规则式、语义与视觉策略跳过，启发式与知识库复用照常。
 - 演示与 e2e 基于自建静态演示页；真实被测系统为管伊佳 ERP（jshERP，本地环境，CI 排除 erp）。
@@ -56,10 +56,10 @@
 | D2 | LLM/VLM | Phase 2 接入，OpenAI 兼容优先 | 避免选型阻塞最小闭环 |
 | D3 | 演示对象 | 自建本地测试页（POM 化） | 可控、可复现、可无缝切换其他 POM 用例 |
 | D4 | 知识库后端 | SQLite | 零依赖、可持久化、易演示 |
-| D5 | 自愈集成方式 | Fixture 骨架 + 接口代理 + 装饰器补充；不用 import 魔法 | 可开关、POM 无缝、可维护（R4） |
+| D5 | 自愈集成方式 | Fixture 骨架 + 接口代理 + 装饰器补充；不用 import 魔法 | 可开关、POM 无缝、可维护 |
 | D6 | 不确定时兜底 | use_fallback，无备用则 fail；pause 仅交互模式 | CI 友好 + 人工兜底 |
 | D7 | LLM 客户端形态 | 单一 OpenAI 兼容客户端（`base_url` + `model` 覆盖多 provider），SDK 惰性导入 | 切换 provider 只改配置；CI 无 openai 也能 import |
-| D8 | DOM 公共能力 | 抽 `agent/dom/` 公共工具（解析 / 稳定定位器 / 指纹 / 候选），策略与 LLM 提示共用 | 消除循环导入、重复与私有耦合（R4） |
+| D8 | DOM 公共能力 | 抽 `agent/dom/` 公共工具（解析 / 稳定定位器 / 指纹 / 候选），策略与 LLM 提示共用 | 消除循环导入、重复与私有耦合 |
 | D9 | LLM 降级策略 | 不依赖 `response_format`；`extract_json` 容错 + 输出白名单 + 防幻觉护栏（selector 须真实存在） | 模型不稳定时闭环不中断 |
 | D10 | 知识库后端形态 | `KnowledgeBackend` 接口 + 内存 / SQLite 双实现 + factory 选择；DOM 指纹参与检索择优 | 可切换、可持久化、同结构页面复用更可靠 |
 | D11 | 弹窗处理 | 知识优先（弹窗特征库）+ 关闭按钮启发式识别，成功后沉淀特征；动作超时先清弹窗再走自愈 | 直击"被遮挡"类失败 |
@@ -68,17 +68,16 @@
 | D14 | 知识库语义化 | 本地确定性 n-gram 哈希 TF 向量（零 API 费用）+ numpy 余弦；L1 `repair_key` 硬短路 → L2 启发式 → L3 语义检索 → L4 VLM；按 `page_fingerprint` 分桶；采纳规则（sim>0.92 且 verified / 7 天内 sim>0.80 自动，其余写人审清单） | 热路径不调 API embedding；ID 变但文本 / 结构不变仍可命中；防污染 + 冷启动免人审 |
 | D15 | Allure 报告增强 | 轻量桥 `reporting/allure_bridge.py`（`_HAS_ALLURE` 单点探测，未装全 no-op）；环境页 + marker→标签（erp>healing>e2e>unit 取唯一 feature）+ 证据附件；CI `publish` job 发布 GitHub Pages（gh-pages，含历史趋势，仅 main） | 展示层不该侵入 agent；标签单 feature 防爆炸；闭环过程以结构化附件呈现够用 |
 | D16 | 模型层护栏与异常语义 | 超时 / 输出上限 / 重试次数 / 图片体积上限**全部可配**（`LLMConfig`、`VisionConfig`）；异常分级为 `FatalUnavailableError`（鉴权 / 参数，重试无用）与 `TransientUnavailableError`（限流 / 超时 / 5xx，可重试），均继承 `UnavailableError` 保持既有降级契约；`HealingFailedError` 同时继承 Playwright 与内置 `TimeoutError` | 2026-10-08 实证：key 与端点不同平台时只报异常类名，无法定位；401 与 429 同待遇导致重试策略与成本不可控 |
-| D17 | 文档治理 | `docs/README.md` 为文档唯一入口（分区 + 写作规范 + 双轨说明）；`sessions/plans/reviews` 只读；低优先待办入 `docs/backlog/`、模板入 `docs/templates/`；同一事实只允许一个归属地，其余改指针 | 2026-10-08 文档体检：格式不一、前后错位、跨文件重复、散落多处 |
+| D17 | 文档治理 | `docs/README.md` 为文档唯一入口（分区 + 写作规范）；`sessions/plans/reviews` 只读；低优先待办入 `docs/backlog/`、模板入 `docs/templates/`；同一事实只允许一个归属地，其余改指针 | 2026-10-08 文档体检：格式不一、前后错位、跨文件重复、散落多处 |
 | D18 | 视觉模型切换 | VLM 由通义 `qwen3-vl-plus`（DashScope）改为 **CommandCode 网关的 `deepseek/deepseek-v4.1-flash`**（与 LLM 同网关同凭据）；凭据变量由 `DASHSCOPE_API_KEY` 改名为 `COMMANDCODE_API_KEY`；代码默认值仍保留 qwen3-vl-plus + DashScope 公共端点作为可移植基线（仅本机 `config/settings.yaml` 覆盖） | ① 用项目自身客户端实测该模型**支持图片输入**（合成图 6 位随机数字识别正确）；② 真实视觉冒烟 `1 passed`、`confidence=0.873`（原 qwen3-vl-plus 0.921）、耗时 8.6s vs 60s 级；③ 与 LLM 同平台可少一套端点与计费口径。代价：推理模型每次视觉调用含 reasoning token，成本单价需按新平台重估（登记于 backlog） |
 | D19 | 分层倒置修复（M10） | 新增装配层 `selfheal/plugin/`（`HealingPage` 自 engine 上移）+ 中立 DTO 层 `selfheal/contracts.py`（`FailureContext`/`HealOutcome`）+ `agent/dom/` 下沉为 `selfheal/dom/`；`engine/popup_guard.py` 用窄 Protocol `PopupKnowledge` 去掉对 knowledge 的依赖；分层不变量改由 AST 扫描用例守护（含 llm/knowledge 不得 import agent、engine/collect 不得 import agent/knowledge/reporting、dom 不得 import 任何业务层） | 反向依赖让"能力建设层"实际拉起整个大脑与知识库：单测无法隔离、替换/裁剪困难。实测改后 `import selfheal.engine.healing_locator` / `collect.collector` / `engine.popup_guard` / `dom` 的 `sys.modules` 闭包里 agent/knowledge/reporting **全为空**；护栏做过"故意违规必失败"验证 |
 
 ## 待解决问题
 
-- **低优先与延期项**：L1–L20、M10、M15-3、R1–R5 **已于 2026-10-10 全部修复**，30 条提交按
-  2026-10-12 至 10-21（每天 3 条）的日期节奏于 10-21 全部推送
-  （[backlog/low-priority.md](backlog/low-priority.md) 有逐项改法与队列条目号）。
+- **低优先与延期项**：L1–L20、M10、M15-3、R1–R5 **已于 2026-10-10 全部修复**，30 条提交已于
+  2026-10-21 全部推送（[backlog/low-priority.md](backlog/low-priority.md) 有逐项改法与条目号）。
   本轮新登记的残余项见该文件 §五（R6 视觉成本重估、R7 链节点级描述、R8 链式低置信兜底、R9 链式用例知识库串扰、
-  R10 意图闸门按数据标定、R11 ab 夹具 provider、R12 学习镜像同步、R13 CI 加固）。
+  R10 意图闸门按数据标定、R11 ab 夹具 provider、R13 CI 加固）。
 - **语义 LLM 段意图闸门（R5，已修保守版）**：现在能拦下"与页面零依据"的描述（模型调用前）；
   "有依据但选对错元素"仍放行，需真实数据标定（落点：`agent/confidence.py` 的 `CALIBRATORS[KEY_SEMANTIC_LLM]`）。
 - **真实模型标定**：T5 置信度收缩（`shrink_self_reported`）仍是经验值 raw²；已采数据点（LLM 自报 1.0 / VLM 0.921），
@@ -93,7 +92,7 @@
 
 > 任务级明细与验收统一登记在 **[TODO.md](TODO.md)**（唯一待办入口），本节只列近期三件事与长线项。
 
-1. **文档双轨收口**：本轮技术文档（README / architecture / roadmap）改动后，按 [`.claude/skills/doc-study-sync/SKILL.md`](../.claude/skills/doc-study-sync/SKILL.md) 同批同步学习版镜像并更新版本印记。
+1. **文档对齐**：本轮文档治理后保持 README / architecture / roadmap / TODO 与实现一致，同一事实只保留一个归属地。
 2. **backlog 分批清理**：优先 R5（语义段护栏，有实测证据）→ L1–L4（生命周期与等待有界性）→ CI 工程项（timeout / concurrency / live marker）。
 3. **ERP 场景补全**：供应商菜单场景（需菜单点击导航 POM）与 ERP 自愈记录进看板的回归验证。
 
