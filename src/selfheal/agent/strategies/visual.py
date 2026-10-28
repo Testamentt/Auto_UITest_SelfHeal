@@ -1,4 +1,4 @@
-"""视觉定位策略（Phase 3）。
+"""视觉定位策略（VLM 截图分析）。
 
 把截图 + 描述 + 候选稳定定位器交给多模态模型（VLM），让模型从候选中选出与描述
 最匹配的元素并返回 JSON（selector + confidence）。
@@ -38,7 +38,7 @@ class VisualStrategy(RepairStrategy):
             return None
         candidates = [
             s
-            # T8：候选来源优先 Playwright 原生解析（有 page 采集），静态 DOM 快照解析兜底
+            # 候选来源优先 Playwright 原生解析（有 page 采集），静态 DOM 快照解析兜底
             for el in interactive_candidates(scene)
             if (s := build_stable_selector(el))
         ]
@@ -61,14 +61,14 @@ class VisualStrategy(RepairStrategy):
         # 护栏：selector 必须是真实候选之一；置信度越界 → 拒绝
         if selector not in candidates or not (0.0 <= confidence <= 1.0):
             return None
-        # C4 跨策略一致性校验：VLM 的挑选与「原选择器 + 描述」的 L2 意图做交叉验证。
+        # 跨策略一致性校验：VLM 的挑选与「原选择器 + 描述」的 L2 意图做交叉验证。
         # VLM 置信度是自报值（可能虚高）——若 L2 分数也低，说明大概率"找错区域"，
         # 按线性融合降权；l2=1.0 时不变、l2=0 时压到 0.4×conf（通常低于接受阈值 → 转人审/失败）。
         l2_score = score_selector(scene.dom_snapshot, selector, original_selector, description)
         final_conf = round(confidence * (0.4 + 0.6 * l2_score), 3)
         return RepairCandidate(
             selector=selector,
-            # T5：视觉段统一标尺出口（C4 已融合 L2，恒等不二次收缩，契约见 agent/confidence.py）
+            # 视觉段统一标尺出口（已融合 L2，恒等不二次收缩，契约见 agent/confidence.py）
             confidence=calibrate(KEY_VISUAL, final_conf),
             strategy=self.name,
         )

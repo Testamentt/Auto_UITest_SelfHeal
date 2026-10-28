@@ -1,4 +1,4 @@
-"""启发式匹配策略（Phase 1 主力，零模型依赖）。
+"""启发式匹配策略（零模型依赖，规则打分）。
 
 不调用 LLM：解析失败现场的 DOM，抽取可交互候选元素的多维属性
 （data-testid / id / aria-label / 文本 / name / placeholder），
@@ -9,7 +9,7 @@
 - 否则按意图词元在最佳字段的重叠比例计分（封顶 ~0.8）。
 
 DOM 解析与稳定定位器生成复用 agent/dom.py 公共工具。
-TODO：属性权重可配置；候选过多时结合可见性/位置二次筛选。
+后续可扩展：属性权重可配置；候选过多时结合可见性/位置二次筛选。
 """
 
 from __future__ import annotations
@@ -23,13 +23,13 @@ from selfheal.dom import (
     Element,
     build_stable_selector,
     interactive_candidates,
-    parse_interactive_elements,  # score_selector（C4 静态交叉校验）专用
+    parse_interactive_elements,  # score_selector（视觉段静态交叉校验）专用
 )
 
 # 词元：连续字母数字 或 连续中文（CJK）。
 # 注意：与 llm/embedding.py 的 _TOKEN_RE（单中文字符）粒度不同是有意的——
 # 意图词元重叠用连续片段更语义化；embedding 的 n-gram 需单字形成中文二元组。
-# 调整任一处分词时需评估另一处（审查 m7：两处重复定义，勿漂移）。
+# 调整任一处分词时需评估另一处（两处重复定义，勿漂移）。
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[一-鿿]+")
 # 参与打分的字段（仅用于可读性，实际计分见 _score）
 _FIELDS = ("data-testid", "id", "aria-label", "text", "name", "placeholder")
@@ -51,7 +51,7 @@ def score_selector(
     original_selector: str,
     description: str | None,
 ) -> float:
-    """跨策略一致性校验（C4）：给一个已生成的稳定定位器算一次 L2 启发式分数（0~1）。
+    """跨策略一致性校验：给一个已生成的稳定定位器算一次 L2 启发式分数（0~1）。
 
     供视觉策略在"VLM 选中候选"后交叉验证：若 L2 分数也很低，说明该候选与
     「原选择器 + 描述」的意图严重偏离，应降权/拒绝（防静默误修、置信度自报虚高）。
@@ -96,7 +96,7 @@ class HeuristicStrategy(RepairStrategy):
             return None
         intent_tokens = _tokenize(original_selector) | _tokenize(description)
         best_el, best_score = None, 0.0
-        # T8：候选来源优先 Playwright 原生解析（有 page 采集），静态 DOM 快照解析兜底
+        # 候选来源优先 Playwright 原生解析（有 page 采集），静态 DOM 快照解析兜底
         for el in interactive_candidates(scene):
             score = _score(el, intent_tokens, description)
             if score > best_score:
@@ -108,7 +108,7 @@ class HeuristicStrategy(RepairStrategy):
             return None
         return RepairCandidate(
             selector=selector,
-            # T5：统一置信度标尺出口（本策略恒等，契约见 agent/confidence.py）
+            # 统一置信度标尺出口（本策略恒等，契约见 agent/confidence.py）
             confidence=calibrate(KEY_HEURISTIC, best_score),
             strategy=self.name,
         )
