@@ -1,19 +1,19 @@
 """智能诊断（v1：规则式，无 LLM）。
 
-Phase 1 不接入大模型，用轻量规则对失败根因做粗分类，供报告与策略参考。
+规则式定位器诊断不接入大模型，用轻量规则对失败根因做粗分类，供报告与策略参考。
 注意：**规则式实际只产出两个值**——
 - not_found：选择器主键在 DOM 中完全不存在（最常见，UI 改版导致）。
 - unknown：主键出现在 DOM 中，无法仅凭静态 DOM 判定（可能被遮挡/隐藏/仍在）。
 
 not_visible / covered / timeout 需运行时信息（is_visible / 交互状态），静态规则判不出，
-由 LLMDiagnoser（Phase 2）在规则式之上精判（白名单 5 值）。
+由 LLMDiagnoser 在规则式之上精判（白名单 5 值）。
 
-Phase 2 的 LLM 诊断（diagnose_llm.LLMDiagnoser）继承本类，
+LLM 诊断（diagnose_llm.LLMDiagnoser）继承本类；
 本规则式保留为降级基底（LLM 不可用时回退到它）。
 
-M10（分层倒置修复）：`FailureContext` 的定义已上移到中立 DTO 层 `selfheal.contracts`
-（engine 层也要构造它，DTO 留在 agent 会让下层反向依赖上层）；本模块保留 re-export，
-`from selfheal.agent.diagnose import FailureContext` 继续可用（零破坏）。
+`FailureContext` 的定义已上移到中立 DTO 层 `selfheal.contracts`
+（engine 层也要构造它，DTO 留在 agent 会让下层反向依赖上层，见 docs/decisions.md D19）；
+本模块保留 re-export，`from selfheal.agent.diagnose import FailureContext` 继续可用（零破坏）。
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from selfheal.contracts import FailureContext
 __all__ = ["Diagnoser", "FailureContext"]
 
 # 从选择器中提取可辨识主键：#id、[attr="v"]、纯文本里的单词等。
-# 含中文片段（m1）：中文 id（如 #登录按钮）此前提取不到任何 key → 恒判 unknown。
+# 含中文片段：否则中文 id（如 #登录按钮）提取不到任何 key → 恒判 unknown。
 _SELECTOR_KEY_RE = re.compile(r"[A-Za-z][\w-]*|[一-鿿]+")
 
 

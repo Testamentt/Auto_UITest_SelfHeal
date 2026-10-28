@@ -1,7 +1,7 @@
-"""LLM 智能诊断（Phase 2，继承规则式）。
+"""LLM 智能诊断（继承规则式）。
 
 借助 LLM 结合精简 DOM + 失败上下文判定根因，白名单约束输出：
-- 调用异常（网络 / SDK）→ 重试，耗尽后**降级回规则式**（super().diagnose，Phase 1 行为）。
+- 调用异常（网络 / SDK）→ 重试，耗尽后**降级回规则式**（super().diagnose 的规则判定）。
 - 模型有回复但越界 / 解析失败 → 返回 "unknown"。
 绝不向上抛异常，保证闭环在模型不可用时仍可运行。
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from selfheal.agent.diagnose import Diagnoser, FailureContext
 from selfheal.collect.collector import Scene
-from selfheal.dom import build_compact_dom  # m1：自 llm.io 归位（llm 层不得依赖 agent）
+from selfheal.dom import build_compact_dom  # 自 llm.io 归位（llm 层不得依赖 agent）
 from selfheal.llm.base import ChatMessage, LLMClient
 from selfheal.llm.io import extract_json, safe_str
 
@@ -58,4 +58,4 @@ class LLMDiagnoser(Diagnoser):
             if cause in _ALLOWED_CAUSES:
                 return cause
             return "unknown"  # 模型回复了但越界/解析失败 → 未知
-        return super().diagnose(scene, selector)  # 调用异常耗尽 → 规则式兜底（Phase 1 行为）
+        return super().diagnose(scene, selector)  # 调用异常耗尽 → 规则式兜底
