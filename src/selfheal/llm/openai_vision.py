@@ -4,12 +4,12 @@ qwen3-vl-flash 等多模态模型走 OpenAI 兼容端点；analyze_image 把 bas
 chat completions（content 数组含 image_url）发给模型，返回文本分析。
 openai SDK 惰性导入，缺失时抛 UnavailableError，由上层优雅降级（决策 D7）。
 
-2026-10-08 审查修复：
-- H5：新增 `max_image_bytes` 护栏——`full_page` 长截图可达数 MB，base64 再膨胀 1.33 倍，
+实现要点：
+- `max_image_bytes` 护栏——`full_page` 长截图可达数 MB，base64 再膨胀 1.33 倍，
   超服务端请求体上限即 400 → 视觉策略表现为"永不生效"。Pillow 可用时自动降质/缩放转 JPEG；
   Pillow 缺失时记 warning 后按原图发送（不引入硬依赖，best-effort）。
-- M1：异常分级 + `max_retries` 显式设置 + 错误信息带 provider/model/端点主机。
-- L8：`analyze_image()` 的 `**kwargs` 改为**显式拒绝**（与 LLM 侧同一约定，见
+- 异常分级 + `max_retries` 显式设置 + 错误信息带 provider/model/端点主机。
+- `analyze_image()` 的 `**kwargs` 改为**显式拒绝**（与 LLM 侧同一约定，见
   openai_client.reject_unsupported_kwargs）：调用方转发 kwargs 时不再被静默丢弃。
   同时把确定性解码参数写回 wire（`temperature=0.0`）——此前 VLM 请求**完全不带**
   temperature，端点默认值随服务端而异（隐性不确定），与文本侧"temperature 由配置固定"不对称。
@@ -29,7 +29,7 @@ from selfheal.llm.registry import register_vision
 
 logger = logging.getLogger(__name__)
 
-# JPEG 质量阶梯与缩放阶梯（H5：先降质量、再降分辨率，取第一个达标的组合）
+# JPEG 质量阶梯与缩放阶梯（先降质量、再降分辨率，取第一个达标的组合）
 _QUALITY_LADDER = (85, 70, 55, 40)
 _SCALE_LADDER = (1.0, 0.75, 0.5, 0.35)
 
@@ -113,7 +113,7 @@ class OpenAICompatibleVLM(VisionClient):
             kwargs: dict[str, Any] = {
                 "api_key": self._api_key,
                 "timeout": self._timeout_s,
-                "max_retries": self._max_retries,  # M1：显式重试，不再隐式继承 SDK 默认
+                "max_retries": self._max_retries,  # 显式重试，不继承 SDK 默认值
             }
             if self._base_url:
                 kwargs["base_url"] = self._base_url
@@ -121,7 +121,7 @@ class OpenAICompatibleVLM(VisionClient):
         return self._client
 
     def _prepare_image(self, image: bytes) -> tuple[bytes, str]:
-        """按护栏压缩截图（H5）；无法压缩且超限时记一次 warning 后原样返回。"""
+        """按护栏压缩截图；无法压缩且超限时记一次 warning 后原样返回。"""
         if len(image) <= self._max_image_bytes:
             return image, "image/png"
         shrunk = shrink_image(image, self._max_image_bytes)
@@ -141,9 +141,9 @@ class OpenAICompatibleVLM(VisionClient):
     def analyze_image(self, image: bytes, prompt: str, **kwargs: Any) -> str:
         """发送截图 + 提示词，返回模型文本分析。
 
-        #11 降级契约收敛：SDK 异常统一转抛 UnavailableError（from exc），调用方捕获即可降级。
-        M1：转抛分级子类，信息含 provider/model/端点主机。
-        L8：未支持的调用期参数显式抛 ``TypeError``（与文本侧同一约定）。
+        降级契约收敛：SDK 异常统一转抛 UnavailableError（from exc），调用方捕获即可降级。
+        转抛分级子类，信息含 provider/model/端点主机。
+        未支持的调用期参数显式抛 ``TypeError``（与文本侧同一约定）。
         """
         reject_unsupported_kwargs("OpenAICompatibleVLM.analyze_image", kwargs)
         client = self._ensure_client()
@@ -164,7 +164,7 @@ class OpenAICompatibleVLM(VisionClient):
                         ],
                     }
                 ],
-                temperature=0.0,  # L8：与文本侧一致固定确定性输出（此前 VLM 不带该字段，端点默认值不定）
+                temperature=0.0,  # 与文本侧一致固定确定性输出（此前 VLM 不带该字段，端点默认值不定）
                 max_tokens=self._max_tokens,
             )
         except UnavailableError:
@@ -181,7 +181,7 @@ class OpenAICompatibleVLM(VisionClient):
         return content
 
     def close(self) -> None:
-        """幂等释放底层 client（V5 复核：与 OpenAICompatibleLLM 对齐——orchestrator.close()
+        """幂等释放底层 client（与 OpenAICompatibleLLM 对齐——orchestrator.close()
         的 _safe_close 对 VLM 不再是静默 no-op，httpx/openai 连接池随自愈收口释放）。"""
         if self._client is not None:
             # 释放失败不掩盖业务异常（suppress 等价于 try-except-pass）

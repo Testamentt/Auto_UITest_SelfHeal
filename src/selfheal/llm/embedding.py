@@ -1,13 +1,13 @@
-"""本地确定性 Embedding（Phase 5 A：知识库语义化）。
+"""本地确定性 Embedding（知识库语义化的向量来源）。
 
 v1 = 字符 n-gram 哈希 TF 向量：本地、零网络、零 API 费用、<10ms、确定性。
 **绝不在热路径调用 API text-embedding**（延迟 500ms–1.5s + Token 成本失控）。
-升级路径：v2 = fastembed 本地模型（如 bge-small-zh），见 docs 说明。
+升级路径：v2 = fastembed 本地模型（如 bge-small-zh）。
 
 确定性关键：特征哈希用 hashlib.md5，**不用内置 hash()**（PYTHONHASHSEED 随机化会跨进程失效，
 导致同一文本不同进程向量/repair_key 不同）。
 
-**不可比较契约（L6）**——向量能否参与余弦比较是有前提的，本模块把前提显式化：
+**不可比较契约**——向量能否参与余弦比较是有前提的，本模块把前提显式化：
 
 - 归一化向量（‖v‖=1）才有定义良好的余弦；文本无有效词元（空串 / 纯空白 / 纯标点符号 /
   纯 emoji）时取不到任何 n-gram → 向量恒为零向量，余弦分母为 0 → 相似度是 ``nan``，
@@ -41,7 +41,7 @@ from selfheal.config import Settings
 # 词元：连续 ASCII 字母数字词 或 **单个**中文字符（CJK）。
 # 注意：与 agent/strategies/heuristic.py 的 _TOKEN_RE（连续中文片段）粒度不同是有意的——
 # 本模块做 n-gram 序列向量，单字才能形成"提交/订单"等中文二元组；意图词元重叠用片段更语义化。
-# 调整任一处分词时需评估另一处（审查 m7：两处重复定义，勿漂移）。
+# 调整任一处分词时需评估另一处（两处重复定义，改动需同步）。
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[一-鿿]")
 
 # 向量存储契约：float32 小端、一维（BLOB 直存，numpy 零拷贝还原）。
@@ -75,7 +75,7 @@ class EmbeddingClient:
     def embed(self, text: str) -> bytes:
         """将文本编码为确定性 float32 向量（bytes）。
 
-        **不可比较约定（L6）**：文本无有效词元（空串 / 纯空白 / 纯标点 / 纯 emoji）时
+        **不可比较约定**：文本无有效词元（空串 / 纯空白 / 纯标点 / 纯 emoji）时
         返回 `UNCOMPARABLE`（空 bytes），**不返回全零向量**——全零向量参与余弦会得到
         ``nan``，是静默错误。调用方在送入余弦检索前必须先 `is_comparable()` 判定并短路。
         """
@@ -84,7 +84,7 @@ class EmbeddingClient:
     def embed_vector(self, text: str) -> Vector:
         """严格版：把文本编码为可比较的归一化向量；不可比较时抛 ``ValueError``。
 
-        供"宁可不检索也不静默降级"的调用方使用（R4：失败要么恢复、要么明确抛出）。
+        供"宁可不检索也不静默降级"的调用方使用（失败要么恢复、要么明确抛出）。
         返回的 ndarray 为只读视图语义之外的新数组，形状 ``(dim,)``、dtype ``float32``。
         """
         data = self.embed(text)
@@ -105,7 +105,7 @@ class EmbeddingClient:
     def to_vector(self, data: bytes) -> Vector:
         """把存储的 bytes 还原为 numpy 向量（BLOB 快速载入，避免 JSON 反序列化）。
 
-        校验（L6）：空值 / 长度不是 `dim` 个 float32 / 未按 float32 对齐，全部抛
+        校验：空值 / 长度不是 `dim` 个 float32 / 未按 float32 对齐，全部抛
         ``ValueError`` 并说明期望字节数——此前直接 `np.frombuffer` 会让维度不符的脏数据
         一路流到 `matrix @ qv`，在那里炸成难以定位的 ``ValueError``（或静默给出错向量）。
         """
@@ -126,7 +126,7 @@ class NgramEmbedding(EmbeddingClient):
     def __init__(self, dim: int = 512, ngram_max: int = 2):
         self._dim = dim
         self._ngram_max = ngram_max
-        # 版本号含 dim（审查 C3）：库中向量按 (page_fingerprint, embedding_version) 分桶，
+        # 版本号含 dim：库中向量按 (page_fingerprint, embedding_version) 分桶，
         # 若版本不含 dim，用户调整 dim 后新旧向量同版本不同维度，find_semantic 的
         # numpy 矩阵乘法会直接 ValueError 崩溃。
         self.embedding_version = f"v1-ngram-{dim}"
@@ -137,7 +137,7 @@ class NgramEmbedding(EmbeddingClient):
         return self._dim
 
     def embed(self, text: str) -> bytes:
-        """n-gram 哈希 TF 向量（L2 归一化）；无有效词元时返回 `UNCOMPARABLE` 空标记。
+        """n-gram 哈希 TF 向量（L2 范数归一化）；无有效词元时返回 `UNCOMPARABLE` 空标记。
 
         不可比较标记而非零向量：`""` / `"   "` / `"！！"` 这类文本零 n-gram，
         返回零向量会让下游余弦得到 ``nan``（见模块 docstring 的"不可比较契约"）。
@@ -165,7 +165,7 @@ def get_embedding_for_settings(settings: Settings) -> EmbeddingClient | None:
 
     method 已在加载期收敛为 `Literal["ngram", "fastembed"]` 且 fastembed 未实现即报错
     （见 config.EmbeddingConfig），故此处只剩 ngram 一条**可达**分支；末尾的
-    `return None` 是防御性兜底（R4：绝不静默返回错实现）。
+    `return None` 是防御性兜底（绝不静默返回错实现）。
     """
     cfg = settings.embedding
     if not cfg.enabled:

@@ -1,4 +1,4 @@
-"""确定性指纹子模块（A5 拆包）——DOM / 页面 / repair_key 三个哈希。
+"""确定性指纹子模块——DOM / 页面 / repair_key 三个哈希。
 
 原 agent/dom.py 按职责拆分而来（见 dom/__init__.py 导出）。
 全部用 hashlib（弃用内置 hash()，避免 PYTHONHASHSEED 跨进程随机化破坏确定性）。
@@ -48,10 +48,10 @@ def compute_page_fingerprint(url: str, dom: str | None) -> str:
 def compute_repair_key(page_fingerprint: str, tag_path: str) -> str:
     """L1 精确命中键 = md5(page_fingerprint|tag_path)，带 v2 版本前缀。
 
-    v2 变更（2026-08-05 决策）：
+    v2 变更：
     - tag_path 含 nth-of-type 索引（如 html>body>div:nth-of-type(2)>button:nth-of-type(1)），
       区分同路径兄弟，防 L1 键碰撞；
-    - 不再包含元素文本——文案变化（"提交订单"→"提交"）不破键；结构变动 → L1 miss 交 L2 补位。
+    - 不再包含元素文本——文案变化（"提交订单"→"提交"）不破键；结构变动 → L1 miss 交 L2（启发式）补位。
     版本前缀（v2:）防止旧库（v1 含 text 的键）残留误命中。
     """
     raw = f"{page_fingerprint}|{tag_path}"

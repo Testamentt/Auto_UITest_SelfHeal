@@ -1,7 +1,7 @@
-"""DOM 解析子模块（A5 拆包）——HTMLParser 解析 + 可交互候选元素抽取 + T8 原生交叉校验。
+"""DOM 解析子模块——HTMLParser 解析 + 可交互候选元素抽取 + Playwright 原生交叉校验。
 
 原 agent/dom.py 按职责拆分而来（见 dom/__init__.py 导出）。
-T8：除静态 HTMLParser 解析外，提供 Playwright 原生查询路径（parse_interactive_elements_native）
+除静态 HTMLParser 解析外，提供 Playwright 原生查询路径（parse_interactive_elements_native）
 与两来源交叉校验（cross_validate_interactive）——静态解析是单测主力（无浏览器）、
 原生解析在真实页面更鲁棒；策略链经 interactive_candidates 优先用原生结果、静态解析兜底。
 """
@@ -15,7 +15,7 @@ from html.parser import HTMLParser
 _INTERACTIVE_TAGS = {"button", "input", "a", "select", "textarea"}
 
 # HTML void 元素：无结束标签（浏览器 content() 序列化即为无斜杠形式）。
-# 若把它们压栈，栈底会残留该元素并持续吸收后续全部文本（文本污染，审查 C1）。
+# 若把它们压栈，栈底会残留该元素并持续吸收后续全部文本（文本污染）。
 _VOID_TAGS = frozenset(
     {
         "area",
@@ -65,7 +65,7 @@ class _DOMParser(HTMLParser):
         el = Element(tag, attrs)
         self.elements.append(el)
         # void 元素（input/br/img 等）无结束标签，不入栈：
-        # 否则残留栈底、吸收后续全部文本（审查 C1 实证缺陷）
+        # 否则残留栈底、吸收后续全部文本（文本污染）
         if tag not in _VOID_TAGS:
             self._stack.append(el)
 
@@ -98,7 +98,7 @@ def parse_interactive_elements(dom: str | None) -> list[Element]:
     ]
 
 
-# --- T8：Playwright 原生解析与交叉校验 ---
+# --- Playwright 原生解析与交叉校验 ---
 
 # 原生查询选择器：与静态 _INTERACTIVE_TAGS + role=button + data-testid 口径一致
 _NATIVE_SELECTOR = "button, input, a, select, textarea, [role='button'], [data-testid]"
@@ -116,7 +116,7 @@ _NATIVE_ATTRS_JS = """els => els.map(el => {
 
 
 def parse_interactive_elements_native(page=None) -> list[Element]:
-    """用 Playwright 原生查询抽取可交互候选（T8），替代/交叉校验 HTMLParser 自解析。
+    """用 Playwright 原生查询抽取可交互候选，替代/交叉校验 HTMLParser 自解析。
 
     页面不可用（page=None）返回 []；查询/属性读取异常**向上抛**，由采集器 best-effort
     捕获——原生解析是增强，失败必须降级回静态解析，不改变既有行为。
@@ -136,7 +136,7 @@ def parse_interactive_elements_native(page=None) -> list[Element]:
 
 @dataclass(frozen=True)
 class CrossCheck:
-    """两来源（静态 HTMLParser vs Playwright 原生）交互候选对齐结果（T8）。
+    """两来源（静态 HTMLParser vs Playwright 原生）交互候选对齐结果。
 
     对齐键 = 稳定定位器（build_stable_selector 非 None 者才参与——它们是修复候选）。
     仅参与对齐的元素才有意义：无稳定定位器的裸元素两来源都不产生候选，不参与计数。
@@ -160,7 +160,7 @@ class CrossCheck:
 
 
 def cross_validate_interactive(static: list[Element], native: list[Element]) -> CrossCheck:
-    """按稳定定位器对齐两来源的交互候选，判定是否一致（T8 交叉校验）。
+    """按稳定定位器对齐两来源的交互候选，判定是否一致。
 
     差异出现时由调用方（采集器）记 warning 并可在报告里溯源明细；
     一致的静态/原生口径说明自解析 HTMLParser 未偏离真实 DOM 结构。
@@ -184,9 +184,9 @@ def cross_validate_interactive(static: list[Element], native: list[Element]) -> 
 
 
 def interactive_candidates(scene) -> list[Element]:
-    """策略链候选入口（T8）：有原生解析结果（page 采集时）优先，否则回退静态 DOM 快照解析。
+    """策略链候选入口：有原生解析结果（page 采集时）优先，否则回退静态 DOM 快照解析。
 
-    评审 m7（2026-09-03）：原生解析**成功即优先**（含空结果——原生对真实 DOM 更可信，
+    原生解析**成功即优先**（含空结果——原生对真实 DOM 更可信，
     空列表说明页面确无可交互候选，不回退静态）；仅原生不可用（字段为 None，如 page
     不可用的纯逻辑场景）才回退静态解析。
     刻意不 import Scene 类型（duck typing），避免 collect ↔ dom 包循环导入。

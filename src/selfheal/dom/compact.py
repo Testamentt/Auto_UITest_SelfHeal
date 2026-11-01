@@ -1,10 +1,9 @@
-"""DOM 精简：把完整 DOM 快照压缩为"逐行的可交互元素索引"，控制给 LLM 的 token 量
-（m1 自 llm/io.py 归位，V5 复核）。
+"""DOM 精简：把完整 DOM 快照压缩为"逐行的可交互元素索引"，控制给 LLM 的 token 量。
 
 归属理由：本模块依赖 agent/dom 的解析（parse_interactive_elements）与稳定定位器
 生成（build_stable_selector），属于 agent 侧的"模型输入准备"——放在 llm/ 会让
-provider 无关的 LLM 抽象层反向依赖 agent 层（llm→agent 分层违规，违背 CLAUDE.md
-四层架构中 llm 位于 agent 之下的约定）。llm/io.py 只保留纯 I/O 编解码工具
+provider 无关的 LLM 抽象层反向依赖 agent 层（llm→agent 分层违规，违背分层约定：
+四层架构中 llm 位于 agent 之下，见 tests/unit/test_layering.py）。llm/io.py 只保留纯 I/O 编解码工具
 （extract_json / safe_str / safe_float）。
 """
 

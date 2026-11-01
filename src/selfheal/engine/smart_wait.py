@@ -4,7 +4,7 @@
 bounding_box 连续 stable_ms 毫秒不变才视为稳定，避免加载抖动/重渲染期间误操作。
 Playwright 仅作类型依赖（TYPE_CHECKING），纯函数逻辑可无浏览器单测。
 
-2026-10-08 审查修复（M6）：
+**参数与超时边界**：
 - `timeout_ms<=0` 显式报错：Playwright 把 `timeout=0` 解释为"**不超时**"（等待失去上界），
   而非法参数此前会静默变成无界等待。
 - **稳定窗口与可见性预算分离**：可见性等待最多用 `timeout_ms - stable_ms`，给稳定判定留下

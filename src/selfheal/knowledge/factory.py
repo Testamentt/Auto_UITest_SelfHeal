@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 def build_knowledge_store(settings: Settings) -> KnowledgeStore | SqliteKnowledgeStore:
     """按配置构建知识库后端（sqlite 持久化 / memory 进程内）。
 
-    V5 复核：sqlite 打开/迁移失败（如库文件损坏）不再炸掉整个会话（此前
-    HealingPage/conftest fixture 阶段直接报错且无降级）。
-    M4：降级按 error 级记录——跨重启持久化是该后端的核心能力，丢失属功能降级而非
-    warning 级噪声（此前只记 warning，容易被忽略成"正常"），消息明文写清
+    sqlite 打开/迁移失败（如库文件损坏）不得炸掉整个会话，降级为 memory 后端继续跑：
+    HealingPage/conftest fixture 阶段直接报错会连测试一起失败。
+    降级按 error 级记录——跨重启持久化是该后端的核心能力，丢失属功能降级而非
+    warning 级噪声（只记 warning 容易被忽略成"正常"），消息明文写清
     "已降级 memory、持久化不可用"，不静默。
     """
     cfg = settings.knowledge

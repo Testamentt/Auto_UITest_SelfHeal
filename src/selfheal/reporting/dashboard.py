@@ -1,10 +1,10 @@
-"""自愈看板（T3）—— 指标摘要 + 纯 HTML 审计表（零依赖，供面试展示）。
+"""自愈看板 —— 指标摘要 + 纯 HTML 审计表（零依赖，供展示）。
 
 消费 reporter.records：顶部渲染量化指标（自愈总数/成功率/策略分布/根因分布），
 下方渲染自愈过程审计表（原定位器 → 新定位器 / 策略 / 置信度 / 根因 / 结果）。
 字段经 html.escape 转义，避免注入与乱码。
 
-成本卡片（T17）的数值一律经 _safe_number / _safe_count 归一（L5）：外部 JSON 里的 null、
+成本卡片的数值一律经 _safe_number / _safe_count 归一：外部 JSON 里的 null、
 缺键、空串、非数值都回 0，单个字段异常不再让**整张看板**渲染失败。
 """
 
@@ -20,7 +20,7 @@ from selfheal.reporting.metrics import MetricsSnapshot, compute_metrics
 
 
 def _safe_number(value: Any, default: float = 0.0) -> float:
-    """成本字段安全取数（L5）：None / 缺键 / 非数值 / nan / inf 一律回 default。
+    """成本字段安全取数：None / 缺键 / 非数值 / nan / inf 一律回 default。
 
     成本契约来自 `reporting.fix_proposals.estimate_cost`（llm_calls / vlm_calls /
     llm_cost / vlm_cost / total_cost），但看板也会消费外部 JSON（报告合并、CI 分片汇总），
@@ -35,7 +35,7 @@ def _safe_number(value: Any, default: float = 0.0) -> float:
 
 
 def _safe_count(value: Any) -> int:
-    """调用次数安全取整（L5）：走 _safe_number，非数值/None → 0。"""
+    """调用次数安全取整：走 _safe_number，非数值/None → 0。"""
     return int(_safe_number(value))
 
 
@@ -70,10 +70,10 @@ def _render_metrics(metrics: MetricsSnapshot) -> str:
 
 
 def _render_cost(cost: dict) -> str:
-    """T17：多模态成本卡片（LLM/VLM 调用次数 + 估算费用）。
+    """多模态成本卡片（LLM/VLM 调用次数 + 估算费用）。
 
     所有取值点（llm_calls / vlm_calls / llm_cost / vlm_cost / total_cost）都经
-    _safe_number / _safe_count 归一（L5）：外部 JSON 的 null、缺键、空串、非数值回 0，
+    _safe_number / _safe_count 归一：外部 JSON 的 null、缺键、空串、非数值回 0，
     不再出现"一个 null 崩掉整张看板"。单项费用一并展示，便于与 estimate_cost 对账。
     """
     return f"""<div class="metrics">
@@ -88,13 +88,13 @@ def _render_cost(cost: dict) -> str:
 def render_dashboard(records: list[HealingRecord], cost: dict | None = None) -> str:
     """把自愈记录渲染为一张完整 HTML 页面（内嵌样式，零依赖）。
 
-    cost（T17）为可选成本统计（HealingReporter.cost_summary() 产出），提供时渲染成本卡片；
-    其字段容错见 _render_cost（L5：null / 缺键 / 非数值一律回 0，不影响整页渲染）。
+    cost 为可选成本统计（HealingReporter.cost_summary() 产出），提供时渲染成本卡片；
+    其字段容错见 _render_cost（null / 缺键 / 非数值一律回 0，不影响整页渲染）。
     """
     metrics = compute_metrics(records)
     rows: list[str] = []
     for rec in records:
-        # H6 口径对齐：未成功（豁免 / dry_run / on_uncertain=fail）既非真自愈也非 flaky，
+        # 口径对齐：未成功（豁免 / dry_run / on_uncertain=fail）既非真自愈也非 flaky，
         # 只有成功的记录才按 verified 区分"真自愈 vs flaky 侥幸通过"。
         if not rec.success:
             kind = "➖ 未成功"

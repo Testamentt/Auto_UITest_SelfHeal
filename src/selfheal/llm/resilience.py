@@ -1,4 +1,4 @@
-"""LLM/VLM 韧性层 —— 指数退避重试 + 三态熔断（T24，2026-11-10）。
+"""LLM/VLM 韧性层 —— 指数退避重试 + 三态熔断（T24）。
 
 背景：`llm/_exceptions.py` 已按可恢复性把模型故障分为 Transient（429 / 超时 / 连接失败 / 5xx）
 与 Fatal（401 / 403 / 400 / 404），但全仓**没有任何消费者**——分级只停留在异常类型上，
@@ -101,7 +101,7 @@ def call_with_retry(
     """执行 `fn`；仅在 `TransientUnavailableError` 时按策略重试。
 
     Fatal / 未归类的 `UnavailableError` / 编程错误（`TypeError` 等）**不重试**：
-    重试它们只会放大故障，并掩盖真正的配置问题（R4：失败要么恢复、要么明确抛出）。
+    重试它们只会放大故障，并掩盖真正的配置问题（失败要么恢复、要么明确抛出）。
 
     Args:
         fn: 无参可调用对象（每次调用代表一次真实的模型请求）。
@@ -222,7 +222,7 @@ class CircuitBreaker:
                 self._open_locked()
 
     def probe_failed(self) -> None:
-        """释放半开探针并回到 OPEN（T24 边界修复）。
+        """释放半开探针并回到 OPEN。
 
         半开探针若以**非瞬态**异常收场（Fatal 配置错误 / 编程错误），`record_failure()` 不会
         被调用；若不显式释放 `_probe_in_flight`，熔断器会永远卡在 HALF_OPEN 并持续短路

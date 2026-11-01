@@ -1,10 +1,10 @@
-"""修复建议输出（Phase 5 A 语义建议 + D2 T15 修复写回人审清单 + T17 成本估算）。
+"""修复建议输出（语义建议 + 修复写回人审清单 + 成本估算）。
 
 - append_review_proposal：L3 语义命中但未达自动采纳阈值 → 追加人审清单（reports/review-queue.md）。
 - write_fix_proposal：修复成功后输出「原→新」PR 化建议（Markdown 行 + JSON 文件，**不自动改库**，供人确认后合入）。
-- estimate_cost：T17 按 LLM/VLM 调用次数估算费用（默认单价可覆盖）。
+- estimate_cost：按 LLM/VLM 调用次数估算费用（默认单价可覆盖）。
 
-全部 best-effort：写失败仅记 warning，绝不阻塞自愈主流程（R4 不静默吞错）。
+全部 best-effort：写失败仅记 warning，绝不阻塞自愈主流程（不静默吞错）。
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ REVIEW_QUEUE_PATH = REPORT_DIR / "review-queue.md"
 FIX_PROPOSALS_DIR = REPORT_DIR / "fix-proposals"
 FIX_PROPOSALS_MD = REPORT_DIR / "fix-proposals.md"
 
-# M16：Markdown 表头 + 分隔行（文件不存在/为空时先写，见 write_fix_proposal）
+# Markdown 表头 + 分隔行（文件不存在/为空时先写，见 write_fix_proposal）
 FIX_PROPOSALS_HEADER = (
     "| 时间 | 原定位器 | 新定位器 | 策略 | 置信度 | 校验 |\n|---|---|---|---|---|---|\n"
 )
@@ -32,7 +32,7 @@ def _now() -> str:
 
 
 def _needs_header(path: Path) -> bool:
-    """M16：Markdown 目标文件不存在或为空 → 需要先写表头 + 分隔行。"""
+    """Markdown 目标文件不存在或为空 → 需要先写表头 + 分隔行。"""
     return not path.exists() or path.stat().st_size == 0
 
 
@@ -68,16 +68,16 @@ def write_fix_proposal(
     root_cause: str | None,
     verified: bool,
 ) -> None:
-    """T15：修复成功后输出 PR 化建议（Markdown 行 + JSON 独立文件）。
+    """修复成功后输出 PR 化建议（Markdown 行 + JSON 独立文件）。
 
     只生成建议、**不自动改库/合入**（record["applied"]=False），供人确认后再落地。
 
-    Markdown 侧（M16）：文件不存在或为空时先写表头 + 分隔行，再追加数据行——
+    Markdown 侧：文件不存在或为空时先写表头 + 分隔行，再追加数据行——
     否则首行即数据行，Markdown 渲染器不认表格。整行字段（含 strategy）统一 html_escape。
     """
     try:
         FIX_PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
-        # m2：同一时刻取一次时间（文件名与记录内容一致）；
+        # 同一时刻取一次时间（文件名与记录内容一致）；
         # 毫秒精度防"同秒同 selector"文件名覆盖（修复前秒级精度会互相覆盖）。
         now = datetime.now(timezone.utc)
         stamp = now.isoformat(timespec="milliseconds").replace(":", "-").replace("+00:00", "Z")
@@ -102,7 +102,7 @@ def write_fix_proposal(
         FIX_PROPOSALS_MD.parent.mkdir(parents=True, exist_ok=True)
         with FIX_PROPOSALS_MD.open("a", encoding="utf-8") as f:
             if _needs_header(FIX_PROPOSALS_MD):
-                f.write(FIX_PROPOSALS_HEADER)  # M16：首次写入补表头 + 分隔行
+                f.write(FIX_PROPOSALS_HEADER)  # 首次写入补表头 + 分隔行
             f.write(
                 f"| {_now()} | {html_escape(original_selector)} | {html_escape(new_selector)} | "
                 f"{html_escape(strategy)} | {confidence:.2f} | {'✅ 真自愈' if verified else '⚠️ flaky'} |\n"
@@ -116,12 +116,12 @@ def html_escape(text: str) -> str:
     return (text or "").replace("|", "\\|").replace("\n", " ")
 
 
-# T17 成本估算：调用单价（元/次，粗略默认值，可按 provider 覆盖）
+# 成本估算：调用单价（元/次，粗略默认值，可按 provider 覆盖）
 _DEFAULT_UNIT_COST = {"llm": 0.02, "vlm": 0.05}
 
 
 def estimate_cost(llm_calls: int = 0, vlm_calls: int = 0, *, unit_cost: dict | None = None) -> dict:
-    """T17：按调用次数估算费用（默认单价可覆盖）。纯函数、零副作用、可单测。"""
+    """按调用次数估算费用（默认单价可覆盖）。纯函数、零副作用、可单测。"""
     costs = {**_DEFAULT_UNIT_COST, **(unit_cost or {})}
     llm_cost = llm_calls * float(costs.get("llm", 0.0))
     vlm_cost = vlm_calls * float(costs.get("vlm", 0.0))

@@ -1,7 +1,7 @@
-"""POM 基类（基础框架 B1）。
+"""POM 基类。
 
 统一"POM 如何拿 page、如何打开、如何定位"。POM 只依赖 page 接口
-（原生 Page 或 HealingPage 均可），自愈开/关都能跑（决策 D3）。
+（原生 Page 或 HealingPage 均可），自愈开/关都能跑。
 
 约定：
 - 子类声明 `url`（property），`open()` 默认跳转到它。
