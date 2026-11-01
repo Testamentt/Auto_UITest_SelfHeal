@@ -35,7 +35,7 @@ llm:
     cooldown_s: 30.0
   max_tokens_field: max_tokens   # max_tokens | max_completion_tokens：后者供只认新字段名的推理模型族使用（会同时省略 temperature）
 
-# VLM：**本项目当前选型** = CommandCode 网关的 deepseek/deepseek-v4.1-flash（实测支持图片输入，见 docs/roadmap.md D18）；
+# VLM：**本项目当前选型** = CommandCode 网关的 deepseek/deepseek-v4.1-flash（实测支持图片输入，见 docs/decisions.md D18）；
 # 代码默认值仍是通义 qwen3-vl-plus + DashScope 公共 compatible-mode 端点（可移植基线）。
 # 换 VLM 只需改本段（model / api_key_env / base_url 三者必须同平台），专属百炼 MaaS 端点同样在此覆盖。
 vision:
@@ -72,7 +72,7 @@ healing:
   # T5 置信度归一化：对自报型（LLM 语义自报段）做保守收缩（raw²），默认关闭——
   # 待真实模型标定数据沉淀后再启用（见 src/selfheal/agent/confidence.py）
   shrink_self_reported: false
-  on_uncertain: use_fallback   # use_fallback | pause | fail（见 RULE.md 决策 D6）
+  on_uncertain: use_fallback   # use_fallback | pause | fail（见 docs/decisions.md 决策 D6）
   # T13 高风险页豁免：URL 匹配任一 glob 则不触发自愈（支付/强授权/审计类页面误改代价高）
   exclude_url_patterns: []   # 例: ["*://*/pay*", "*://*/admin/*"]
   # T14 dry-run：仅报告不执行——只生成修复建议，不换定位器重试、不持久化知识

@@ -1,17 +1,17 @@
-"""知识库存储与检索（内存后端，与 SQLite 并列为双实现之一，见决策 D10）。
+"""知识库存储与检索（内存后端，与 SQLite 并列为双实现之一）。
 
-适用测试 / 临时场景；SQLite 为持久化默认。Phase 5 A 语义化：
+适用测试 / 临时场景；SQLite 为持久化默认。语义化检索：
 - find_by_repair_key：L1 精确命中（确定性 repair_key）。
 - find_semantic：L3 按 page_fingerprint 分桶 → numpy 余弦。
 - bump_hit / set_verified：防污染衰减与人工审核。
 
-M4：与 SqliteKnowledgeStore 语义逐条对齐——add_repair 走 upsert（键与覆盖列清单一致）、
+与 SqliteKnowledgeStore 语义逐条对齐：add_repair 走 upsert（键与覆盖列清单一致）、
 find_repair 择优规则一致（指纹命中取置信度最高者，退化取置信度最高者）、last_hit_at 同格式
-（base.utc_now_iso）、补 close()。
+（base.utc_now_iso）、提供 close()。
 
-R1：``created_at`` 同法归位——写入侧 ``None`` 时补 ``base.utc_now_iso()``（此前只靠 SQLite
-列默认值兜底，内存端落 ``None``，两端 L3 新鲜窗口判定口径不同）；upsert 保留首写值。
-R3：``confidence`` 与 SQLite 端同规则归一（``None``/负值 → 0.0，``> 1.0`` 留给消费者
+``created_at`` 同法归位——写入侧 ``None`` 时补 ``base.utc_now_iso()``（若只靠 SQLite
+列默认值兜底，内存端会落 ``None``，两端 L3 新鲜窗口判定口径不同）；upsert 保留首写值。
+``confidence`` 与 SQLite 端同规则归一（``None``/负值 → 0.0，``> 1.0`` 留给消费者
 fail-closed 拒绝），脏值不会让两端排序结论相反。
 """
 
@@ -24,14 +24,14 @@ from selfheal.knowledge.schema import PopupFeature, RepairCase, RepairQuery
 
 
 def _normalize_confidence(value: float | None) -> float:
-    """confidence 的 NULL / 负值归一（R3；与 SQLite 端同规则，实现各自独立）。
+    """confidence 的 NULL / 负值归一（与 SQLite 端同规则，实现各自独立）。
 
     内存端正常写入即 0.0–1.0，本函数是**契约护栏**：调用方塞了 ``None`` / 负值时，与 SQLite
     端（``sqlite_store._normalize_confidence``）归一到同一取值，保证两端读出的 ``confidence``
-    逐值相同、排序结论一致（R3：脏库含负值时两端曾排序相反）。
+    逐值相同、排序结论一致（脏库含负值时两端曾排序相反）。
 
     刻意**不**夹取 ``> 1.0``：越上界的置信度属无效数据，由 ``fix_generator.lookup_knowledge``
-    的 ``0.0 <= conf <= 1.0`` 门槛 fail-closed 拒绝；在此洗成 1.0 会静默绕过该门槛（R4）。
+    的 ``0.0 <= conf <= 1.0`` 门槛 fail-closed 拒绝；在此洗成 1.0 会静默绕过该门槛。
     """
     if value is None:
         return 0.0
@@ -39,7 +39,7 @@ def _normalize_confidence(value: float | None) -> float:
 
 
 def _normalized_case(case: RepairCase) -> RepairCase:
-    """读出归一（R3）：confidence 的 ``NULL``/负值归零，返回新对象，不改库内数据。
+    """读出归一：confidence 的 ``NULL``/负值归零，返回新对象，不改库内数据。
 
     与 SQLite 端 ``_row_to_repair`` 的读侧归一对称——两端"读出的 confidence 同值域"这一
     契约不能只靠写入侧保证（内存对象可被测试/调试直接改，见
@@ -58,23 +58,23 @@ class KnowledgeStore:
     def _upsert_key(case: RepairCase) -> tuple[str, str, str]:
         """upsert 键，与 SQLite 唯一索引 (original_selector, new_selector, dom_fingerprint) 对齐。
 
-        dom_fingerprint 归一化 None → ""：SQLite 端同样归一（UNIQUE 索引对 NULL 不生效，
-        见审查 C2），不归一化会让"无指纹"案例在两端落成不同条数。
+        dom_fingerprint 归一化 None → ""：SQLite 端同样归一（UNIQUE 索引对 NULL 不生效），
+        不归一化会让"无指纹"案例在两端落成不同条数。
         """
         return (case.original_selector, case.new_selector, case.dom_fingerprint or "")
 
     def add_repair(self, case: RepairCase) -> None:
-        """沉淀一条修复案例：按键 upsert，已存在则更新（M4：对齐 SQLite 的 ON CONFLICT）。
+        """沉淀一条修复案例：按键 upsert，已存在则更新（对齐 SQLite 的 ON CONFLICT）。
 
         覆盖列与 SQLite 的 DO UPDATE 清单完全一致：strategy / confidence / page_url /
         page_fingerprint / repair_key / embedding / embedding_version；
         hit_count / last_hit_at / is_verified / created_at 保留原值——尤其 is_verified 是
         人工审核标记，再次沉淀不得静默清除（L3 防污染自动采纳依赖该信任状态）。
 
-        R1：``created_at`` 缺席（``None``）时补 ``base.utc_now_iso()``，与 SQLite 端
+        ``created_at`` 缺席（``None``）时补 ``base.utc_now_iso()``，与 SQLite 端
         （列默认值已被写侧显式值取代）同格式同语义；仅首写生效（upsert 保留首写值）。
 
-        R3：``confidence`` 经 ``_normalize_confidence`` 夹取到 ``[0.0, 1.0]``（``None`` →
+        ``confidence`` 经 ``_normalize_confidence`` 夹取到 ``[0.0, 1.0]``（``None`` →
         0.0），与 SQLite 端写入归一一致，脏值不会以不同数值落在两端。
         """
         # 写侧归一化与 SQLite 一致：空指纹统一按 None 存储，读回也是 None（SQLite 端存 "" 但读侧还原）
@@ -99,7 +99,7 @@ class KnowledgeStore:
         self._repairs.append(stored)
 
     def add_popup(self, feature: PopupFeature) -> None:
-        """按 signature upsert（V5 复核：与 SQLite 后端语义对齐，已存在则更新为最新观察）。"""
+        """按 signature upsert（与 SQLite 后端语义对齐，已存在则更新为最新观察）。"""
         for idx, existing in enumerate(self._popups):
             if existing.signature == feature.signature:
                 self._popups[idx] = feature
@@ -107,15 +107,15 @@ class KnowledgeStore:
         self._popups.append(feature)
 
     def find_repair(self, original_selector: str, dom_fingerprint: str | None = None):
-        """按原定位器检索；择优规则与 SQLite 端逐条对齐（M4）。
+        """按原定位器检索；择优规则与 SQLite 端逐条对齐。
 
         对 SQLite 的 ``ORDER BY confidence DESC, rowid ASC`` 取首个指纹匹配者；无指纹匹配
         （或未给指纹）时退化取置信度最高者。confidence 相同时按插入序取先写入者——
         ``sorted`` 稳定（并列保持列表序）且列表序恒为插入序（upsert 原地替换、不搬到表尾），
-        与 SQLite 的 ``rowid`` 升序（insert 自增、update 不变）一致，故同输入必同结果（R2：
-        该并列次序是既定契约，两端都由测试锁定）。
+        与 SQLite 的 ``rowid`` 升序（insert 自增、update 不变）一致，故同输入必同结果（该并列
+        次序是既定契约，两端都由测试锁定）。
 
-        R3：读出前统一归一 confidence（``_normalized_case``），与 SQLite 端 ``_row_to_repair``
+        读出前统一归一 confidence（``_normalized_case``），与 SQLite 端 ``_row_to_repair``
         对称——脏值（``None`` / 负值 / 越界）不会让两端对"谁更优"给出相反判断；排序键用
         归一后的值，避免 ``None`` 参与比较抛 ``TypeError``。
         """
@@ -132,7 +132,7 @@ class KnowledgeStore:
         return ordered[0]
 
     def find_by_repair_key(self, repair_key: str) -> RepairCase | None:
-        """L1：按确定性 repair_key 精确命中（R3：读出归一 confidence，与 SQLite 端对称）。"""
+        """L1：按确定性 repair_key 精确命中（读出归一 confidence，与 SQLite 端对称）。"""
         for case in self._repairs:
             if case.repair_key == repair_key:
                 return _normalized_case(case)
@@ -165,7 +165,7 @@ class KnowledgeStore:
     ) -> list[tuple[RepairCase, float]]:
         """L3：按 page_fingerprint 分桶 → 桶内 numpy 余弦，返回 top-k（sim >= threshold）。
 
-        返回案例的 confidence 同样经读出归一（R3），与 SQLite 端一致。
+        返回案例的 confidence 同样经读出归一，与 SQLite 端一致。
         """
         import numpy as np
 
@@ -175,7 +175,7 @@ class KnowledgeStore:
             if c.page_fingerprint == page_fingerprint
             and c.embedding_version == embedding_version
             and c.embedding is not None
-            # 审查 C3：维度与查询向量不符的行跳过（防 matmul 崩溃）
+            # 维度与查询向量不符的行跳过（防 matmul 崩溃）
             and len(c.embedding) == len(query_vec)
         ]
         if not bucket:
@@ -196,9 +196,9 @@ class KnowledgeStore:
     def bump_hit(self, repair_key: str) -> None:
         """命中递增（热度 / 衰减用）。
 
-        last_hit_at 统一写 UTC ISO 串（形如 ``2026-10-08T12:00:00+00:00``，见
-        base.utc_now_iso），与 SQLite 端同格式——修复前 SQLite 端写 ``datetime('now')``
-        （空格分隔、无时区），两端读出的字符串不可互认。
+        last_hit_at 统一写 UTC ISO 串（见 base.utc_now_iso），与 SQLite 端同格式——
+        修复前 SQLite 端写 ``datetime('now')``（空格分隔、无时区），两端读出的字符串
+        不可互认。
         """
         for case in self._repairs:
             if case.repair_key == repair_key:
@@ -226,7 +226,7 @@ class KnowledgeStore:
         return len(self._repairs)
 
     def close(self) -> None:
-        """释放后端资源：内存后端无外部句柄，no-op 且幂等（M4，供生命周期统一收口）。
+        """释放后端资源：内存后端无外部句柄，no-op 且幂等（供生命周期统一收口）。
 
         刻意不清空已沉淀数据：与 SQLite 的 close（断开连接、文件数据仍在）语义对齐；
         关闭后不保证可继续使用，但重复调用不抛异常。

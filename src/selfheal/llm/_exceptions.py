@@ -1,6 +1,6 @@
 """LLM 层异常定义（分级）。
 
-不可用故障按**可恢复性**分级（2026-10-08 审查 M1）：此前全层只有一个 UnavailableError，
+不可用故障按**可恢复性**分级：此前全层只有一个 UnavailableError，
 401（key 失效/无权限）与 429/超时（瞬态）同级，调用方无法判断"该重试还是该报警"。
 现在：
 
@@ -37,7 +37,7 @@ class FatalUnavailableError(UnavailableError):
 class CircuitOpenError(UnavailableError):
     """熔断打开（或半开探针在飞）：本次调用直接短路，由既有降级链接管。
 
-    T24（2026-11-10）：继承 `UnavailableError` 是**刻意**的——上层（诊断 / 语义 / 视觉策略）
+    T24：继承 `UnavailableError` 是**刻意**的——上层（诊断 / 语义 / 视觉策略）
     早已按 `except UnavailableError` 做优雅降级，新增异常不需要任何调用方改动。
     """
 
@@ -72,7 +72,7 @@ def classify_sdk_error(
 ) -> UnavailableError:
     """把 SDK 原始异常归一化为分级 UnavailableError。
 
-    错误信息带上 provider / model / 端点主机（**不含路径与密钥**）：审查实测表明
+    错误信息带上 provider / model / 端点主机（**不含路径与密钥**）：实测表明
     "key 与端点不属于同一平台"这种高频配置故障此前只表现为一句
     `模型调用失败: AuthenticationError`，无法定位——补上归属信息即可自查。
 

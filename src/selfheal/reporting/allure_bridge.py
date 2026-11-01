@@ -1,6 +1,6 @@
-"""Allure 报告桥（T18）——环境页 / 标签组织 / 证据附件的唯一接触点。
+"""Allure 报告桥 —— 环境页 / 标签组织 / 证据附件的唯一接触点。
 
-设计（决策 D15，同 D5 零侵入精神）：
+设计（沿用 D5 的零侵入精神）：
 - 核心代码与 Allure 的**唯一**依赖检测点：模块顶部一次性探测 `_HAS_ALLURE`，
   未安装 allure-pytest 时全部 API 降级为安全 no-op，调用方（conftest / hooks）
   无需各自 try-import allure。
@@ -8,7 +8,7 @@
 - feature_label_for / apply_dynamic_labels：pytest marker → allure 标签映射
   （优先级 erp > healing > e2e > unit，多 marker 只取最高一个，避免标签爆炸）。
 - attach_json / attach_file：best-effort 证据附件（自愈记录 / Playwright trace）；
-  L20：attach_file 的 type_name 走 `ATTACHMENT_TYPE_NAMES` 白名单（或直接传常量），
+  attach_file 的 type_name 走 `ATTACHMENT_TYPE_NAMES` 白名单（或直接传常量），
   拼错显式 warning + False，不再静默丢附件。
 
 Allure 标签使用 **dynamic API**（须在测试上下文中调用，见 conftest autouse fixture）：
@@ -37,7 +37,7 @@ try:  # 一次性探测：未装 allure-pytest 时全部 API 为 no-op（[dev] e
 except ImportError:  # pragma: no cover - 无 allure 环境（降级为纯 HTML 看板）
     _HAS_ALLURE = False
 
-# L20：合法附件类型白名单（与 allure 的 AttachmentType 成员一一对应）。
+# 合法附件类型白名单（与 allure 的 AttachmentType 成员一一对应）。
 # 单一事实源：Literal 供类型检查 / IDE 补全，ATTACHMENT_TYPE_NAMES 供运行期校验。
 AttachmentTypeName = Literal[
     "BMP",
@@ -66,7 +66,7 @@ ATTACHMENT_TYPE_NAMES: tuple[str, ...] = get_args(AttachmentTypeName)
 # marker → feature 映射；优先级从高到低（多 marker 只取最高，避免标签爆炸）
 _FEATURE_PRIORITY: tuple[str, ...] = ("erp", "healing", "e2e", "unit")
 _FEATURE_BY_MARKER: dict[str, str] = {
-    "erp": "ERP 被测系统",  # T23：管伊佳 ERP 用例（被测系统维度优先于能力维度）
+    "erp": "ERP 被测系统",  # 管伊佳 ERP 用例（被测系统维度优先于能力维度）
     "healing": "AI 自愈",
     "e2e": "端到端",
     "unit": "单元测试",
@@ -109,7 +109,7 @@ def write_environment(
     （best-effort，仅记 warning）。须在测试会话**结束后**写：allure-pytest 不会清理
     既有 results 目录，晚写不丢。
 
-    trace_enabled（M16）：`Browser.Trace` 应记录**实际生效值**，而实际生效值由
+    trace_enabled：`Browser.Trace` 应记录**实际生效值**，而实际生效值由
     `tests/conftest.py` 的 `context` fixture 决定（CLI `--trace-healing/--no-trace-healing`
     优先于 `settings.browser.trace`）。**调用方应传实际生效值**（如 pytest_sessionfinish
     里的 trace 决策），不传（None）则回落到配置值 `settings.browser.trace`（兼容既有调用点）。
@@ -134,7 +134,7 @@ def write_environment(
         (directory / "environment.properties").write_text("\n".join(lines) + "\n", encoding="utf-8")
         return True
     except Exception:  # noqa: BLE001 - 环境页失败不影响测试
-        # R4：不静默——环境页缺失在 CI 日志中要可见，但绝不打断测试
+        # 不静默——环境页缺失在 CI 日志中要可见，但绝不打断测试
         logger.warning("Allure 环境页写入失败（报告缺环境信息，测试不受影响）", exc_info=True)
         return False
 
@@ -158,15 +158,15 @@ def attach_json(payload: dict, name: str = "附件") -> bool:
 def attach_file(path: str | os.PathLike, name: str, type_name: AttachmentTypeName = "ZIP") -> bool:
     """文件证据附件（trace zip 等；best-effort：无 allure / 文件缺失 / 失败 → False）。
 
-    type_name（L20）：只接受 `ATTACHMENT_TYPE_NAMES` 白名单里的类型名，或直接传
+    type_name：只接受 `ATTACHMENT_TYPE_NAMES` 白名单里的类型名，或直接传
     `allure.attachment_type.<NAME>` 常量。此前是 `str` + `getattr`——拼错（如 "ZIPP"）
     会被 `getattr` 的 AttributeError 吞进 except，静默返回 False（附件静默丢失）。
 
     非法类型的处理选择 **warning + False**（而不是抛错），理由：
     - 本函数是报告层 best-effort 证据附件，调用点在 fixture teardown / 采集流程里；
-      抛错会把"附件没贴上"升级成"用例失败"，违反 D15 零侵入与"附件失败不影响测试"
+      抛错会把"附件没贴上"升级成"用例失败"，违反零侵入与"附件失败不影响测试"
       的既有契约；
-    - R4 的"不静默"由两条兜住：静态层 `Literal` 让 IDE / 类型检查直接标红拼写错误，
+    - "不静默"由两条兜住：静态层 `Literal` 让 IDE / 类型检查直接标红拼写错误，
       运行期再显式 warning 一次（含可选值清单），日志里能直接看到是哪个附件丢了。
     """
     if isinstance(type_name, str) and type_name not in ATTACHMENT_TYPE_NAMES:

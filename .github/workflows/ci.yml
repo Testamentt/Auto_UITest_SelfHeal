@@ -10,7 +10,7 @@ on:
   # schedule:
   #   - cron: "0 22 * * *"   # UTC 22:00 = 北京 06:00
 
-# 两阶段（见 RULE.md R2 配套约定）：unit 门禁 → e2e 集成
+# 两阶段：unit 门禁（lint + format + unit）→ e2e 集成
 
 # L17：并发组 —— 同一 ref 只保留最新一次运行。此前并发 push 会同时跑 publish（两个
 # 进程同时写 gh-pages / allure-history），历史趋势互相覆盖。

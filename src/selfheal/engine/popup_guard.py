@@ -6,7 +6,7 @@
 
 纯函数 _normalize_signature / _is_close_hint / _close_hint_strength 抽离于类外，便于无浏览器单测。
 
-2026-10-08 审查修复（H1）：
+**关闭安全与关键词分级**：
 1. **关闭点击限定在弹窗容器内**：此前知识命中后走 `page.locator(sel).first`（全页范围），
    一旦沉淀的选择器与实际页面错位，就可能点到弹窗之外的业务控件。
 2. **关键词从"子串"升级为分级命中**：`_is_close_hint`（子串）保留为兼容入口，但找按钮改为
@@ -16,7 +16,7 @@
    （带引号的 text 选择器：整串相等且大小写敏感），`text=关闭` 才是子串匹配；
    故沉淀选择器本身不是通配风险，风险在"未限定作用域"与"关键词子串误判"两点。
 
-分层（M10-③）：本模块属 engine 层，只依赖 `selfheal.dom`（中立 DOM 工具）+
+分层（D19）：本模块属 engine 层，只依赖 `selfheal.dom`（中立 DOM 工具）+
 `selfheal.contracts`（中立 DTO）。弹窗特征的**持久化**由 knowledge 层实现，engine 只声明
 窄 Protocol `PopupKnowledge`（结构化类型，`KnowledgeBackend` 天然满足），
 因此 `import selfheal.engine.popup_guard` 不会拉起 knowledge / agent / reporting。
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class PopupKnowledge(Protocol):
-    """弹窗特征知识库的最小依赖面（M10-③）。
+    """弹窗特征知识库的最小依赖面（D19）。
 
     只声明 PopupGuard 真正用到的两个方法，engine 因此无需 import knowledge 层；
     `knowledge.base.KnowledgeBackend` 结构化满足本 Protocol（无需显式继承）。
@@ -102,7 +102,7 @@ def _normalize_label(value: str | None) -> str:
 
 
 def _close_hint_strength(label: str, testid: str, text: str) -> int:
-    """给"关闭按钮"候选打分（H1）：2=强（精确标签/无歧义符号），1=弱（子串），0=不命中。
+    """给"关闭按钮"候选打分：2=强（精确标签/无歧义符号），1=弱（子串），0=不命中。
 
     打分而非布尔判定，是为了让"整串就是关闭"的控件优先于"文案里含关闭"的业务按钮
     （如"关闭订单"）——后者只在弹窗内找不到任何强信号时才兜底使用。
@@ -135,7 +135,7 @@ class PopupGuard:
             return False
         signature = _normalize_signature(self._safe_text(container))
 
-        # 1) 知识优先：命中已沉淀的弹窗特征，直接用其关闭定位器（**限定在弹窗容器内**，H1）。
+        # 1) 知识优先：命中已沉淀的弹窗特征，直接用其关闭定位器（**限定在弹窗容器内**）。
         #    知识读取 best-effort：失败按未命中继续走启发式。
         if self._knowledge is not None and signature:
             feature = self._safe_find_popup(signature)
@@ -195,7 +195,7 @@ class PopupGuard:
         return None
 
     def _find_close_button(self, container: Locator) -> Locator | None:
-        """在弹窗内找关闭按钮：强信号优先，弱信号（子串命中）仅作兜底（H1）。"""
+        """在弹窗内找关闭按钮：强信号优先，弱信号（子串命中）仅作兜底。"""
         candidates = container.locator("button, a, [role='button']")
         weak_fallback: Locator | None = None
         for i in range(candidates.count()):
@@ -217,7 +217,7 @@ class PopupGuard:
         return weak_fallback
 
     def _try_click_selector(self, container: Locator, selector: str) -> bool:
-        """按沉淀的选择器关闭弹窗（**限定在弹窗容器内**，H1：防误点弹窗外的业务控件）。"""
+        """按沉淀的选择器关闭弹窗（**限定在弹窗容器内**：防误点弹窗外的业务控件）。"""
         try:
             loc = container.locator(selector)
             if loc.count() > 0 and loc.first.is_visible():
@@ -240,10 +240,10 @@ class PopupGuard:
     def _stable_selector(loc: Locator) -> str | None:
         """为关闭按钮生成可复用的稳定定位器（复用 dom 公共工具：data-testid > id > 文本 > aria）。
 
-        审查 M2：除 data-testid/id 外，还投影 aria-label 与文本——
+        除 data-testid/id 外，还投影 aria-label 与文本——
         纯文本"关闭"按钮（无 testid/id）此前无法沉淀弹窗特征，每次都要启发式重找。
 
-        注（2026-10-08 实测）：`text="关闭"` 是 **精确匹配**（带引号的 text 选择器要求整串相等、
+        注（Playwright 实测）：`text="关闭"` 是 **精确匹配**（带引号的 text 选择器要求整串相等、
         大小写敏感），`text=关闭` 才是子串匹配——故此处生成的选择器不会扩大到"关闭订单"。
         """
         try:

@@ -1,7 +1,7 @@
 """SQLite 知识库后端（stdlib sqlite3 + numpy 向量）。
 
 持久化修复案例与弹窗特征，重启后仍可命中复用（"越用越聪明"）。
-Phase 5 A 语义化：
+语义化检索：
 - L1：find_by_repair_key 按确定性 repair_key 精确命中（硬短路）。
 - L3：find_semantic 按 page_fingerprint 分桶 → 桶内 numpy 余弦（向量存 BLOB，避免 JSON 反序列化瓶颈）。
 - 防污染：hit_count/last_hit_at 递增、is_verified 标记（人工审核）。
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS repairs (
     hit_count INTEGER DEFAULT 0,
     last_hit_at TEXT,
     is_verified INTEGER DEFAULT 0,
-    -- R1：刻意不给 created_at 列默认值——CURRENT_TIMESTAMP 产出 "YYYY-MM-DD HH:MM:SS"
+    -- 刻意不给 created_at 列默认值——CURRENT_TIMESTAMP 产出 "YYYY-MM-DD HH:MM:SS"
     -- （空格分隔、无时区），与内存端的 UTC ISO 串不同格式，导致 L3 新鲜窗口两端判定漂移。
     -- 写入侧统一用 base.utc_now_iso() 显式赋值（见 add_repair），旧库的默认值/旧值由读侧归一。
     created_at TEXT
@@ -49,20 +49,20 @@ CREATE TABLE IF NOT EXISTS popups (
 );
 """
 
-# 索引在迁移之后统一创建：旧库缺列时 CREATE INDEX 会直接抛 OperationalError（V5 复核）
+# 索引在迁移之后统一创建：旧库缺列时 CREATE INDEX 会直接抛 OperationalError
 _INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_repairs_selector ON repairs(original_selector);
 CREATE INDEX IF NOT EXISTS idx_repairs_key ON repairs(repair_key);
 CREATE INDEX IF NOT EXISTS idx_repairs_semantic
     ON repairs(page_fingerprint, embedding_version);
--- #10：同 (原选择器, 新选择器, 指纹) 去重，避免记录无界增长
+-- 同 (原选择器, 新选择器, 指纹) 去重，避免记录无界增长
 CREATE UNIQUE INDEX IF NOT EXISTS idx_repairs_unique
     ON repairs(original_selector, new_selector, dom_fingerprint);
--- V5 复核：signature 唯一（add_popup 走 upsert），复现弹窗不再无界追加重复行
+-- signature 唯一（add_popup 走 upsert），复现弹窗不再无界追加重复行
 CREATE UNIQUE INDEX IF NOT EXISTS idx_popups_signature ON popups(signature);
 """
 
-# V5 复核：旧库平滑迁移——Phase 5 A 前创建的持久库缺列时逐列补齐（ALTER TABLE ADD COLUMN），
+# 旧库平滑迁移——早期创建的持久库缺列时逐列补齐（ALTER TABLE ADD COLUMN），
 # 而不是让建索引直接炸掉整个会话（fixture 阶段报错且无降级）。补列后旧数据原样保留。
 _REPAIR_COLUMNS: dict[str, str] = {
     "strategy": "TEXT",
@@ -85,7 +85,7 @@ _POPUP_COLUMNS: dict[str, str] = {
 
 
 def _normalize_confidence(value: float | None) -> float:
-    """confidence 的 NULL / 负值归一（R3；写侧与读侧共用同一函数）。
+    """confidence 的 NULL / 负值归一（写侧与读侧共用同一函数）。
 
     - ``NULL``（旧库 ALTER 补列 / 手改库）→ ``0.0``：与内存端"未给值即 0.0"一致；
     - 负值（脏数据）→ ``0.0``：否则 SQLite ``ORDER BY confidence DESC`` 会把它排到有效
@@ -93,9 +93,9 @@ def _normalize_confidence(value: float | None) -> float:
     - 非数值（手改库塞文本）→ ``0.0``，避免 ``float``/比较抛错污染整条检索路径；
     - **``> 1.0`` 刻意不动**：越上界属"无效置信度"，由消费者 fail-closed 拒绝
       （``agent/fix_generator.lookup_knowledge`` 的 ``0.0 <= conf <= 1.0`` 门槛）；在此夹取
-      成 1.0 会把脏值洗成合法值、静默绕过该门槛（R4：不允许静默掩盖）。
+      成 1.0 会把脏值洗成合法值、静默绕过该门槛（不允许静默掩盖）。
 
-    归一动作在值确实被改动时记 debug（不静默，便于回溯上游写入，R4）。
+    归一动作在值确实被改动时记 debug（不静默，便于回溯上游写入）。
     """
     try:
         numeric = float(value) if value is not None else 0.0
@@ -115,7 +115,7 @@ def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 
 @dataclass(frozen=True)
 class MigrationReport:
-    """一次 ``_migrate_legacy_tables`` 的审计结果（R4：忽略项单独记账，不进 ``added``）。
+    """一次 ``_migrate_legacy_tables`` 的审计结果（忽略项单独记账，不进 ``added``）。
 
     - ``added``：**本进程**实际补上的列（``table.column``），决定是否 warning；
     - ``ignored``：因多进程竞态（``duplicate column name``，另一进程在"读列 → ALTER"窗口内
@@ -131,11 +131,11 @@ class MigrationReport:
 def _migrate_legacy_tables(conn: sqlite3.Connection) -> MigrationReport:
     """旧库缺列补齐；返回 :class:`MigrationReport`（补了哪些列 + 哪些列因竞态被忽略）。
 
-    M5：ALTER 是 check-then-act，多进程首次升级会撞车（另一进程已补同名列）——
+    ALTER 是 check-then-act，多进程首次升级会撞车（另一进程已补同名列）——
     ``duplicate column name`` 视为竞态已解决，忽略该列继续；其它 OperationalError
-    原样上抛（真实迁移故障不得被吞掉，R4）。
+    原样上抛（真实迁移故障不得被吞掉）。
 
-    R4：被忽略的列进 ``report.ignored`` 并逐条记 info（本进程未补列，故不计入 ``added``，
+    被忽略的列进 ``report.ignored`` 并逐条记 info（本进程未补列，故不计入 ``added``，
     不改变"有补列或有去重才 warning"的既有语义）；调用方可据此区分"无缺列"与
     "缺列已被别的进程补齐"两种都为空 ``added`` 的情形。
     """
@@ -152,7 +152,7 @@ def _migrate_legacy_tables(conn: sqlite3.Connection) -> MigrationReport:
                 if "duplicate column name" not in str(exc).lower():
                     raise
                 # 竞态：另一进程在"读列 → ALTER"窗口内已补上该列；不计入 added（本进程没补），
-                # 但计入 ignored 供审计（R4）
+                # 但计入 ignored 供审计
                 ignored.append(f"{table}.{name}")
                 logger.info("迁移竞态：%s.%s 已由其它进程补齐，跳过", table, name)
                 continue
@@ -163,7 +163,7 @@ def _migrate_legacy_tables(conn: sqlite3.Connection) -> MigrationReport:
 def _has_duplicate_rows(conn: sqlite3.Connection, table: str, keys: str) -> bool:
     """探测表内是否存在按键重复的行（GROUP BY … HAVING COUNT(*) > 1 LIMIT 1）。
 
-    M5：先探测再删除——新库 / 已去重库不执行全表 DELETE，避免每次构造都拿写锁。
+    先探测再删除——新库 / 已去重库不执行全表 DELETE，避免每次构造都拿写锁。
     """
     row = conn.execute(
         f"SELECT 1 FROM {table} GROUP BY {keys} HAVING COUNT(*) > 1 LIMIT 1"
@@ -175,7 +175,7 @@ def _dedupe_legacy_rows(conn: sqlite3.Connection) -> int:
     """建 UNIQUE 索引前清除历史重复行（保留最小 rowid）；返回清除的行数。
 
     仅历史库需要：新库写入路径本身按唯一键 upsert，不会产生重复行，因此先用
-    ``_has_duplicate_rows`` 探测（M5），无重复直接返回 0、不执行 DELETE。
+    ``_has_duplicate_rows`` 探测，无重复直接返回 0、不执行 DELETE。
     """
     removed = 0
     for table, keys in (
@@ -193,14 +193,14 @@ def _dedupe_legacy_rows(conn: sqlite3.Connection) -> int:
 
 
 def _normalize_utc_iso(raw: str | None, field: str) -> str | None:
-    """时间字段归一为 UTC ISO 串（M4 起用于 last_hit_at，R1 起同时用于 created_at）。
+    """时间字段归一为 UTC ISO 串（last_hit_at 与 created_at 共用）。
 
-    新写入值已是 ``utc_now_iso()`` 格式（``2026-10-08T12:00:00+00:00``）；旧库里的
+    新写入值已是 ``utc_now_iso()`` 的 UTC ISO 格式；旧库里的
     SQLite ``CURRENT_TIMESTAMP`` / ``datetime('now')`` 值（``2026-10-08 12:00:00``，
     空格分隔、无时区）在此补 UTC 时区并转 ISO，使两端读出的字符串可被
     ``datetime.fromisoformat`` 解析且 tz-aware（与 ``agent/strategies/semantic._is_fresh``
     同款容错思路）。空值（``None`` / ``""``）归一为 ``None``；无法解析时原样返回并记
-    warning（不静默丢数据，R4）——``_is_fresh`` 对不可解析值按"不新鲜"处理，不会误采纳。
+    warning（不静默丢数据）——``_is_fresh`` 对不可解析值按"不新鲜"处理，不会误采纳。
     """
     if not raw:
         return None
@@ -218,7 +218,7 @@ class SqliteKnowledgeStore:
     """基于 SQLite 的知识库实现（遵循 KnowledgeBackend 接口）。
 
     :attr:`last_migration_report`：本次打开（``__init__``）的 :class:`MigrationReport` 快照，
-    供排查"旧库到底补了哪些列 / 哪些列因竞态被忽略"（R4；日志之外的可编程审计入口）。
+    供排查"旧库到底补了哪些列 / 哪些列因竞态被忽略"（日志之外的可编程审计入口）。
     """
 
     last_migration_report: MigrationReport
@@ -226,7 +226,7 @@ class SqliteKnowledgeStore:
     def __init__(self, path: str):
         self._path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        # T21 并行兼容：多进程共享同一知识库文件时（如 xdist 并行 / 多项目共用），
+        # 并行兼容：多进程共享同一知识库文件时（如 xdist 并行 / 多项目共用），
         # 写冲突以 busy_timeout 排队等待（30s 上限）而非立即抛 "database is locked"；
         # WAL 允许读写并发（默认 DELETE 模式整库锁）。临时库 / 单进程下同样无害。
         self._conn = sqlite3.connect(path, timeout=30)
@@ -234,10 +234,10 @@ class SqliteKnowledgeStore:
         self._conn.execute("PRAGMA busy_timeout = 30000")
         self._conn.execute("PRAGMA journal_mode = WAL")
         self._conn.executescript(_SCHEMA)
-        # V5 复核：先迁移（补列 + 清历史重复行），再建索引——顺序反了旧库直接 OperationalError
-        # M5：迁移/去重都先探测后写入（无缺列、无重复行时不发写语句），新库打开不再白拿写锁
+        # 先迁移（补列 + 清历史重复行），再建索引——顺序反了旧库直接 OperationalError
+        # 迁移/去重都先探测后写入（无缺列、无重复行时不发写语句），新库打开不再白拿写锁
         migration = _migrate_legacy_tables(self._conn)
-        # R4：忽略项（竞态）留字段级审计快照，供打开后排查 / 测试断言
+        # 忽略项（竞态）留字段级审计快照，供打开后排查 / 测试断言
         self.last_migration_report = migration
         deduped = _dedupe_legacy_rows(self._conn)
         # 旧库的 idx_popups_signature 可能是非唯一索引：先删再建（幂等），
@@ -246,7 +246,7 @@ class SqliteKnowledgeStore:
         self._conn.executescript(_INDEXES)
         self._conn.commit()
         if migration.added or deduped:
-            # R4：迁移不是静默行为，留下审计日志（补了哪些列、清了几行重复）
+            # 迁移不是静默行为，留下审计日志（补了哪些列、清了几行重复）
             logger.warning(
                 "知识库 schema 迁移完成 path=%s 补列=%s 去重行=%s 竞态忽略列=%s",
                 path,
@@ -255,7 +255,7 @@ class SqliteKnowledgeStore:
                 migration.ignored or "无",
             )
         elif migration.ignored:
-            # R4：只有竞态忽略项时同样记账（不触发 warning：本进程没改任何结构，
+            # 只有竞态忽略项时同样记账（不触发 warning：本进程没改任何结构，
             # "有补列或有去重才 warning"的既有语义保持不变），但审计信息不丢
             logger.info(
                 "知识库 schema 迁移无本进程改动 path=%s 竞态忽略列=%s", path, migration.ignored
@@ -264,18 +264,18 @@ class SqliteKnowledgeStore:
     def add_repair(self, case: RepairCase) -> None:
         """沉淀一条修复案例（同键 upsert）。
 
-        R1 时间契约：``created_at`` 缺席（``None``）时由本方法补 ``base.utc_now_iso()``，
+        时间契约：``created_at`` 缺席（``None``）时由本方法补 ``base.utc_now_iso()``，
         不再依赖列默认值 ``CURRENT_TIMESTAMP``（空格分隔、无时区的历史格式），使两端
         写出的 ``created_at`` 同格式、可被 ``_is_fresh`` 同口径解析。``created_at`` 刻意
         不进 ``DO UPDATE`` 列——与内存端一致，保留首写时刻（不用末次沉淀刷新）。
 
-        R3 置信度契约：写入值经 ``_normalize_confidence`` 归一（``NULL``/负值 → ``0.0``），
+        置信度契约：写入值经 ``_normalize_confidence`` 归一（``NULL``/负值 → ``0.0``），
         与内存端同一规则，保证两端落库值一致、读出可比较；``> 1.0`` 不夹取（由消费者的
         fail-closed 门槛拒绝，见该函数 docstring）。
         """
-        # #10 upsert：同 (原,新,指纹) 已存在则更新，不重复插入。
+        # upsert：同 (原,新,指纹) 已存在则更新，不重复插入。
         # dom_fingerprint 归一化（None → ""）：SQLite UNIQUE 索引对 NULL 不生效（NULL ≠ NULL），
-        # 不归一化会使"无指纹"（页面无可交互元素）的重复修复绕过冲突检测、无界增长（审查 C2）。
+        # 不归一化会使"无指纹"（页面无可交互元素）的重复修复绕过冲突检测、无界增长。
         fp = case.dom_fingerprint or ""
         self._conn.execute(
             "INSERT INTO repairs"
@@ -283,9 +283,9 @@ class SqliteKnowledgeStore:
             "  page_fingerprint, repair_key, embedding, embedding_version, is_verified, created_at)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT(original_selector, new_selector, dom_fingerprint)"
-            # V5 复核：is_verified 刻意不进 DO UPDATE 列——再次沉淀不覆盖人工审核标记，
+            # is_verified 刻意不进 DO UPDATE 列——再次沉淀不覆盖人工审核标记，
             # 否则 L3 防污染自动采纳（sim>0.92 且 is_verified）依赖的信任状态被静默清除。
-            # R1：created_at 同样保留首写值（时间字段语义 = 首次沉淀时刻）。
+            # created_at 同样保留首写值（时间字段语义 = 首次沉淀时刻）。
             " DO UPDATE SET strategy=excluded.strategy, confidence=excluded.confidence,"
             "               page_url=excluded.page_url, page_fingerprint=excluded.page_fingerprint,"
             "               repair_key=excluded.repair_key, embedding=excluded.embedding,"
@@ -308,7 +308,7 @@ class SqliteKnowledgeStore:
         self._conn.commit()
 
     def add_popup(self, feature: PopupFeature) -> None:
-        """V5 复核：按 signature upsert——复现弹窗每次成功关闭不再无界追加重复行。
+        """按 signature upsert——复现弹窗每次成功关闭不再无界追加重复行。
 
         最新观察胜出（站点改版后关闭定位器随之更新）；依赖 idx_popups_signature 唯一索引。
         """
@@ -325,7 +325,7 @@ class SqliteKnowledgeStore:
     ) -> RepairCase | None:
         """（旧知识优先）按原定位器精确匹配，指纹优先、其余按置信度。
 
-        既定次序（R2，契约，勿依赖 SQLite 默认扫描顺序）：
+        既定次序（契约，勿依赖 SQLite 默认扫描顺序）：
 
         1. 置信度降序——高置信度候选优先；
         2. 置信度并列时按 ``rowid`` 升序——即**插入序先写入者优先**（与内存后端
@@ -333,7 +333,7 @@ class SqliteKnowledgeStore:
         3. 给了 ``dom_fingerprint`` 时，在满足 1/2 的序列里取**首个指纹匹配者**（不因指纹
            相同而跳过置信度更高者）；未给指纹或无匹配时取序列首个。
 
-        R3 脏数据策略：``NULL`` 与负值在**写入侧**已归一为 ``0.0``；历史库里遗留的 ``NULL``
+        脏数据策略：``NULL`` 与负值在**写入侧**已归一为 ``0.0``；历史库里遗留的 ``NULL``
         行，其排序键即列值 ``NULL``（SQLite 在 ``DESC`` 中把 NULL 排最末，故仅在候选项全部
         同为 NULL 时才可能被选中），读出时由 ``_normalize_confidence`` 归零并记 debug
         （会话内不写回库）。内存端排序用 ``_normalized_case``（``NULL``/负值 = ``0.0``），
@@ -401,7 +401,7 @@ class SqliteKnowledgeStore:
         if not rows:
             return []
         qv = np.frombuffer(query_vec, dtype=np.float32)
-        # 审查 C3：防御脏数据——长度与查询向量不符的行跳过（版本号已含 dim，
+        # 防御脏数据——长度与查询向量不符的行跳过（版本号已含 dim，
         # 此处兜底旧库 / 手改库残留的异维向量，避免 np.stack 直接 ValueError 崩溃）。
         valid = [
             r for r in rows if r["embedding"] is not None and len(r["embedding"]) == len(query_vec)
@@ -423,9 +423,9 @@ class SqliteKnowledgeStore:
     def bump_hit(self, repair_key: str) -> None:
         """命中递增（热度 / 衰减用）。
 
-        last_hit_at 由 Python 侧生成 UTC ISO 串写入（``2026-10-08T12:00:00+00:00``，见
-        base.utc_now_iso），与内存后端同格式——M4：此前用 SQLite ``datetime('now')``
-        （空格分隔、无时区），两端读出的字符串不可互认。
+        last_hit_at 由 Python 侧生成 UTC ISO 串写入（见 base.utc_now_iso），与内存后端
+        同格式——此前用 SQLite ``datetime('now')``（空格分隔、无时区），两端读出的字符串
+        不可互认。
         """
         self._conn.execute(
             "UPDATE repairs SET hit_count = hit_count + 1, last_hit_at = ? WHERE repair_key = ?",
@@ -469,10 +469,10 @@ class SqliteKnowledgeStore:
 
         - dom_fingerprint：写侧把 None 归一成 ""（防 NULL 绕过唯一约束），读侧还原 None。
         - confidence / hit_count：旧库 ALTER 补列的 NULL（或手改库）归一为 0.0 / 0
-          （M5：否则 None 会泄进指标计算与 dataclass）；R3：confidence 进一步经
+          （否则 None 会泄进指标计算与 dataclass）；confidence 进一步经
           ``_normalize_confidence`` 夹取到 ``[0.0, 1.0]``，与内存端读出的值域一致。
         - last_hit_at / created_at：归一为 UTC ISO 串（旧库 ``CURRENT_TIMESTAMP`` /
-          ``datetime('now')`` 的空格格式兼容读出，R1；格式契约见 base 模块 docstring）。
+          ``datetime('now')`` 的空格格式兼容读出；格式契约见 base 模块 docstring）。
         """
         return RepairCase(
             original_selector=row["original_selector"],

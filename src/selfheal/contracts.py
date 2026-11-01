@@ -1,9 +1,9 @@
-"""跨层共享的中立契约（M10：分层倒置修复的落点）。
+"""跨层共享的中立契约（D19：分层倒置修复的落点）。
 
 **为什么单独成模块**：`engine/`（能力建设层）与 `collect/`（数据采集层）在定位失败时
 要产出 / 消费「失败上下文」与「自愈结果」；这些 DTO 此前定义在上层
 （`agent/diagnose.py` / `agent/context.py`），迫使下层反向 import 上层——分层倒置
-（评审 M10 / docs/backlog/low-priority.md §二）。把 DTO 放到不依赖任何业务层的本模块后，
+（D19）。把 DTO 放到不依赖任何业务层的本模块后，
 engine / collect 的 import 闭包不再拉起 agent / knowledge / reporting
 （分层护栏见 `tests/unit/test_layering.py`）。
 
@@ -12,7 +12,7 @@ engine / collect 的 import 闭包不再拉起 agent / knowledge / reporting
 - `HealOutcome`：一次自愈的最终结果（闭环输出，engine 侧据此决定重试/兜底）。
 - `PopupFeature`：弹窗特征 DTO——`engine/popup_guard` 产出、`knowledge/` 持久化，双方共用；
   定义留在此处（而非 knowledge）是为了让 engine 不反向依赖 knowledge。
-- `TraceActiveProvider`：trace 录制状态的 provider 类型（L4）——由外层（conftest / 夹具）
+- `TraceActiveProvider`：trace 录制状态的 provider 类型——由外层（conftest / 夹具）
   注入 `collect.SceneCollector(trace_active=…)`，并经 agent / plugin 逐层透传，
   使"是否在录制"成为显式状态而非异常探测。
 
@@ -28,7 +28,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-# trace 录制状态 provider（L4）：返回"当前是否正在录制 trace"。
+# trace 录制状态 provider：返回"当前是否正在录制 trace"。
 # 与 `collect/collector.py::SceneCollector(trace_active=…)` 的形参同形（调用处按关键字传参），
 # 由 conftest 等外层按 CLI 覆盖（--trace-healing / --no-trace-healing）与配置取值构造。
 TraceActiveProvider = Callable[[], bool]
@@ -46,8 +46,8 @@ class FailureContext:
 class HealOutcome:
     """一次自愈的最终结果。
 
-    - proposed_selector（T14 dry_run）: 仅报告模式下建议采用的定位器（不实际应用）。
-    - attempt_id（B1）: 策略修复成功后生成的暂存标识；引擎层重试成功后以此 commit_pending。
+    - proposed_selector: 仅报告模式下建议采用的定位器（不实际应用）。
+    - attempt_id: 策略修复成功后生成的暂存标识；引擎层重试成功后以此 commit_pending。
     """
 
     success: bool

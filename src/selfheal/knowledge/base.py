@@ -4,11 +4,11 @@
 SQLite 实现（sqlite_store.SqliteKnowledgeStore）均遵循该接口，由 factory 按配置选择，
 调用方（orchestrator / PopupGuard / 测试）不感知具体后端。
 
-**时间字段格式契约（R1，两端必须逐字一致）**——适用于 ``RepairCase.created_at`` 与
+**时间字段格式契约（两端必须逐字一致）**——适用于 ``RepairCase.created_at`` 与
 ``RepairCase.last_hit_at``：
 
-- **写入**：一律 ``utc_now_iso()``（UTC ISO 8601、秒精度、带 ``+00:00``，形如
-  ``2026-10-08T12:00:00+00:00``）。字段缺席时由 ``utc_now_iso_if_missing()`` 补齐，
+- **写入**：一律 ``utc_now_iso()``（UTC ISO 8601、秒精度、带 ``+00:00`` 时区）。
+  字段缺席时由 ``utc_now_iso_if_missing()`` 补齐，
   **不得**依赖 SQLite 列默认值 ``CURRENT_TIMESTAMP``（它产出 ``2026-10-08 12:00:00``，
   空格分隔且无时区）。
 - **读出**：两端都必须给出可被 ``datetime.fromisoformat`` 解析且 tz-aware 的字符串；
@@ -28,15 +28,15 @@ from selfheal.knowledge.schema import PopupFeature, RepairCase, RepairQuery
 def utc_now_iso() -> str:
     """知识库时间字段的统一格式：UTC ISO 8601、秒精度、带 ``+00:00`` 时区。
 
-    形如 ``2026-10-08T12:00:00+00:00``。内存后端与 SQLite 后端写 ``last_hit_at``
-    共用本函数（M4：此前两端分别用 ``isoformat`` 与 SQLite ``datetime('now')``，
-    格式不一致且注释与事实相反），保证读出值可被 ``datetime.fromisoformat`` 解析且 tz-aware。
+    内存后端与 SQLite 后端写 ``last_hit_at`` 共用本函数，避免一端用 ``isoformat``、
+    另一端用 SQLite ``datetime('now')`` 导致格式不一致；保证读出值可被
+    ``datetime.fromisoformat`` 解析且 tz-aware。
     """
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def utc_now_iso_if_missing(raw: str | None) -> str:
-    """``created_at`` 写入归一：未提供（``None``）时补当前 UTC ISO 串，已提供原样返回（R1）。
+    """``created_at`` 写入归一：未提供（``None``）时补当前 UTC ISO 串，已提供原样返回。
 
     背景：两端曾各自兜底——SQLite 靠列默认值 ``DEFAULT CURRENT_TIMESTAMP`` 产出
     ``"2026-10-08 12:00:00"``（空格分隔、无时区），内存后端写入方不传则整字段为 ``None``，
@@ -53,12 +53,12 @@ def utc_now_iso_if_missing(raw: str | None) -> str:
 class KnowledgeBackend(Protocol):
     """知识库统一接口（内存 / SQLite 实现均遵循）。
 
-    Phase 5 A 语义化新增：
+    语义化检索能力：
     - find_by_repair_key：L1 精确命中（确定性 repair_key）。
     - find_semantic：L3 按 page_fingerprint 分桶 → numpy 余弦相似度。
     - bump_hit / set_verified：防污染衰减与人工审核（命中递增、verified 标记）。
-    A3 门面：query(RepairQuery) 收敛「L1 精确 → 旧式检索」的择优（置信度/缓存验证留调用方）。
-    M4：补齐 count_repairs / close 声明——两端实现本就有，Protocol 缺声明会让
+    统一检索入口：query(RepairQuery) 收敛「L1 精确 → 旧式检索」的择优（置信度/缓存验证留调用方）。
+    补齐 count_repairs / close 声明——两端实现本就有，Protocol 缺声明会让
     orchestrator._safe_close 的 getattr 探测静默跳过（资源不释放、无任何日志）。
     """
 

@@ -4,11 +4,11 @@ get_llm_for_settings / get_vision_for_settings 集中做四级检查
 （enabled → API key → provider 已注册 → SDK 可导入），全部通过才实例化客户端；
 任一步不满足返回 None，使 agent 层完全不感知 provider 细节。
 
-2026-10-08 审查修复（H4/G1）：
-- 每个 `return None` 都带**可区分原因**的 warning（此前五类故障静默收敛成同一个 None，
+实现要点：
+- 每个 `return None` 都带**可区分原因**的 warning（否则多类故障静默收敛成同一个 None，
   唯一线索是报告里 llm_calls=0）；只打印环境变量**名**，绝不打印值。
-- provider 未注册改为先查注册表再构建（不再用 KeyError 做控制流，避免吞掉内部 KeyError）。
-- H3/H5：timeout_s / max_tokens / max_retries / max_image_bytes 全部由配置透传。
+- provider 未注册先查注册表再构建（不用 KeyError 做控制流，避免吞掉内部 KeyError）。
+- timeout_s / max_tokens / max_retries / max_image_bytes 全部由配置透传。
 """
 
 from __future__ import annotations
@@ -63,11 +63,11 @@ def get_llm_for_settings(settings: Settings, *, stats: dict | None = None) -> LL
             model=llm_cfg.model,
             base_url=llm_cfg.base_url,
             temperature=llm_cfg.temperature,
-            timeout_s=llm_cfg.timeout_s,  # H3：超时/上限/重试均可配置
+            timeout_s=llm_cfg.timeout_s,  # 超时/上限/重试均可配置
             max_tokens=llm_cfg.max_tokens,
-            max_tokens_field=llm_cfg.max_tokens_field,  # L9：输出上限字段名可按模型族切换
+            max_tokens_field=llm_cfg.max_tokens_field,  # 输出上限字段名可按模型族切换
             max_retries=0,  # T24：SDK 重试关闭，统一由 resilience 层接管（防双层重试）
-            provider=llm_cfg.provider,  # M1：异常信息带 provider，便于定位 key/端点错配
+            provider=llm_cfg.provider,  # 异常信息带 provider，便于定位 key/端点错配
         )
         return wrap_llm_client(raw, llm_cfg, stats=stats)
     except UnavailableError as exc:  # SDK 缺失 / 不可用
@@ -105,10 +105,10 @@ def get_vision_for_settings(
             api_key=api_key,
             model=vcfg.model,
             base_url=vcfg.base_url,
-            timeout_s=vcfg.timeout_s,  # T23：plus 级模型响应慢，超时/上限可配置
+            timeout_s=vcfg.timeout_s,  # plus 级模型响应慢，超时/上限可配置
             max_tokens=vcfg.max_tokens,
             max_retries=0,  # T24：SDK 重试关闭，统一由 resilience 层接管
-            max_image_bytes=vcfg.max_image_bytes,  # H5：图片体积护栏
+            max_image_bytes=vcfg.max_image_bytes,  # 图片体积护栏
             provider=vcfg.provider,
         )
         return wrap_vision_client(raw, vcfg, stats=stats)

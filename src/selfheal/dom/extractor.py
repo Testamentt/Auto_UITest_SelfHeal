@@ -1,7 +1,8 @@
-"""失败元素上下文提取子模块（A5 拆包）——live → snapshot → static 三级回退。
+"""失败元素上下文提取子模块——live → snapshot → static 三级回退。
 
 原 agent/dom.py 按职责拆分而来（见 dom/__init__.py 导出）。
-全程 try-catch，**绝不先炸**；提取失败返回空上下文（调用方据此跳过 L1/L3，降级 L4）。
+全程 try-catch，**绝不先炸**；提取失败返回空上下文（调用方据此跳过 L1 精确键 / L3 语义检索，
+降级 L4 视觉）。
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from dataclasses import dataclass, field
 
 # live evaluate 提取失败时的 JS 兜底：取兄弟文本上限 / 标签路径深度
 # 用占位符 + .replace 注入常量（避免 %-format / f-string 与 JS 花括号冲突）
-# v2（2026-08-05）：路径深度 4→8 且带 nth-of-type 索引，支撑 L1 键去文本化后仍能区分同路径兄弟
+# 路径格式 v2：路径深度 4→8 且带 nth-of-type 索引，支撑 L1 键去文本化后仍能区分同路径兄弟
 _MAX_SIBLINGS = 5
 _MAX_PATH_DEPTH = 8
 
@@ -63,7 +64,7 @@ _LIVE_JS = (
 
 @dataclass
 class ElementContext:
-    """一次失败元素的三级提取上下文（Phase 5 A：L1/L3 查询输入源）。
+    """一次失败元素的三级提取上下文（L1/L3 查询输入源）。
 
     - text: 元素文本（含嵌套子元素文本，与 parse_interactive_elements 语义一致）。
     - tag_path: 标签路径摘要（html>body>...>button，用于页面内定位与 repair_key）。

@@ -1,8 +1,8 @@
-"""稳定定位器生成子模块（A5 拆包）——data-testid > id > 文本 > aria-label 优先级链。
+"""稳定定位器生成子模块——data-testid > id > 文本 > aria-label 优先级链。
 
 原 agent/dom.py 按职责拆分而来（见 dom/__init__.py 导出）。
 
-2026-10-08 审查修复（M11）：属性/文本值统一转义（含引号）——此前值里带 `"` 会生成非法选择器
+属性/文本值统一转义（含引号）：值里带 `"` 会生成非法选择器
 （CSS 属性选择器直接解析报错）；换行折成空格，避免 text 选择器跨行失配。
 实测语义（Playwright）：`text="关闭"` 是**精确匹配**（整串相等、大小写敏感），`text=关闭` 才是
 子串匹配——本模块产出带引号形式，故不会把"关闭"扩大到"关闭订单"。
@@ -14,7 +14,7 @@ import re
 
 from selfheal.dom.parser import Element
 
-# 可安全用作 CSS id 选择器的字符集（其余走属性选择器，防特殊字符破坏 CSS，审查 nit）
+# 可安全用作 CSS id 选择器的字符集（其余走属性选择器，防特殊字符破坏 CSS）
 _SAFE_ID_RE = re.compile(r"[\w-]+")
 
 

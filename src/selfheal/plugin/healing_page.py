@@ -1,4 +1,4 @@
-"""自愈 Page 代理 —— 插件装配层（M10-②）。
+"""自愈 Page 代理 —— 插件装配层（D19）。
 
 `HealingPage` 是自愈插件的**组合根**：开启时构建知识库 → 编排器（orchestrator 及其协作者）
 → 弹窗处理，并把这些资源的所有权（owns 标记）与释放义务收口在 `close()`。
@@ -6,7 +6,7 @@
 
 **位置约束**：本模块属 plugin 层（可依赖 engine + agent + knowledge + reporting）。
 此前它住在 `engine/healing_locator.py`，使 engine 在 import 期反向拉起 agent / knowledge /
-reporting（评审 M10 分层倒置）；上移后 engine 只留原语。
+reporting（D19 分层倒置）；上移后 engine 只留原语。
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ class HealingPage:
     仅扩展 locator()（增加 description / fallback 两个自愈增强参数），其余 API 全部透传。
     POM 面向 Page 接口编写，开关自愈都能跑；enabled=False 时行为与原生 Page 一致。
 
-    **自愈边界（L2：请按此预期使用，勿把"POM 无缝切换"读成"全部 API 都自愈"）**：
+    **自愈边界（请按此预期使用，勿把"POM 无缝切换"读成"全部 API 都自愈"）**：
     - **会自愈**：自愈入口只有 `HealingPage.locator(sel, description=…, fallback=…)`，
       以及它返回的 HealingLocator 上的：① HEALABLE 动作（click / fill / hover / press 等）；
       ② 链式定位（`locator()` / `get_by_*` / `first` / `last` / `nth` / `filter`）——
@@ -63,7 +63,7 @@ class HealingPage:
         self._settings = settings
         self._enabled = settings.healing.enabled if enabled_override is None else enabled_override
         self._reporter = reporter or HealingReporter()
-        # H2（2026-10-08 审查）：自建的知识库由本实例负责关闭——此前把同一个对象交给
+        # 自建的知识库由本实例负责关闭——此前把同一个对象交给
         # orchestrator 后，orchestrator 视其为"注入资源"（owns=False）而不关闭，
         # HealingPage.close() 也只关 orchestrator → SQLite 连接随每个页面实例泄漏。
         self._owns_knowledge = False
@@ -92,7 +92,7 @@ class HealingPage:
         """释放自愈资源（orchestrator 自建的 LLM/VLM 客户端 + 本实例自建的知识库连接）。
 
         注入的 knowledge 由注入方负责；关闭后本实例不可再用于自愈。幂等。
-        同时由 orchestrator 级联摘除采集器挂在页面上的网络监听（L3 生命周期收口）。
+        同时由 orchestrator 级联摘除采集器挂在页面上的网络监听（生命周期收口）。
         """
         if self._orchestrator is not None:
             self._orchestrator.close()
@@ -110,7 +110,7 @@ class HealingPage:
     ) -> HealingLocator:
         """返回自愈定位器。description / fallback 为自愈增强参数（关闭时被接受但忽略）。
 
-        边界（L2）：自愈只覆盖本方法返回的 HealingLocator 及其链式派生对象（HEALABLE 动作
+        边界：自愈只覆盖本方法返回的 HealingLocator 及其链式派生对象（HEALABLE 动作
         + 链式定位）。`page.get_by_*`、`page.click(selector)`、`page.fill(selector, …)`、
         `page.expect_*` 与模块级 `expect(...)` 断言**均不自愈**（原样透传，原生超时直接
         抛出）；需要自愈请统一写成 `page.locator(sel).<action>()`。
@@ -129,7 +129,7 @@ class HealingPage:
         )
 
     def __getattr__(self, name: str) -> Any:
-        # L1：与 HealingLocator 同源的代理递归风险——内部字段未就绪（构造中途 / 拷贝协议
+        # 与 HealingLocator 同源的代理递归风险——内部字段未就绪（构造中途 / 拷贝协议
         # 探测 `__setstate__` 等）时若写成 `self._page`，会再次进入 __getattr__ 无限递归。
         try:
             page = object.__getattribute__(self, "_page")

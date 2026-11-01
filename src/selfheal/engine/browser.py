@@ -2,7 +2,7 @@
 
 统一管理浏览器 / 上下文 / 页面的生命周期。BrowserConfig（headless/channel/slow_mo/viewport）已接入。
 
-2026-10-08 审查修复（M7/A2）：
+**异常安全与资源清理**：
 - `__enter__` 内 `sync_playwright().start()` 成功后若 `launch()` 抛错，此前 `__exit__` 永不执行
   → Playwright 的 node 驱动子进程与管道泄漏（CI 未装 Chrome 属高频场景）。现改为失败即清理再上抛。
 - `__exit__` 幂等：清理后把内部引用置 None，重复退出不再重复 stop。

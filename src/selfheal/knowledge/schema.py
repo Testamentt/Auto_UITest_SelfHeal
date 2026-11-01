@@ -1,6 +1,6 @@
 """知识库数据模型。
 
-`PopupFeature` 的定义位于中立契约层 `selfheal.contracts`（M10-③）：它的产出方是
+`PopupFeature` 的定义位于中立契约层 `selfheal.contracts`（D19 分层倒置修复）：它的产出方是
 engine 层的 `popup_guard`，持久化方是 knowledge 层——DTO 留在 knowledge 会让 engine
 反向依赖 knowledge（分层倒置）。本模块保留 re-export，
 `from selfheal.knowledge.schema import PopupFeature` 继续可用（零破坏）。
@@ -19,7 +19,7 @@ __all__ = ["PopupFeature", "RepairCase", "RepairQuery"]
 class RepairCase:
     """一条修复案例：原定位器 -> 新定位器。
 
-    Phase 5 A 语义化扩展字段：
+    语义化扩展字段：
     - page_fingerprint: URL 路径 + 关键 DOM 结构哈希（页面隔离，防跨页误修复）。
     - repair_key: md5(page_fingerprint + 元素文本 + 标签路径)，L1 精确命中键（确定性哈希）。
     - embedding / embedding_version: 本地向量（BLOB）与版本（迁移用）。
@@ -46,7 +46,7 @@ class RepairCase:
 
 @dataclass(frozen=True)
 class RepairQuery:
-    """一次修复案例检索请求（A3 门面）。
+    """一次修复案例检索请求（统一检索入口）。
 
     repair_key 提供时优先 L1 精确命中；未提供或未命中则按 original_selector + dom_fingerprint
     旧式检索。置信度/缓存验证等编排决策保留在调用方（FixGenerator）。
