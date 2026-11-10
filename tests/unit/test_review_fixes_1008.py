@@ -1,6 +1,6 @@
 """单元测试：2026-10-08 代码审查修复回归（H1/H2/H3/M2/M6/M7/M9/M11/L6 + 配置值域）。
 
-每条用例标题都带发现项编号，便于与 `docs/reviews/2026-10-08-code-review.md` 对齐。
+每条用例标题都带发现项编号，便于与 `docs/archive/reviews/2026-10-08-code-review.md` 对齐。
 不依赖浏览器（engine 侧一律用 fake page / fake playwright）。
 """
 
@@ -520,7 +520,7 @@ class _OrchStub:
 
 # --- L6：embedding 不可比较 → 调用方短路（检索侧 / 写入侧） ---
 #
-# 背景（docs/backlog/low-priority.md §一 L6）：空文本会产出退化向量（余弦未定义），
+# 背景（docs/archive/backlog/low-priority.md §一 L6）：空文本会产出退化向量（余弦未定义），
 # `llm/embedding.py` 起把这种向量标为"不可比较"（空 bytes 标记，另有 `is_comparable()`）；
 # 调用方必须短路，否则 L3 白跑一次检索、写入侧还会把零长/全零 BLOB 落进知识库。
 # 队列第 03 条落地 `is_comparable()` 之前，调用方按"有无该方法"两条路径都要成立。

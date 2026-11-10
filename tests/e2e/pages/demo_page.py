@@ -1,6 +1,6 @@
 """演示页的页面对象（POM，继承 BasePage）。
 
-关键设计（呼应你的第 1 点）：本 POM 只依赖 Page 接口。注入 HealingPage（开）或
+关键设计：本 POM 只依赖 Page 接口。注入 HealingPage（开）或
 强制关闭的 HealingPage（关）都能运行同一份代码——区别仅在于开时会自动自愈、
 关时失效定位器直接抛超时。description / fallback 为自愈增强参数。
 """

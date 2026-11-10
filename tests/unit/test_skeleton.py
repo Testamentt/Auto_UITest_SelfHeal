@@ -6,7 +6,7 @@ from selfheal.config import Settings, load_settings
 from selfheal.knowledge.schema import RepairCase
 from selfheal.knowledge.store import KnowledgeStore
 
-pytestmark = pytest.mark.unit  # 见 RULE.md R2 配套约定
+pytestmark = pytest.mark.unit  # 测试分层配套约定
 
 
 def test_default_settings():

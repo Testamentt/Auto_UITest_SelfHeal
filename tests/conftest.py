@@ -1,4 +1,4 @@
-"""pytest 公共 fixture（见 RULE.md R2：测试分层）。
+"""pytest 公共 fixture（测试分层）。
 
 - `-m unit`：单元测试，不依赖浏览器 / 网络（不请求下方浏览器 fixture）。
 - `-m e2e`：集成 / 端到端测试，使用 healing_page / disabled_page（需要浏览器内核）。
@@ -169,7 +169,7 @@ def browser_manager(settings):
 
 @pytest.fixture
 def context(browser_manager, settings, request):
-    """函数级浏览器上下文（基座标准，见 docs/plans/2026-08-05-base-framework.md B3）。
+    """函数级浏览器上下文（基座标准，见 docs/archive/plans/2026-08-05-base-framework.md B3）。
 
     开启 trace 时录制；teardown 保存 trace 并关闭上下文（修复 context 泄漏，评审 #25）。
     trace 开关：CLI --trace-healing/--no-trace-healing > settings.browser.trace。
@@ -203,7 +203,7 @@ def _attach_trace_to_allure(trace_path) -> None:
 
 @pytest.fixture
 def page(context):
-    """函数级原生页面（基座标准，见 docs/plans/2026-08-05-base-framework.md B3）。
+    """函数级原生页面（基座标准，见 docs/archive/plans/2026-08-05-base-framework.md B3）。
 
     有意覆盖 pytest-playwright 自带的 page fixture——本框架用自研 BrowserManager 控制生命周期。
     """
