@@ -124,7 +124,7 @@ def test_dom_fingerprint_stable_and_distinct():
     assert dom_fingerprint("<html><body><div>text</div></body></html>") is None
 
 
-# --- 2026-09-03 子代理复核（V5）修复点回归 ---
+# --- 2026-09-03 独立复核（V5）修复点回归 ---
 
 
 def test_add_repair_preserves_verified_on_upsert(tmp_path):

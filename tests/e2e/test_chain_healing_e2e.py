@@ -1,7 +1,7 @@
 """端到端测试：链式定位自愈（M15-3，需浏览器内核，-m e2e）。
 
 补 `tests/unit/test_chain_healing.py` 的缺口：单测用自写 fake 验证链记录 / 重放 / 二次修叶子的
-**逻辑**；本文件在真实 Playwright 页面上验证同一语义端到端成立（RULE.md R2 要求单测 + 集成双覆盖）。
+**逻辑**；本文件在真实 Playwright 页面上验证同一语义端到端成立（unit + e2e 双覆盖要求）。
 
 演示页构造（见 `pages/demo_page.html`）：外层 `#panel` 是稳定"根"（容器，页面里真实存在），
 内层 `#inner-btn-old` 是**已失效**的旧 id（页面里不存在），真实按钮为 `#inner-btn-v2`（文本"面板按钮"）。

@@ -1,4 +1,4 @@
-"""单元测试：低优先级清单（docs/backlog/low-priority.md §一）engine 层修复。
+"""单元测试：低优先级清单（docs/archive/backlog/low-priority.md §一）engine 层修复。
 
 用例命名对应清单条目（L1/L2…），便于"条目 ↔ 用例"双向检索：
 - L1：代理对象（HealingLocator / HealingPage）在内部字段未初始化时不递归，按属性缺失处理；

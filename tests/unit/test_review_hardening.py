@@ -1,4 +1,4 @@
-"""单元测试：2026-09-03 子代理复核（V4/V5）修复点回归覆盖。
+"""单元测试：2026-09-03 独立复核（V4/V5）修复点回归覆盖。
 
 覆盖：orchestrator 构造失败清理 / 豁免记录 verified=False / _safe_close 日志、
 VLM close() 生命周期对齐、semantic._bump 非静默吞错。

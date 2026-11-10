@@ -1,6 +1,6 @@
 """R5 回归：语义 LLM 段的「意图依据闸门」（描述与页面候选的交叉校验）。
 
-来源：docs/backlog/low-priority.md §三 R5 —— 视觉段有 C4 融合降权（`visual.py` 用
+来源：docs/archive/backlog/low-priority.md §三 R5 —— 视觉段有 C4 融合降权（`visual.py` 用
 `score_selector` 的 L2 分做交叉校验），语义 LLM 段此前没有，导致真实模型对**与页面完全无关
 的描述**（`#ghost-btn-old` + `zzz_不存在的描述`）也高置信采纳一个候选（点到 `#ghost-btn`），
 使"故意不可自愈 → 走兜底"的场景失效。
