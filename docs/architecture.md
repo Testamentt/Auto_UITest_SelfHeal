@@ -2,7 +2,7 @@
 
 > **定位**：AutoAiSelfHeal 的架构与**关键设计决策**（实现细节以 `src/selfheal/` 为准）。
 > **状态**：技术文档（事实源，参与文档双轨）
-> **最后更新**：2026-10-08 · 关联：[README.md](../README.md) 项目展示 · [roadmap.md](roadmap.md) 决策编号 D1–D17 · [TODO.md](TODO.md) 任务清单
+> **最后更新**：2026-11-10 · 关联：[README.md](../README.md) 项目展示 · [roadmap.md](roadmap.md) 决策编号 D1–D17 · [TODO.md](TODO.md) 任务清单
 
 AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」的智能自愈闭环，架设在 Playwright 执行引擎之上。
 
@@ -78,6 +78,11 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
   统一继承 `UnavailableError` 以保持既有降级契约；错误信息带 provider / model / 端点主机（**不含密钥**）。
 - **弹窗关闭的作用域与信号分级（2026-10-08）**：知识命中的关闭点击**限定在弹窗容器内**；
   候选按"强信号（整串等于关闭类标签）优先、弱信号（子串命中，如"关闭订单"）兜底"分级，降低误点业务控件风险。
+- **模型调用韧性（T24，2026-11-10）**：瞬态故障（429 / 超时 / 5xx / 连接失败）按 `llm.retry` 指数退避重试，
+  连续 `circuit_breaker.failure_threshold` 次逻辑调用失败后打开熔断（冷却后半开单探针）；熔断期间抛
+  `CircuitOpenError`（`UnavailableError` 子类）直接走既有降级链。Fatal（401/403/400/404）不重试、不参与熔断计数。
+  **SDK 自带重试固定关闭**（`llm/factory.py` 传 `max_retries=0`），避免本层与 SDK 叠加成 3×3=9 次付费调用；
+  熔断状态为单进程（xdist 各 worker 独立）；重试 / 熔断计数进 `reporter.stats`，成本按**真实尝试次数**估算。
 - **配置集中**：`src/selfheal/config.py` 用 pydantic 统一加载与严格校验（`extra='forbid'` 全层下发）；
   密钥只存环境变量名，`.env` 已 gitignore。
 
@@ -94,6 +99,7 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 | **高风险页** | 支付 / 强授权 / 审计页误改代价高 | `healing.exclude_url_patterns` 命中即不触发自愈；`healing.dry_run` 仅报告不执行（T13 / T14） |
 | **闭环** | 须有闸门与人审习惯 | 见下节 |
 | **模型不可用** | 无 key / 端点错配时能力静默消失 | 降级保留（诊断退规则式、语义 / 视觉跳过），但**每个降级点记 warning 说明原因**（2026-10-08 起） |
+| **模型端点限流 / 故障** | 瞬态抖动导致自愈误判失败；持续故障让每条用例空转重试（CI 被拖死） | T24：仅瞬态重试（指数退避）+ 三态熔断；熔断后毫秒级降级。模拟演示：15 次自愈等待 31.53s → 6.31s（-80%，`scripts/resilience_demo.py`） |
 
 ### 闸门与人审
 
@@ -110,7 +116,8 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 T19 通知基建（cron 未启用）；T20 A/B 对比实证；T21 xdist 并行（分片聚合 + SQLite WAL）；
 T22 草稿 PR；T23 ERP 迁移；**2026-10-08 加固**（H1–H6 / M1–M16：模型层护栏与异常分级、弹窗作用域、
 资源所有权、暂存与幂等窗口、知识库双后端语义对齐、CI 门禁补齐、人审入口脚本）；
-**2026-10-10 收尾**（L1–L20 工程细节、M10 分层倒置修复、M15-3 链式自愈 e2e、R1–R5 残余项、R5 语义意图闸门）。
+**2026-10-10 收尾**（L1–L20 工程细节、M10 分层倒置修复、M15-3 链式自愈 e2e、R1–R5 残余项、R5 语义意图闸门）；
+**2026-11-10 韧性层**（T24：指数退避重试 + 三态熔断、SDK 重试关闭、成本按真实尝试计、假 provider e2e）。
 
 **仍规划**（明细见 [TODO.md](TODO.md) 与 [backlog/low-priority.md](backlog/low-priority.md)）：
 iframe / Shadow DOM 自愈评估 spike；自愈指标跨运行时间序列；T19 定时回归 cron；T20 A/B 实证报告与 T21 `-n 2` e2e 收官；

@@ -2,7 +2,7 @@
 
 > **定位**：面向 AI 协作者（Claude Code 等）的项目上手说明——规则索引、常用命令、分层速览、开发约定。
 > **状态**：活文档（与实现同步；规则条款以 [RULE.md](RULE.md) 为准）
-> **最后更新**：2026-10-11 · 关联：[RULE.md](RULE.md) 规则源头 · [docs/README.md](docs/README.md) 文档地图
+> **最后更新**：2026-11-10 · 关联：[RULE.md](RULE.md) 规则源头 · [docs/README.md](docs/README.md) 文档地图
 
 本文件为 Claude Code（及其他 AI 协作者）提供本仓库的工作指引。
 
@@ -133,7 +133,7 @@ AutoAiSelfHeal/
 │   ├── contracts.py / dom/     #   中立层：DTO 与 DOM 解析/指纹（engine、collect 只许依赖它们）
 │   └── agent/ collect/ engine/ llm/ knowledge/ reporting/   # 其余分层
 ├── tests/                      # unit/（-m unit）与 e2e/（-m e2e），conftest.py 提供 fixture
-├── scripts/                    # ab_compare 对比 · verify_case 人审标记 · notify 通知 · propose_pr 草稿 PR
+├── scripts/                    # ab_compare 对比 · resilience_demo 韧性演示 · verify_case 人审标记 · notify 通知 · propose_pr 草稿 PR
 ├── docs/                       # 先读 docs/README.md（文档地图与写作规范）
 │   ├── README.md               #   文档地图 · 写作规范 · 双轨说明（唯一入口）
 │   ├── architecture.md         #   架构与关键决策（事实源，参与双轨）
@@ -151,13 +151,16 @@ AutoAiSelfHeal/
   模块均已实现并有 unit/e2e 双覆盖；新增代码遵循既有分层与命名，不要跨层直接耦合。
 - **分层铁律（M10 起有 AST 护栏用例）**：装配点只在 `src/selfheal/plugin/`；`engine/`、`collect/` 只许依赖
   `contracts.py` / `dom/` / `config`，**禁止** import `agent` / `knowledge` / `reporting`（改错会被 `tests/unit/test_layering.py` 拦下）。
-- 遗留与待办见 **`docs/TODO.md`**（唯一待办入口：T1–T23 状态、踩坑记录、候补池）。
+- 遗留与待办见 **`docs/TODO.md`**（唯一待办入口：T1–T24 状态、踩坑记录、候补池）。
   低优先级/延期项明细见 `docs/backlog/low-priority.md`；阶段与决策见 `docs/roadmap.md`。
 - **文档规范**：新增/修改文档前先读 `docs/README.md`（文档地图 + 写作规范 + 双轨说明）；
   `docs/sessions`、`docs/plans`、`docs/reviews` 是只读历史，不得修改。
 - **自愈是插件，不侵入框架**：经 pytest fixture 按 `settings.healing.enabled` / CLI `--selfheal` 提供；`HealingPage` 与原生 `Page` 接口兼容（代理），POM 代码开/关自愈都能跑；关闭时为原生 Page、零开销。不用 import 替换 / monkeypatch（见 roadmap.md 决策 D5）。
 - **兜底优先**：`locator(sel, fallback=...)`；AI 不确定（置信度 < 阈值）时按 `healing.on_uncertain` 处理，默认 `use_fallback`，无备用则 fail（决策 D6）。
 - 新增模型能力一律走 `llm/` 抽象 + `registry` 注册，provider 相关配置放进 `config/settings.yaml`。
+- **模型调用韧性统一在 `llm/resilience.py`**（T24）：新增 provider 不各自实现重试；瞬态故障按配置指数退避、
+  连续失败熔断（`CircuitOpenError` 走既有降级），Fatal 不重试。**SDK 自带重试固定关闭**（`max_retries=0`），
+  否则与本层叠加成 3×3 次付费调用。熔断状态为单进程（xdist 各 worker 独立）。
 - 修复策略是**可插拔**的：新策略继承 `agent/strategies/base.py`，由 orchestrator 按置信度/成本排序调度。
 - 配置通过 `src/selfheal/config.py` 用 pydantic 加载校验，不要在模块里散落读取环境变量。
 - 自愈资源（知识库连接 / LLM 客户端）经 `HealingPage.close()` / `SelfHealOrchestrator.close()` 释放；注入的资源由注入方负责关闭。

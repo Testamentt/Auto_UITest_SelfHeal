@@ -45,10 +45,12 @@ def test_ready_returns_client(monkeypatch):
 
 
 def test_config_reaches_client(monkeypatch):
-    """H3：timeout_s / max_tokens / max_retries 由配置透传到客户端（此前硬编码且不可配）。"""
+    """H3/T24：超时/上限/重试由配置透传；重试归韧性层，SDK 侧固定 0（防双层重试）。"""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     client = get_llm_for_settings(_settings(timeout_s=42.5, max_tokens=1234, max_retries=0))
-    assert (client._timeout_s, client._max_tokens, client._max_retries) == (42.5, 1234, 0)
+    inner = client.inner_client  # T24：工厂返回韧性包装（max_retries=0 但熔断默认开启）
+    assert (inner._timeout_s, inner._max_tokens, inner._max_retries) == (42.5, 1234, 0)
+    assert client.retry_policy.max_retries == 0
 
 
 @pytest.mark.parametrize(
@@ -77,10 +79,12 @@ def test_vision_unavailable_reason_is_logged(monkeypatch, caplog):
 
 
 def test_vision_config_reaches_client(monkeypatch):
-    """H5/M1：图片护栏与重试次数同样由配置透传。"""
+    """H5/M1/T24：图片护栏由配置透传；重试次数归韧性层，SDK 侧固定 0。"""
     monkeypatch.setenv("DASHSCOPE_API_KEY", "sk-test")
     settings = Settings()
     settings.vision.max_image_bytes = 4096
     settings.vision.max_retries = 1
     client = get_vision_for_settings(settings)
-    assert (client._max_image_bytes, client._max_retries) == (4096, 1)
+    inner = client.inner_client
+    assert (inner._max_image_bytes, inner._max_retries) == (4096, 0)
+    assert client.retry_policy.max_retries == 1

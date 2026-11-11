@@ -91,13 +91,18 @@ class SelfHealOrchestrator:
             self._owns_knowledge = knowledge is None  # 注入的资源由注入方负责关闭
             self._reporter = reporter or HealingReporter()
             # LLM 可用才构建；缺省时按配置判定，不可用则 None（降级回规则式 / 跳过语义策略）
+            # T24：stats 透传给韧性层——重试/熔断计数进成本口径（attempts 为真实调用次数）
             self._llm_client = (
-                llm_client if llm_client is not None else get_llm_for_settings(settings)
+                llm_client
+                if llm_client is not None
+                else get_llm_for_settings(settings, stats=self._reporter.stats)
             )
             self._owns_llm = llm_client is None
             # VLM 可用才构建；不可用则 None（视觉策略返回 None 被跳过）
             self._vision_client = (
-                vision_client if vision_client is not None else get_vision_for_settings(settings)
+                vision_client
+                if vision_client is not None
+                else get_vision_for_settings(settings, stats=self._reporter.stats)
             )
             self._owns_vision = vision_client is None
             # Embedding 可用才构建；不可用则 None（L1/L3 语义检索被跳过，零回归）

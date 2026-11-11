@@ -24,7 +24,7 @@
 
 > **定位**：项目对外展示页（GitHub 首页 / 面试讲解底稿）。
 > **状态**：技术文档（事实源，参与文档双轨；改动须同步学习版镜像，见 [docs/README.md](docs/README.md)）
-> **最后更新**：2026-10-08 · 关联：[docs/architecture.md](docs/architecture.md) 架构 · [docs/roadmap.md](docs/roadmap.md) 路线 · [docs/TODO.md](docs/TODO.md) 待办
+> **最后更新**：2026-11-10 · 关联：[docs/architecture.md](docs/architecture.md) 架构 · [docs/roadmap.md](docs/roadmap.md) 路线 · [docs/TODO.md](docs/TODO.md) 待办
 
 ## 项目预览
 
@@ -72,6 +72,8 @@ UI 自动化测试有两大顽疾：**脚本脆弱**——强依赖 ID/XPath 定
 - **修复写回人审** — 成功修复输出「原 → 新」PR 化建议清单；CI 自动开草稿 PR，只审不合。
 - **真自愈 vs flaky** — 修复后原定位器仍失效 = 真修复，已自行恢复 = flaky 侥幸，看板分开统计不掺水。
 - **成本看板** — LLM/VLM 调用次数与估算费用汇总，多模态花钱心里有数。
+- **模型端点韧性（T24）** — 瞬态故障（429 / 超时 / 5xx）按指数退避重试，连续失败自动熔断、毫秒级降级；
+  Fatal（401/403 等配置错误）不重试不熔断；模拟演示 15 次自愈等待 31.5s → 6.3s（`scripts/resilience_demo.py`）。
 
 ### 📊 全链路证据与可观测
 
@@ -253,7 +255,7 @@ AutoAiSelfHeal/
 ├── tests/
 │   ├── unit/                    # 单元测试（CI 门禁，不依赖浏览器）
 │   └── e2e/                     # 端到端测试（自愈闭环 / 弹窗 / ERP 等）
-├── scripts/                     # A/B 对比 / 人审标记 / 通知 / 草稿 PR
+├── scripts/                     # A/B 对比 / 韧性演示 / 人审标记 / 通知 / 草稿 PR
 ├── docs/                        # 先读 docs/README.md（文档地图）：architecture / roadmap / TODO / backlog
 └── .github/workflows/ci.yml     # CI：unit 门禁 → e2e → 报告发布 / 草稿 PR / 告警
 ```
@@ -264,6 +266,7 @@ AutoAiSelfHeal/
 | :--- | :--- |
 | 提示找不到 Chrome，或想用 Chromium | `playwright install chromium`，并把 `config/settings.yaml` 的 `browser.channel` 改为 `chromium` |
 | 模型报 `AuthenticationError` / 401 | key 与端点不同平台。核对 `config/settings.yaml` 的 `llm.base_url` / `llm.model` 是否与 `api_key_env` 指向的密钥同属一家（旧版报错只显示异常类名，2026-10-08 起会打印 provider / model / 端点主机） |
+| 模型端点限流 / 超时怎么办 | T24 自动处理：仅瞬态故障（429 / 超时 / 5xx）按 `llm.retry` 指数退避重试，连续失败后 `llm.circuit_breaker` 熔断并走既有降级链；401 等配置错误不重试。关闭重试把 `llm.max_retries` 设为 0，关闭熔断把 `circuit_breaker.enabled` 设为 false |
 | 视觉策略从不生效 | 看日志是否有"截图超过 `max_image_bytes` 且无法压缩"——装 `pillow`（`pip install -e ".[llm]"`）或调大 `vision.max_image_bytes` |
 | 没配 API Key 能跑吗 | 能。诊断退规则式，语义与视觉策略跳过；启发式、知识库复用与 fallback 照常工作 |
 | 定位失败但没触发自愈 | 检查是否带 `--selfheal`（或 `settings.healing.enabled: true`）；确认 URL 未命中 `healing.exclude_url_patterns` 豁免 |

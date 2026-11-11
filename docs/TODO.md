@@ -2,7 +2,7 @@
 
 > **定位**：全项目**唯一待办入口**——待办、已完成存档、踩坑记录、候补与落选理由都在这里。
 > **状态**：活文档（随进展勾选/更新，R5）
-> **最后更新**：2026-10-08 · 关联：[roadmap.md](roadmap.md) 阶段与决策 · [backlog/low-priority.md](backlog/low-priority.md) 低优先明细 · [reviews/2026-10-08-fix-report.md](reviews/2026-10-08-fix-report.md) 最近一轮修复
+> **最后更新**：2026-11-10 · 关联：[roadmap.md](roadmap.md) 阶段与决策 · [backlog/low-priority.md](backlog/low-priority.md) 低优先明细 · [reviews/2026-10-08-fix-report.md](reviews/2026-10-08-fix-report.md) 最近一轮修复
 > 图例：⬜ 待办 · 🟡 进行中 · ✅ 完成 · 🔴 阻断项 · 🟠 部分完成
 > 历史来源：[reviews/2026-08-04-phase3-retrospective.md](reviews/2026-08-04-phase3-retrospective.md)、[reviews/2026-08-15-code-review.md](reviews/2026-08-15-code-review.md)、[reviews/2026-09-03-code-review.md](reviews/2026-09-03-code-review.md)、[reviews/2026-10-08-code-review.md](reviews/2026-10-08-code-review.md)
 
@@ -246,6 +246,18 @@
     qwen3-vl-flash → **qwen3-vl-plus**（备选 qwen3.8-flash）；`VisionConfig` 增
     `timeout_s=60` / `max_tokens=1000` 可配置（plus 响应慢于 flash，原 20s/500 曾致
     VLM 调用超时/截断而自愈失败）——修正后 ERP 自愈场景恢复 PASSED（23.51s）
+
+- [x] **T24 · 模型调用韧性：指数退避重试 + 三态熔断**（难度 ★★☆ / 回报 ★★★★）✅ 2026-11-10
+  - 背景：`Fatal/Transient` 异常分级（2026-10-08）自落地起**没有消费者**；openai SDK 自带重试不可见、
+    不区分 Fatal/Transient，且与本层叠加会 3×3=9 次付费调用
+  - 实现：`llm/resilience.py`——`RetryPolicy`（指数退避/上限截断/full jitter）、三态 `CircuitBreaker`
+    （CLOSED/OPEN/HALF_OPEN、半开单探针、时钟注入）、`ResilientLLMClient`/`ResilientVisionClient`；
+    配置 `llm.retry` / `llm.circuit_breaker` / `vision.*`（默认开启，`max_retries=0` 即关重试）；
+    `factory` 固定向 SDK 传 `max_retries=0`；熔断异常 `CircuitOpenError` 继承 `UnavailableError`（零改动降级）
+  - 可观测：`llm_attempts/llm_retries/llm_circuit_open`、`vlm_*` 进 `reporter.stats`；成本按真实尝试计
+  - 边界：熔断状态为**单进程**（xdist 各 worker 独立）；失败计数按逻辑调用（非内部尝试）
+  - 验收：`pytest -m unit` 614 passed（新增 48）；`tests/e2e/test_resilience_e2e.py` 2 passed（假 provider，真浏览器）；
+    `scripts/resilience_demo.py`：15 次自愈等待 31.53s → 6.31s（-80%）、请求数 45 → 9
 
 - [ ] **T19 · 自愈回归通知 + 定时回归挂点**（难度 ★★☆ / 回报 ★★★★）🟠 部分完成 2026-08-31
   - ✅ 通知基建：`scripts/notify.py`——`build_summary`（成功率/真自愈率/策略分布/成本统计）
