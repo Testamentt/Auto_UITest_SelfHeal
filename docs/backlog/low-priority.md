@@ -60,7 +60,7 @@
 | L14 | `scripts/ab_compare.py` | 只校验 B 组非空；A 组为空时静默产出作废表格 | A/B 对称守卫 + "未运行"行数 >0 时报告追加 ⚠️ 告警行 |
 | L15 | `docs/TODO.md`、`README.md` | 用例计数漂移；README 的 `pytest -m e2e` 会带上 erp 用例 | 2026-10-08 文档治理轮已修（计数改见 `--collect-only`、README 补 `-m "e2e and not erp"`） |
 | L16 | `pyproject.toml` + e2e | `healing` marker 无人使用 → Allure"AI 自愈"分组永不出现 | 5 个自愈闭环 e2e 打 `pytestmark = [e2e, healing]`，并加"收集集合相等"用例 |
-| L17 | `.github/workflows/ci.yml` | 无 `timeout-minutes`（卡死最长 6h）、无 `concurrency`、action 未固定 | unit 15 / e2e 30 分钟 + 并发组 + `allure-report-action@v1.15`（已核实存在） |
+| L17 | `.github/workflows/ci.yml` | 无 `timeout-minutes`（卡死最长 6h）、无 `concurrency`、action 未固定 | unit 15 / e2e 30 分钟 + 并发组 + `allure-report-action@v1.15`（已核实存在）；**2026-11-11 M17**：该 Docker action 因基础镜像被 ECR 限流已移除（改 runner 直装 Allure CLI 2.46.2，publish 补 `timeout-minutes: 10`） |
 | L18 | `tests/conftest.py` session 级 `settings` | 读本机 gitignored 配置，e2e 结果依赖开发机状态 | e2e 层基线守卫：`dry_run` / `enabled=false` 且无 CLI 覆盖 → 立即 fail 并指出开关 |
 | L19 | `test_llm_smoke.py`、`test_visual_smoke.py` | 真实模型调用混在普通 e2e，常规跑会外呼付费模型 | 新增 `live` marker；CI 改 `-m "e2e and not erp and not live"` |
 | L20 | `reporting/allure_bridge.py` | `attach_file(type_name: str)` 拼错静默 False | `Literal` 白名单 + 运行期 warning（附可选值清单）；默认 ZIP 不变 |
@@ -95,7 +95,7 @@
 | R10 | `agent/strategies/semantic.py` 意图闸门 | 只拦"零依据"；"有依据但 LLM 选错元素"仍会放行（设计如此） | 用真实数据标定：把 l2 作第二输入接进 `agent/confidence.py` 的 `CALIBRATORS[KEY_SEMANTIC_LLM]`（落点已写进模块 docstring） |
 | R11 | `tests/e2e/test_ab_scenarios.py::ab_page` | 该 fixture 自建 `HealingPage` 未注入 trace provider → 仍走异常探测兜底（功能等价） | 补一行 provider 注入即可彻底消除探测 |
 | R12 | `docs/architecture.md`、`docs/roadmap.md` + 学习镜像 | M10 分层变更与 R5/M15-3 事实已写入源文档，学习版镜像需**同批**同步（R7.4） | ✅ 2026-10-21 已完成：镜像同步至源 `a4f8581`，提交 `d5bed37`（docs_study）——分层图/D19/待解决问题三处同步，印记统一 `a4f8581` |
-| R13 | `.github/workflows/ci.yml` | `notify` / `propose-pr` / `publish` 三个 job 仍无 `timeout-minutes`；`actions/*` 与 `peaceiris` 是 major tag（非精确 pin） | 下一轮 CI 加固时一并收紧 |
+| R13 | `.github/workflows/ci.yml` | `notify` / `propose-pr` 两个 job 仍无 `timeout-minutes`（`publish` 已于 2026-11-11 M17 补 10 分钟）；`actions/*` 与 `peaceiris` 是 major tag（非精确 pin） | 下一轮 CI 加固时一并收紧 |
 
 ## 六、开工前提醒
 

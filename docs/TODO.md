@@ -2,7 +2,7 @@
 
 > **定位**：全项目**唯一待办入口**——待办、已完成存档、踩坑记录、候补与落选理由都在这里。
 > **状态**：活文档（随进展勾选/更新，R5）
-> **最后更新**：2026-11-10 · 关联：[roadmap.md](roadmap.md) 阶段与决策 · [backlog/low-priority.md](backlog/low-priority.md) 低优先明细 · [reviews/2026-10-08-fix-report.md](reviews/2026-10-08-fix-report.md) 最近一轮修复
+> **最后更新**：2026-11-11 · 关联：[roadmap.md](roadmap.md) 阶段与决策 · [backlog/low-priority.md](backlog/low-priority.md) 低优先明细 · [reviews/2026-10-08-fix-report.md](reviews/2026-10-08-fix-report.md) 最近一轮修复
 > 图例：⬜ 待办 · 🟡 进行中 · ✅ 完成 · 🔴 阻断项 · 🟠 部分完成
 > 历史来源：[reviews/2026-08-04-phase3-retrospective.md](reviews/2026-08-04-phase3-retrospective.md)、[reviews/2026-08-15-code-review.md](reviews/2026-08-15-code-review.md)、[reviews/2026-09-03-code-review.md](reviews/2026-09-03-code-review.md)、[reviews/2026-10-08-code-review.md](reviews/2026-10-08-code-review.md)
 
@@ -137,6 +137,25 @@
     commit message**（含全角括号/引号嵌套）会被拆参（`fatal: Invalid path`），改用 `git commit -F <file>`；
     ③写后必做字节级断言（如 `"目标串".encode() in data`），控制台显示编码不可信（GBK 终端显示 UTF-8 恒乱码）
 
+- **2026-11-11 · CI publish 红：Allure Docker action 基础镜像被上游限流（ECR 429）**：
+  - 事故：main 推送后 unit / e2e / propose-pr 全绿，仅 `publish` 失败 → 整条 CI 判红。根因是 Docker 型
+    action `simple-elf/allure-report-action@v1.15` 的 Dockerfile 基础镜像
+    `public.ecr.aws/amazoncorretto/amazoncorretto:8` 拉取返回 `429 toomanyrequests: Data limit exceeded`，
+    Docker build 退避重试 3 次全挂——且镜像在 job 前置构建阶段就失败，checkout 都没跑、后续步骤全 skipped。
+    2026-10-21 四次 main 运行全部命中（前三次被 concurrency 取消），**非一次性抖动**
+  - 修复（M17，`.github/workflows/ci.yml`）：publish 改为 runner 直装 **Allure CLI 2.46.2**
+    （`actions/setup-java@v6` temurin 17 + GitHub Releases tgz，全程无 Docker 依赖）；job 名 / 产物 / 权限 /
+    `peaceiris@v4` 发布方式不变（站点根仍是报告，线上 URL 不变）
+  - 顺带修两处长期失效：①趋势数据源改读 `gh-pages/history`（原 action 从 `gh-pages/last-history` 播种，
+    而本仓库只发布报告本体 → `last-history` 从未存在，趋势每次被重置为单轮）；②`notify` 的 needs 补 publish
+    （此前 publish 挂掉不触发任何告警，本次事故即如此）
+  - 守卫：`*-result.json` 计数为 0 直接 `::error` 失败（download-artifact 匹配 0 个产物不报错、
+    `allure generate` 对空目录仍返回 0，否则空报告会覆盖线上并清掉历史）；gh-pages 存在但 `history/`
+    缺失时同样拒绝继续（避免趋势被清空）
+  - 验收：`ruff check` / `ruff format --check` 全绿；`pytest -m unit` 全绿（`test_low_priority_ci.py`
+    新增/改写 3 项守卫：非 Docker + 版本固定、空产物 / 历史守卫、notify 覆盖 publish）；
+    actionlint 0 findings；本地实跑 Allure 2.46.2：history 播种后 `history-trend.json` 1 → 2 条、executor 生效
+
 
 - [x] **T5 · 置信度归一化 / 按策略阈值**（P5）✅ 2026-08-28
   - 方案 C（计划确认）：`agent/confidence.py` 归一化层——`CALIBRATORS` 可插拔注册表 + `calibrate`，
@@ -211,6 +230,7 @@
     字段（**复用 T16 verified 布尔，不额外采集**）；trace zip 附件保留
   - CI 新增 `publish` job：合并 unit/e2e results → simple-elf/allure-report-action（历史趋势）
     → peaceiris 发布 **gh-pages**（分支已建：占位页 + .nojekyll）；仅 main 分支发布
+    （M17 × 2026-11-11：该 Docker action 已移除，改 runner 直装 Allure CLI，见「踩坑记录」）
   - 验收：`test_allure_bridge.py` 14 项单测（优先级/环境页/附件/降级分支）+ 本地
     `--alluredir` 实测（标签、自愈记录附件、环境页均落盘）+ 全量 unit/e2e 回归、ruff 全绿
 

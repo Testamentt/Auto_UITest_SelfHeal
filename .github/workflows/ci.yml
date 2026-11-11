@@ -146,7 +146,9 @@ jobs:
   notify:
     name: 回归通知（webhook）
     runs-on: ubuntu-latest
-    needs: [unit, e2e]
+    # M17：needs 补 publish——此前只有 unit/e2e，publish 挂掉时 failure() 为 false 且不在
+    # FAILED_JOBS 里，整条流水线变红却**没有任何告警**（2026-10-21 事故即如此）。
+    needs: [unit, e2e, publish]
     # 触发范围：失败必告警（仅 main，PR 不打扰）；定时回归启用后成功也发摘要
     # （github.event_name == 'schedule' 分支已预留）。WEBHOOK_URL 未配置 → 脚本自跳过。
     if: >-
@@ -172,6 +174,8 @@ jobs:
               needs.unit.result == 'failure' && 'unit' || ''
             }}${{
               needs.e2e.result == 'failure' && ', e2e' || ''
+            }}${{
+              needs.publish.result == 'failure' && ', publish' || ''
             }}
           CONCLUSION: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
         run: |
@@ -240,6 +244,8 @@ jobs:
     if: always() && github.ref == 'refs/heads/main'
     permissions:
       contents: write # peaceiris 推 gh-pages 必需——新仓库 GITHUB_TOKEN 默认 read-only，缺它 git push 即 128
+    # M17：补超时（此前只有 unit/e2e 有）——下载 / 生成 / 推送任一环节卡死不再白占 runner
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -251,7 +257,7 @@ jobs:
           path: allure-results
           merge-multiple: true
 
-      # 取 gh-pages 上的历史（allure-history）供趋势图拼接。
+      # 取 gh-pages 上的历史（history/）供趋势图拼接。
       # 首次发布 gh-pages 分支尚不存在 → checkout 必失败（exit 128）：
       # continue-on-error 容错跳过（本次无历史拼接，peaceiris 会自动创建 gh-pages，下次起趋势正常）
       - name: Checkout gh-pages (history)
@@ -261,16 +267,93 @@ jobs:
           path: gh-pages
         continue-on-error: true
 
-      - name: Generate Allure report
-        # L17：此前 `@master`（浮动分支，上游一改行为就直接影响发布）；v1.15 为
-        # GitHub API 核实存在的最新 release tag（2026-10 核实，含本步骤用到的全部 inputs）。
-        uses: simple-elf/allure-report-action@v1.15
-        id: allure
+      # M17（2026-11-11 修复）：此前用 Docker 类型 action simple-elf/allure-report-action@v1.15，
+      # 其 Dockerfile 基础镜像 public.ecr.aws/amazoncorretto/amazoncorretto:8 拉取被上游限流
+      # （HTTP 429 toomanyrequests: Data limit exceeded，退避重试 3 次全挂）→ publish 红、整条 main 流水线红。
+      # 改为 runner 上直装 Allure CLI（全程无 Docker 依赖），生成逻辑与原 action 等价且更透明。
+      - name: Setup Java (Allure CLI 运行时)
+        # 用 node24 runtime 的 v6（Allure CLI 只要求 Java ≥ 8，temurin 17 为 LTS 基线）
+        uses: actions/setup-java@v6
         with:
-          allure_results: allure-results
-          allure_history: allure-history
-          allure_report: allure-report
-          gh_pages: gh-pages
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Allure CLI
+        env:
+          # 固定版本：latest 漂移会静默改变报告结构（原 action 的 Dockerfile 用 2.44.0，本次一并升级）；
+          # 引号不可省：YAML 会把 2.46 这类两段版本静默解析成 float
+          ALLURE_VERSION: "2.46.2"
+        run: |
+          set -euo pipefail
+          curl -sSfL --retry 3 --retry-all-errors -o "$RUNNER_TEMP/allure.tgz" \
+            "https://github.com/allure-framework/allure2/releases/download/${ALLURE_VERSION}/allure-${ALLURE_VERSION}.tgz"
+          tar -xzf "$RUNNER_TEMP/allure.tgz" -C "$HOME"
+          echo "$HOME/allure-${ALLURE_VERSION}/bin" >> "$GITHUB_PATH"
+          # $GITHUB_PATH 只对后续 step 生效，本 step 用绝对路径校验版本
+          installed="$("$HOME/allure-${ALLURE_VERSION}/bin/allure" --version)"
+          [ "$installed" = "$ALLURE_VERSION" ] || { echo "::error::Allure 版本不符：$installed"; exit 1; }
+          echo "Allure CLI ${installed} 就绪（$HOME/allure-${ALLURE_VERSION}/bin）"
+
+      # M17 空结果守卫：download-artifact 的 pattern 匹配 0 个产物时**不报错**，
+      # 而 allure generate 对空目录也返回 0 → 空报告会被发上线并覆盖掉 gh-pages 上的历史。
+      - name: Guard empty results
+        run: |
+          set -euo pipefail
+          count="$(find allure-results -name '*-result.json' -type f | wc -l)"
+          echo "allure 结果文件：$count 个"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::allure-results 为空（unit / e2e 产物缺失），拒绝发布空报告"
+            exit 1
+          fi
+
+      # 趋势图数据源：把上一轮已发布的 history/ 播种进 results 目录（allure generate 从 results/history 读历史）。
+      # 原 action 从 gh-pages/last-history 播种，而本仓库只把 allure-report 发布到 gh-pages 根
+      # （history/ 在根目录），last-history 实际从未存在 → 历史趋势一直拼不上；这里改读 gh-pages/history。
+      - name: Seed report history
+        run: |
+          set -euo pipefail
+          if [ -d gh-pages/history ]; then
+            mkdir -p allure-results/history
+            cp -a gh-pages/history/. allure-results/history/
+            echo "已继承上一轮 history：$(find allure-results/history -type f | wc -l) 个文件"
+          elif git ls-remote --exit-code origin gh-pages > /dev/null 2>&1; then
+            echo "::error::gh-pages 分支存在却没有 history/——播种失败会清空线上趋势，拒绝继续"
+            exit 1
+          else
+            echo "gh-pages 分支尚不存在（首次发布）——本轮建立趋势基线"
+          fi
+
+      # 报告环境页的 Executor 信息（原 action 亦写入；用 jq 组装，避免手拼 JSON 的引号转义坑）
+      - name: Write executor.json
+        env:
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          owner_lc="$(printf '%s' "${REPO%%/*}" | tr '[:upper:]' '[:lower:]')"
+          # 不带结尾斜杠：带了会让 history item 的 reportUrl 拼出 `//#testresult/...`
+          pages_url="https://${owner_lc}.github.io/${REPO#*/}"
+          jq -n \
+            --arg pages "$pages_url" \
+            --arg repo "$REPO" \
+            --arg server "$SERVER_URL" \
+            --arg run_id "$RUN_ID" \
+            --arg run_number "$RUN_NUMBER" \
+            --arg report_name 'AutoAiSelfHeal 自愈报告' \
+            '{name: "GitHub Actions", type: "github", reportName: $report_name,
+              url: $pages, reportUrl: $pages,
+              buildUrl: "\($server)/\($repo)/actions/runs/\($run_id)",
+              buildName: ("GitHub Actions Run #" + $run_id),
+              buildOrder: $run_number}' > allure-results/executor.json
+          python3 -m json.tool allure-results/executor.json > /dev/null # 校验 JSON 合法，防环境页静默错乱
+
+      - name: Generate Allure report
+        run: |
+          set -euo pipefail
+          allure generate allure-results -o allure-report --clean
+          test -f allure-report/index.html # 生成静默失败时立即失败，不把半成品交给发布步骤
 
       - name: Publish to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
