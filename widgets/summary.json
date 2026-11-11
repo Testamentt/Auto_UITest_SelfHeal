@@ -1,1 +1,1 @@
-{"reportName":"Allure Report with history","testRuns":[],"statistic":{"failed":0,"broken":0,"skipped":4,"passed":445,"unknown":0,"total":449},"time":{"start":1791718851129,"stop":1791719257141,"duration":406012,"minDuration":0,"maxDuration":60351,"sumDuration":357863}}
+{"reportName":"AutoAiSelfHeal 自愈报告","testRuns":[],"statistic":{"failed":0,"broken":0,"skipped":4,"passed":638,"unknown":0,"total":642},"time":{"start":1794361143153,"stop":1794361686731,"duration":543578,"minDuration":0,"maxDuration":60447,"sumDuration":482997}}

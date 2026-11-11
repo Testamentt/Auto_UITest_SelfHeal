@@ -1,0 +1,2 @@
+WARNING  selfheal.llm.resilience:resilience.py:293 LLM 瞬态故障（第 1/2 次重试，等待 0.00s 后重试）：429
+WARNING  selfheal.llm.resilience:resilience.py:293 LLM 瞬态故障（第 2/2 次重试，等待 0.00s 后重试）：429

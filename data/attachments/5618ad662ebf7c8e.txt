@@ -1,0 +1,21 @@
+# 自愈价值 A/B 对比报告（T20）
+
+> 同一组失效场景 ×（关闭/开启自愈）双轮运行 · 生成于 CI/本地，数据源：junitxml
+
+| 场景 | 无自愈 | 开启自愈 | 结论 |
+| --- | --- | --- | --- |
+| other | failed | 未运行 | 自愈未救回（需人工） |
+| s1_login_button | 未运行 | passed | — |
+| s2_username_input | xfail | passed | 自愈修复 ✓ |
+
+> ⚠️ **告警**：2 行「未运行」——A/B 至少一轮没有该场景的结果（junit 缺失或 `-k` 过滤未命中）。这些行不参与结论，本报告**不完整**，请先确认两轮都真正跑过再解读数字。
+
+| 指标 | 关闭自愈 | 开启自愈 |
+| --- | --- | --- |
+| 用例通过 | 0/3 | 2/3 |
+| 需人工修复的失效 | **2** | **1** |
+| 总耗时 | 2.40s | 3.80s |
+
+> 复现：`python scripts/ab_compare.py`
+
+报告已写入 /tmp/pytest-of-runner/pytest-0/test_main_writes_report_with_n0/ab-compare.md

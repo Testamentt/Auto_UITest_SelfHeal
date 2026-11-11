@@ -1,0 +1,1 @@
+DEBUG    selfheal.agent.strategies.semantic:semantic.py:143 is_comparable() 签名不符（期望 is_comparable(bytes)->bool），退化本地判据

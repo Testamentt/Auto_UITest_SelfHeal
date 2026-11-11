@@ -1,0 +1,2 @@
+WARNING  selfheal.llm.resilience:resilience.py:248 LLM 熔断器打开：连续 1 次瞬态故障（冷却 10s 后半开探测）
+WARNING  selfheal.llm.resilience:resilience.py:248 LLM 熔断器打开：连续 1 次瞬态故障（冷却 10s 后半开探测）
