@@ -1,0 +1,7 @@
+DEBUG    selfheal.agent.persistence:persistence.py:185 跳过 embedding 写入：查询文本为空或向量不可比较（repair_key=v2:4818f5ff8ea4eb54ad1456e08283dac4）
+WARNING  selfheal.agent.persistence:persistence.py:246 自愈审计记录失败
+Traceback (most recent call last):
+  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/agent/persistence.py", line 234, in _record
+    self._reporter.record(
+    ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'object' object has no attribute 'record'

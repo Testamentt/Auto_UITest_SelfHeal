@@ -1,0 +1,2 @@
+WARNING  selfheal.agent.fix_generator:fix_generator.py:221 healing.strategy_thresholds 含未登记策略名 'heuristic_strategy'，已按全局阈值回退（可用: ['heuristic', 'semantic', 'visual']）
+WARNING  selfheal.agent.fix_generator:fix_generator.py:221 healing.strategy_early_accept 含未登记策略名 'visual_v2'，已按全局阈值回退（可用: ['heuristic', 'semantic', 'visual']）

@@ -1,6 +1,0 @@
-WARNING  selfheal.agent.persistence:persistence.py:237 自愈审计记录失败
-Traceback (most recent call last):
-  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/agent/persistence.py", line 225, in _record
-    self._reporter.record(
-    ^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'object' object has no attribute 'record'
