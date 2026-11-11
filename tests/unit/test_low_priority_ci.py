@@ -5,6 +5,8 @@
 
 - L16：5 个自愈闭环 e2e 真的带 `healing` marker（否则 Allure「AI 自愈」分组永不出现）；
 - L17：CI workflow 有 timeout-minutes / concurrency，且第三方 action 不跟随浮动分支；
+- M17：publish 不依赖 Docker 型 action（Allure CLI 直装 + 版本固定）、空产物 / 历史播种失败即红、
+  notify 覆盖 publish 失败（2026-11-11 事故：ECR 429 让 publish 红却无告警）；
 - L18：e2e 基线守卫拦得住被本机 gitignored 配置污染的 e2e（dry_run / 关自愈）；
 - L19：真实模型冒烟被 `live` marker 隔离（默认 e2e 过滤不跑付费调用）。
 
@@ -132,16 +134,58 @@ def test_actions_are_pinned_to_release_tags():
         )
 
 
-def test_allure_report_action_pinned_to_verified_tag():
-    """L17：allure-report-action 从 @master 改为核实存在的 v1.15（非浮动）。"""
-    refs = [
-        step["uses"]
-        for job in _workflow()["jobs"].values()
-        for step in job.get("steps", [])
-        if "uses" in step
+def test_publish_job_avoids_docker_action_and_pins_allure_cli():
+    """M17：publish 不再依赖 Docker 型 action（基础镜像被上游限流曾让整条流水线变红）。
+
+    断言落在真实 workflow 产物上，防"改回去"：
+    - 不得再出现 simple-elf/allure-report-action：它是 Docker action，Dockerfile 基础镜像
+      `public.ecr.aws/amazoncorretto/amazoncorretto:8` 无输入可覆盖，2026-10-21 起拉取被限流
+      （HTTP 429）→ 整条 main 流水线红；
+    - Allure CLI 版本显式固定为 x.y.z（浮动的 latest 会静默改变报告结构）；
+    - 发布仍走 peaceiris@v4 且 publish_dir 仍为 allure-report（站点根 = 报告，线上 URL 不变）。
+    """
+    publish = _workflow()["jobs"]["publish"]
+    uses = [step["uses"] for step in publish["steps"] if "uses" in step]
+    assert not [ref for ref in uses if "allure-report-action" in ref], uses
+    assert "peaceiris/actions-gh-pages@v4" in uses
+
+    runs = "\n".join(str(step.get("run", "")) for step in publish["steps"])
+    assert "allure generate" in runs
+
+    versions = [
+        str(step["env"]["ALLURE_VERSION"])
+        for step in publish["steps"]
+        if isinstance(step.get("env"), dict) and "ALLURE_VERSION" in step["env"]
     ]
-    allure_refs = [ref for ref in refs if ref.startswith("simple-elf/allure-report-action@")]
-    assert allure_refs == ["simple-elf/allure-report-action@v1.15"]
+    assert len(versions) == 1, versions
+    assert re.fullmatch(r"\d+\.\d+\.\d+", versions[0]), versions[0]
+
+    publish_step = next(
+        step for step in publish["steps"] if step.get("uses") == "peaceiris/actions-gh-pages@v4"
+    )
+    assert publish_step["with"]["publish_dir"] == "allure-report"
+
+
+def test_publish_job_guards_empty_results_and_history():
+    """M17：空产物 / 历史播种失败都必须显式失败——否则空报告会覆盖线上报告并清空趋势。"""
+    runs = "\n".join(str(step.get("run", "")) for step in _workflow()["jobs"]["publish"]["steps"])
+    assert "set -euo pipefail" in runs  # 管道 / 复制失败不得静默吞掉（原 cp 失败被静默跳过）
+    assert "*-result.json" in runs  # 空产物守卫：pattern 匹配 0 个产物时 download-artifact 不报错
+    # 趋势数据源改读已发布报告的 history/（原 last-history 从未存在）
+    assert "gh-pages/history" in runs
+
+
+def test_notify_covers_publish_failures():
+    """M17：publish 失败也必须触发告警（此前 needs 只有 unit/e2e，publish 红了却无人通知）。"""
+    notify = _workflow()["jobs"]["notify"]
+    assert "publish" in notify["needs"]
+
+    failed_jobs = next(
+        step["env"]["FAILED_JOBS"]
+        for step in notify["steps"]
+        if isinstance(step.get("env"), dict) and "FAILED_JOBS" in step["env"]
+    )
+    assert "needs.publish.result" in str(failed_jobs)
 
 
 # --- L18：e2e 基线守卫（本机 gitignored 配置不得污染 e2e） ---
