@@ -18,8 +18,13 @@ pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # L16：Allure feature 落�
 
 
 def _strict_settings() -> Settings:
-    """heuristic 采纳阈值抬到 0.99（高于演示页登录按钮的规则分数 ~0.95）→ 拒绝。"""
+    """heuristic 采纳阈值抬到 0.99（高于演示页登录按钮的规则分数 ~0.95）→ 拒绝。
+
+    只跑 heuristic：本用例验证的是"阈值路由"本身，要求确定性；若本机/CI 配了模型 key，
+    语义/视觉策略会把被阈值拒掉的修复重新救活，用例就会随环境漂移。顺带保证 e2e 不外呼付费模型。
+    """
     s = Settings()
+    s.healing.strategy_order = ["heuristic"]
     s.healing.strategy_thresholds = {"heuristic": 0.99}
     return s
 

@@ -1,6 +1,6 @@
-"""持久化处理器（A1 协作者）—— 专职「阈值路由 → 知识沉淀 → 审计报告」。
+"""持久化处理器 —— 专职「阈值路由 → 知识沉淀 → 审计报告」。
 
-B1 语义：run() 成功修复先 stage 暂存，引擎层重试成功后 commit_pending 才真正落库，
+暂存语义：run() 成功修复先 stage 暂存，引擎层重试成功后 commit_pending 才真正落库，
 未验证（重试失败）的修复不得进入知识库，防后续 L1/L3 复用到"没生效"的修复。
 """
 
@@ -21,12 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 def _comparable_embedding(embedding, text: str) -> bytes | None:
-    """L6：把文本向量化为「可比较」的 bytes；不可比较 → None（不落库）。
+    """把文本向量化为「可比较」的 bytes；不可比较 → None（不落库）。
 
     契约（与 `agent/strategies/semantic.py` 的同名助手一致）：
     - 文本为空/纯空白 → 不向量化直接 None（省一次无意义计算）；
-    - `embed()` 返回空 bytes（L6 的"不可比较"标记）→ None，无论客户端自报什么；
-    - 客户端自报 `is_comparable(data)` 为假 → None（L6 在 `llm/embedding.py` 落地后的正式口径）；
+    - `embed()` 返回空 bytes（"不可比较"标记）→ None，无论客户端自报什么；
+    - 客户端自报 `is_comparable(data)` 为假 → None（`llm/embedding.py` 的正式口径）；
       签名不符（如无参）时记 debug 并退化为本地判据，不让调用方炸在半路；
     - 客户端尚无 `is_comparable()`（当前 `NgramEmbedding`）→ 本地判据：**全零向量**也不可比较
       （余弦未定义），入库后只会成为 L3 分桶里的死数据。
@@ -48,12 +48,12 @@ def _comparable_embedding(embedding, text: str) -> bytes | None:
 
 
 class PersistenceHandler:
-    """A1：专职持久化与审计（阈值路由 / dry-run 建议 / 暂存 → 验证后 commit / 写库 + 记录）。
+    """专职持久化与审计（阈值路由 / dry-run 建议 / 暂存 → 验证后 commit / 写库 + 记录）。
 
-    2026-10-08 审查修复（M9）：
+    暂存与幂等窗口的边界：
     - 暂存超上限被淘汰、以及被显式丢弃（如二次自愈改修叶子）时记 warning，不再静默丢修复；
-    - `_committed` 改为有界（防长会话无界增长），幂等语义只对最近 N 次提交负责；
-    - 新增 `discard_pending()`：二次自愈会替换 `_last_heal_outcome`，被替换的那条暂存必须显式丢弃，
+    - `_committed` 有界（防长会话无界增长），幂等语义只对最近 N 次提交负责；
+    - `discard_pending()`：二次自愈会替换 `_last_heal_outcome`，被替换的那条暂存必须显式丢弃，
       否则它会一直挂在 `_pending` 里等一个永不到来的 commit。
     """
 
@@ -73,7 +73,7 @@ class PersistenceHandler:
         self._reporter = reporter
         self._embedding = embedding
         self._page = page
-        # B1：成功修复先暂存，引擎层重试成功后 commit_pending（幂等防重复提交）
+        # 成功修复先暂存，引擎层重试成功后 commit_pending（幂等防重复提交）
         self._pending: dict[str, tuple] = {}
         self._committed: OrderedDict[str, None] = OrderedDict()
         self._attempt_counter = 0
@@ -85,7 +85,7 @@ class PersistenceHandler:
                 context.original_selector, proposal.cached_outcome
             )  # 知识复用也记录（供审计）
             return proposal.cached_outcome
-        # T5：采纳阈值按候选来源策略独立裁决（缺省回退全局）；best=None（策略链全失败）时用全局
+        # 采纳阈值按候选来源策略独立裁决（缺省回退全局）；best=None（策略链全失败）时用全局
         threshold = (
             self._settings.healing.accept_threshold(proposal.best.strategy)
             if proposal.best is not None
@@ -93,7 +93,7 @@ class PersistenceHandler:
         )
         if proposal.best is not None and proposal.best.confidence >= threshold:
             if self._settings.healing.dry_run:
-                # T14 dry-run：只生成修复建议、不实际应用（不持久化、不换定位器重试），供人审
+                # dry-run：只生成修复建议、不实际应用（不持久化、不换定位器重试），供人审
                 self._emit_proposal(context, proposal.best, proposal.root_cause)
                 return HealOutcome(
                     success=False,
@@ -109,20 +109,27 @@ class PersistenceHandler:
                 strategy=proposal.best.strategy,
                 root_cause=proposal.root_cause,
             )
-            self.stage(context, outcome)  # B1：暂存，验证后由引擎 commit
+            self.stage(context, outcome)  # 暂存，验证后由引擎 commit
             return outcome
-        # 策略链失败：有候选但置信度不足 → 建议人审（写 fix-proposals）
-        if proposal.best is not None and proposal.best.confidence < threshold:
-            self._emit_proposal(context, proposal.best, proposal.root_cause)
+        # 策略链失败：候选不达标 / 定位器不可用 → 写人审建议（fix-proposals）
+        # 优先用 best（兼容外部直接构造的 proposal）；逐候选过滤后 best 为 None 时用 rejected，
+        # 否则被过滤掉的候选信息会连同"为什么没修"一起消失。
+        rejected = (
+            proposal.best
+            if proposal.best is not None and proposal.best.confidence < threshold
+            else proposal.rejected
+        )
+        if rejected is not None:
+            self._emit_proposal(context, rejected, proposal.root_cause)
         return HealOutcome(success=False, root_cause=proposal.root_cause)
 
     def stage(self, context: HealingContext, outcome: HealOutcome) -> None:
-        """暂存待验证的修复（B1）：设置 attempt_id 并入 pending。"""
+        """暂存待验证的修复：设置 attempt_id 并入 pending。"""
         self._attempt_counter += 1
         outcome.attempt_id = f"heal-{self._attempt_counter}"
         self._pending[outcome.attempt_id] = (outcome, context)
         if len(self._pending) >= self._PENDING_LIMIT:
-            # 上限防膨胀（引擎失败不 commit 时丢弃最旧暂存）——M9：丢弃要可见，不能静默
+            # 上限防膨胀（引擎失败不 commit 时丢弃最旧暂存）——丢弃要可见，不能静默
             dropped, _ = self._pending.pop(next(iter(self._pending)))
             logger.warning(
                 "自愈暂存超过上限 %d，已丢弃最旧暂存（attempt_id=%s，该修复不会沉淀）",
@@ -131,7 +138,7 @@ class PersistenceHandler:
             )
 
     def discard_pending(self, attempt_id: str | None) -> None:
-        """显式丢弃一条暂存（M9）：二次自愈替换 `_last_heal_outcome` 前调用。
+        """显式丢弃一条暂存：二次自愈替换 `_last_heal_outcome` 前调用。
 
         被替换的暂存永远不会收到 commit；留在 `_pending` 里只会占额度并掩盖"这次修复没沉淀"。
         """
@@ -141,37 +148,37 @@ class PersistenceHandler:
             logger.warning("自愈暂存被显式丢弃（attempt_id=%s，改用后续修复尝试）", attempt_id)
 
     def commit_pending(self, attempt_id: str) -> None:
-        """验证成功后沉淀知识 + 审计（B1）。按 attempt_id 幂等：已提交/未知 id → no-op。"""
+        """验证成功后沉淀知识 + 审计。按 attempt_id 幂等：已提交/未知 id → no-op。"""
         if attempt_id in self._committed:
             return
         payload = self._pending.get(attempt_id)
         if payload is None:
             return
         outcome, context = payload
-        self._persist(context, outcome)  # 内部不抛异常（R4 记日志）
+        self._persist(context, outcome)  # 内部不抛异常（失败记日志）
         self._committed[attempt_id] = None
-        # M9：幂等窗口有界，防长会话/长跑用例无界增长（只影响极旧的重复提交判定）
+        # 幂等窗口有界，防长会话/长跑用例无界增长（只影响极旧的重复提交判定）
         while len(self._committed) > self._COMMITTED_LIMIT:
             self._committed.popitem(last=False)
         self._pending.pop(attempt_id, None)
 
     def _persist(self, context: HealingContext, outcome: HealOutcome) -> None:
-        """修复成功后：写入知识库（供后续命中复用）+ 可选 T15 人审建议 + 审计。"""
-        # 沉淀失败不影响已成功的自愈结果；但按 R4 不能静默吞错，记 warning。
+        """修复成功后：写入知识库（供后续命中复用）+ 可选人审建议 + 审计。"""
+        # 沉淀失败不影响已成功的自愈结果；但不能静默吞错，记 warning。
         try:
             repair_key: str | None = None
             embedding: bytes | None = None
             embedding_version: str | None = None
             element_context = context.element_context
             if element_context is not None and not element_context.is_empty:
-                # B4：L1 键写入不依赖 embedding；仅当有结构上下文（tag_path）时写键，
+                # L1 键写入不依赖 embedding；仅当有结构上下文（tag_path）时写键，
                 # 静态上下文（tag_path 为空）不产生键，防同页碰撞（与查询侧门控对称）。
                 if element_context.tag_path:
                     repair_key = compute_repair_key(
                         context.page_fingerprint, element_context.tag_path
                     )
                 if self._embedding is not None:
-                    # L6：文本为空 / 向量不可比较 → 不写 embedding（embedding=None +
+                    # 文本为空 / 向量不可比较 → 不写 embedding（embedding=None +
                     # embedding_version=None），避免零长/全零 BLOB 进库污染 L3 分桶。
                     embedding = _comparable_embedding(self._embedding, element_context.query_text)
                     if embedding is None:
@@ -196,7 +203,7 @@ class PersistenceHandler:
                     created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 )
             )
-            # T15：修复写回代码的人审清单——生成「原→新」PR 化建议（不自动改库），供人确认后合入
+            # 修复写回代码的人审清单——生成「原→新」PR 化建议（不自动改库），供人确认后合入
             if self._settings.healing.fix_proposals:
                 try:
                     from selfheal.reporting.fix_proposals import write_fix_proposal
@@ -217,10 +224,12 @@ class PersistenceHandler:
         self._record(context.original_selector, outcome)
 
     def _record(self, original_selector: str, outcome: HealOutcome) -> None:
-        """记录一次成功自愈（含知识复用），供审计与指标统计（T3）。审计失败不影响主流程。"""
+        """记录一次成功自愈（含知识复用），供审计与指标统计。审计失败不影响主流程。"""
         try:
-            # T16：真自愈 vs flaky——修复后原定位器仍失效 → 真修复（verified=True）；
-            # 原定位器已恢复 → 失败是瞬时的（flaky，verified=False），勿把偶发绿计为修复成功。
+            # 真自愈 vs flaky——修复后原定位器**仍不可用**（不存在 / 多命中）→ 真修复（verified=True）；
+            # 原定位器已恢复可用 → 失败是瞬时的（flaky，verified=False），勿把偶发绿计为修复成功。
+            # 口径用"唯一命中"：多命中的旧定位器重试同样会 strict-mode 失败（结构性不可用）；
+            # 可见 / enabled 属瞬态（如提交后按钮置灰），不计入真修复判定。
             verified = not selector_exists(self._page, original_selector)
             self._reporter.record(
                 HealingRecord(
@@ -237,7 +246,7 @@ class PersistenceHandler:
             logger.warning("自愈审计记录失败", exc_info=True)
 
     def _emit_proposal(self, context: HealingContext, best, root_cause: str | None) -> None:
-        """T14/T15：把「原→新」建议写出（fix-proposals），供人审后手动采纳。best-effort。"""
+        """把「原→新」建议写出（fix-proposals），供人审后手动采纳。best-effort。"""
         try:
             from selfheal.reporting.fix_proposals import write_fix_proposal
 

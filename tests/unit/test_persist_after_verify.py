@@ -21,10 +21,15 @@ class _MyTimeout(Exception):
 
 
 class _Page:
-    """页面：locator 按 broken 判定 click 是否超时；count 按 broken 判定元素是否存在。"""
+    """页面：broken 管"动作超时"，missing 管"元素不存在"（两者解耦，贴近真实语义）。
 
-    def __init__(self, broken=(), handlers=None, url="https://x/login"):
+    自愈候选必须**真实存在且唯一命中**才会被采纳（strict-mode 硬底线），而"存在但点击超时"模拟的是
+    引擎重试验证失败——旧实现用 broken 同时当存在性，会把不存在的候选也当成可用修复。
+    """
+
+    def __init__(self, broken=(), handlers=None, url="https://x/login", missing=()):
         self._broken = set(broken)
+        self._missing = set(missing)
         self._handlers = handlers or {}
         self._url = url
 
@@ -56,7 +61,7 @@ class _Loc:
         return self._page._handlers[self._sel]()
 
     def count(self):
-        return 0 if self._sel in self._page._broken else 1
+        return 0 if self._sel in self._page._missing else 1
 
 
 class _FakeCollector:
@@ -149,7 +154,7 @@ def test_engine_retry_success_commits(monkeypatch):
     settings.healing.strategy_order = ["fixed"]
     _use_fixed_strategy(monkeypatch, "#new")
     store = KnowledgeStore()
-    page = _Page(broken={"#old"}, handlers={"#new": lambda: "ok"})
+    page = _Page(broken={"#old"}, missing={"#old"}, handlers={"#new": lambda: "ok"})
     orch = _orch(page=page, store=store, settings=settings)
     hl = HealingLocator(page.locator("#old"), page, "#old", settings.healing, orch)
     assert hl.click() == "ok"
@@ -164,7 +169,8 @@ def test_engine_all_retries_fail_no_commit(monkeypatch):
     settings.healing.strategy_order = ["fixed"]
     _use_fixed_strategy(monkeypatch, "#new")
     store = KnowledgeStore()
-    page = _Page(broken={"#old", "#new", "#new2"})
+    # "#old" 已不存在；"#new"/"#new2" 存在但点击始终超时 → 重试验证失败，不得沉淀
+    page = _Page(broken={"#old", "#new", "#new2"}, missing={"#old"})
     orch = _orch(page=page, store=store, settings=settings)
     hl = HealingLocator(page.locator("#old"), page, "#old", settings.healing, orch)
     with pytest.raises(_MyTimeout):

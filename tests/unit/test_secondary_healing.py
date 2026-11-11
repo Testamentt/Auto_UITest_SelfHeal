@@ -93,7 +93,7 @@ def test_heal_and_resolve_passes_use_knowledge():
         def __init__(self):
             self.use_knowledge_calls = []
 
-        def run(self, sel, desc, failure=None, use_knowledge=True):
+        def run(self, sel, desc, failure=None, use_knowledge=True, action=None):
             self.use_knowledge_calls.append(use_knowledge)
             return HealOutcome(success=True, new_selector="#new", confidence=0.9)
 
