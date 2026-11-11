@@ -21,7 +21,18 @@ llm:
   temperature: 0.0
   timeout_s: 15.0           # 单次调用超时（秒）；推理型模型响应慢时可放宽
   max_tokens: 2000          # 单次输出上限（token）
-  max_retries: 2            # 显式重试次数（一次失败最多重试 2 次；0=不重试）
+  max_retries: 2            # 瞬态故障重试次数（0=不重试；仅 429/超时/5xx，401 等 Fatal 不重试）
+  # T24 退避节奏：第 n 次重试等待 min(max_delay_s, base_delay_s * 2^n)；jitter 在 [0, 等待] 内随机
+  retry:
+    base_delay_s: 0.5
+    max_delay_s: 8.0
+    jitter: true
+  # T24 熔断：连续 failure_threshold 次逻辑调用瞬态失败后打开，cooldown_s 内直接降级；
+  # 熔断状态为单进程（xdist 各 worker 独立），可在本段关闭
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 3
+    cooldown_s: 30.0
   max_tokens_field: max_tokens   # max_tokens | max_completion_tokens：后者供只认新字段名的推理模型族使用（会同时省略 temperature）
 
 # VLM：**本项目当前选型** = CommandCode 网关的 deepseek/deepseek-v4.1-flash（实测支持图片输入，见 docs/roadmap.md D18）；
@@ -36,6 +47,15 @@ vision:
   timeout_s: 60.0           # plus 级模型响应慢，默认放宽（20s 曾导致 ERP 场景超时）；推理型 VLM 可用时建议 120
   max_tokens: 1000
   max_retries: 2
+  # T24：VLM 独立的退避与熔断（与 LLM 端点隔离：一方故障不影响另一方）
+  retry:
+    base_delay_s: 0.5
+    max_delay_s: 8.0
+    jitter: true
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 3
+    cooldown_s: 30.0
   max_image_bytes: 1500000  # 单请求图片体积护栏；超限经 Pillow 降质/缩放转 JPEG（缺 Pillow 记 warning 发原图）
 
 healing:

@@ -103,6 +103,45 @@ class BrowserConfig(_StrictModel):
         return value
 
 
+class RetryConfig(_StrictModel):
+    """模型调用的指数退避重试参数（T24，2026-11-10）。
+
+    重试**次数**由同段落的 `max_retries` 控制（0 = 不重试）；本模型只承载退避节奏。
+    仅瞬态故障（429 / 超时 / 连接失败 / 5xx）会重试，Fatal（401/403/400/404）直接抛。
+
+    - base_delay_s / max_delay_s: 第 n 次重试等待 min(max_delay_s, base_delay_s * 2^n)；
+      上限截断避免长尾重试把 CI 拖死。
+    - jitter: 是否在 [0, delay] 内取随机（full jitter），避免多 worker 同时重试形成风暴。
+    """
+
+    base_delay_s: float = Field(default=0.5, ge=0.0)
+    max_delay_s: float = Field(default=8.0, ge=0.0)
+    jitter: bool = True
+
+    @model_validator(mode="after")
+    def _validate_bounds(self) -> RetryConfig:
+        """上限不得小于起点（否则 base 永远不生效，退化为固定上限）。"""
+        if self.max_delay_s < self.base_delay_s:
+            raise ValueError(
+                f"retry.max_delay_s ({self.max_delay_s}) 不能小于 "
+                f"retry.base_delay_s ({self.base_delay_s})"
+            )
+        return self
+
+
+class CircuitBreakerConfig(_StrictModel):
+    """模型调用的熔断器参数（T24，2026-11-10）。
+
+    连续 `failure_threshold` 次**逻辑调用**最终失败（仅瞬态）后打开；冷却 `cooldown_s`
+    内直接抛 `CircuitOpenError` 走既有降级链；冷却后放单个半开探针。
+    熔断状态是**单进程**的：xdist 各 worker 各自独立（不跨进程共享）。
+    """
+
+    enabled: bool = True
+    failure_threshold: int = Field(default=3, ge=1)
+    cooldown_s: float = Field(default=30.0, gt=0.0)
+
+
 class LLMConfig(_StrictModel):
     """LLM 配置。
 
@@ -115,6 +154,9 @@ class LLMConfig(_StrictModel):
     - timeout_s / max_tokens / max_retries（2026-10-08 审查 H3/M1）: 此前写死在客户端签名里，
       且本模型 `extra='forbid'` 使用户无法在 `llm:` 段配置它们。VLM 侧早已因同类问题（T23
       的 20s/500 超时/截断）放宽过，LLM 侧对齐配置入口。
+    - retry / circuit_breaker（T24，2026-11-10）: 自研退避重试与熔断参数。`max_retries`
+      语义明确为"自研重试次数"（openai SDK 自带重试固定关闭，避免双层重试放大付费调用）；
+      仅瞬态故障重试，Fatal 直接抛；熔断打开后由既有降级链接管。详见 `llm/resilience.py`。
     - max_tokens_field（L9）: 输出上限**字段名**，`max_tokens`（默认，兼容 DeepSeek/Qwen 等
       既有端点）或 `max_completion_tokens`（新推理模型族）。两者互斥，客户端**只发其中一个**；
       选 `max_completion_tokens` 时模型族不接受自定义 temperature，客户端会省略该参数（并把
@@ -131,6 +173,9 @@ class LLMConfig(_StrictModel):
     max_tokens: int = Field(default=2000, gt=0)
     max_tokens_field: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
     max_retries: int = Field(default=2, ge=0)
+    # T24：退避重试节奏与熔断参数（与 vision 各自独立，端点故障互不影响）
+    retry: RetryConfig = RetryConfig()
+    circuit_breaker: CircuitBreakerConfig = CircuitBreakerConfig()
 
 
 class ActionWaitConfig(_StrictModel):
@@ -264,6 +309,9 @@ class VisionConfig(_StrictModel):
     max_tokens: int = Field(default=1000, gt=0)
     max_retries: int = Field(default=2, ge=0)
     max_image_bytes: int = Field(default=1_500_000, gt=0)
+    # T24：VLM 独立退避/熔断（与 LLM 端点隔离：一方故障不影响另一方）
+    retry: RetryConfig = RetryConfig()
+    circuit_breaker: CircuitBreakerConfig = CircuitBreakerConfig()
 
 
 class EmbeddingConfig(_StrictModel):
