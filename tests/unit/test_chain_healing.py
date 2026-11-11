@@ -99,7 +99,7 @@ class _RecOrch:
         self.calls: list[tuple] = []
         self.discarded: list = []
 
-    def run(self, sel, desc, failure=None, use_knowledge=True):
+    def run(self, sel, desc, failure=None, use_knowledge=True, action=None):
         self.calls.append((sel, desc, use_knowledge))
         return self._outcomes.pop(0)
 

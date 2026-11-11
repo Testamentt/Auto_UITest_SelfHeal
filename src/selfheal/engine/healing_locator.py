@@ -1,6 +1,6 @@
-"""自愈定位器 —— 引擎层原语（见 RULE.md 决策 D5 / D6；装配层在 plugin/）。
+"""自愈定位器 —— 引擎层原语（见 docs/decisions.md D5 / D6；装配层在 plugin/）。
 
-**分层位置（M10-②）**：本模块只提供 engine 原语——`HealingLocator`（动作包装 + 链式
+**分层位置（D19）**：本模块只提供 engine 原语——`HealingLocator`（动作包装 + 链式
 重放）、`HealingFailedError`、链式常量与 `_safe_close`。import 仅允许
 `contracts`（中立 DTO）+ engine 内部（`popup_guard` / `smart_wait`）+ `config`；
 **不再** import agent / knowledge / reporting——装配这些上层的职责已上移到
@@ -10,11 +10,11 @@
 
 设计要点：
 - **接口兼容代理**：`HealingLocator` 与 Playwright 的 Locator 接口兼容，面向 Page/Locator
-  接口编写的 POM 代码，开 / 关自愈都能运行（你的第 1 点：POM 无缝切换）。
+  接口编写的 POM 代码，开 / 关自愈都能运行（POM 无缝切换）。
 - **只拦截小集合动作 + 链式定位**：HEALABLE 动作包"失败→自愈→重试"；链式定位
   （locator()/first/nth/filter/get_by_* 等）递归包裹并记录链操作，自愈后重放整条链
-  （你的第 2 点：链式调用同样具备自愈能力）。其余 API 原样透传。
-- **可开关、零侵入**：enabled=False 时动作直通、不做任何修复，行为等同原生（你的第 2 点：插件/挂件）。
+  （链式调用同样具备自愈能力）。其余 API 原样透传。
+- **可开关、零侵入**：enabled=False 时动作直通、不做任何修复，行为等同原生（插件式开关）。
 - **兜底（D6）**：AI 不确定时按 on_uncertain 处理——use_fallback（默认）/ pause（仅交互模式）/ fail。
 
 Playwright 为运行期可选依赖：TimeoutError 导入做了降级，保证本模块可在无浏览器环境被单元测试导入。
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 class HealRunner(Protocol):
-    """engine 层对自愈编排器的最小依赖面（M10-②：窄接口替代 import agent 的类型）。
+    """engine 层对自愈编排器的最小依赖面（D19：窄接口替代 import agent 的类型）。
 
     由 `agent.orchestrator.SelfHealOrchestrator` 结构化满足（无需显式继承）；
     测试里的编排器替身同样满足。engine 只关心这三件事：跑一次闭环、提交 / 丢弃暂存修复。
@@ -52,16 +52,17 @@ class HealRunner(Protocol):
         description: str | None = None,
         failure: FailureContext | None = None,
         use_knowledge: bool = True,
+        action: str | None = None,
     ) -> HealOutcome:
-        """执行一次完整自愈闭环，返回结果。"""
+        """执行一次完整自愈闭环，返回结果（action 供候选可交互性取舍）。"""
         ...
 
     def commit_pending(self, attempt_id: str) -> None:
-        """重试验证成功后沉淀暂存的修复（B1）。"""
+        """重试验证成功后沉淀暂存的修复。"""
         ...
 
     def discard_pending(self, attempt_id: str | None) -> None:
-        """显式丢弃一条不会被 commit 的暂存（M9）。"""
+        """显式丢弃一条不会被 commit 的暂存。"""
         ...
 
 
@@ -74,7 +75,7 @@ except ImportError:  # pragma: no cover
     _PWTimeoutError = None
 
 
-# 自愈失败的兜底基类（M2）：同时继承 Playwright 的 TimeoutError 与内置 TimeoutError——
+# 自愈失败的兜底基类：同时继承 Playwright 的 TimeoutError 与内置 TimeoutError——
 # 开启自愈前，同一调用抛的是 Playwright TimeoutError（POM 通常 catch 它），smart_wait 等
 # 路径抛的是内置 TimeoutError。若这里退化成裸 Exception，`except TimeoutError` 会在
 # 开/关自愈两种模式下表现不一致；两者都继承后，两种写法都能捕获，
@@ -85,7 +86,7 @@ _HealingFailedBases: tuple[type[BaseException], ...] = (
 
 
 class HealingFailedError(*_HealingFailedBases):  # type: ignore[misc]
-    """自愈失败且无可用兜底时抛出，携带诊断报告（M2：兼容 TimeoutError 语义）。"""
+    """自愈失败且无可用兜底时抛出，携带诊断报告（兼容 TimeoutError 语义）。"""
 
 
 def _safe_close(obj) -> None:
@@ -103,7 +104,7 @@ def _is_timeout_error(exc: BaseException) -> bool:
     """判定是否为 Playwright 定位/等待超时（自愈的触发条件）。
 
     优先按 playwright TimeoutError 实例判断；类名粗判（"Timeout" in name）仅作
-    无 playwright 环境下的兜底（m8 已知风险：自定义异常类名含 Timeout 会误触发自愈，
+    无 playwright 环境下的兜底（已知风险：自定义异常类名含 Timeout 会误触发自愈，
     影响面小：最多多跑一轮闭环，随后按结果正常处理）。
     """
     if _PWTimeoutError is not None and isinstance(exc, _PWTimeoutError):
@@ -237,12 +238,12 @@ class HealingLocator:
         self._chain_ops = chain_ops
         # 叶子修复目标：最后一次引入新 selector 的链环的 selector；无则等于根选择器
         self._leaf_selector = leaf_selector or selector
-        # B1：最近一次自愈 outcome，供 _healing_action 重试成功后 commit_pending
+        # 最近一次自愈 outcome，供 _healing_action 重试成功后 commit_pending
         self._last_heal_outcome: HealOutcome | None = None
 
     def __getattr__(self, name: str) -> Any:
         # 仅对实例上不存在的属性触发；__init__ 设置的属性不走这里。
-        # L1：内部字段必须用 object.__getattribute__ 直接取。拷贝/序列化协议（copy.copy、
+        # 内部字段必须用 object.__getattribute__ 直接取。拷贝/序列化协议（copy.copy、
         # copy.deepcopy、pickle）会在属性表就绪前探测 `__setstate__`/`__deepcopy__` 这类
         # 协议属性，构造中途也可能被取属性；若此处写成 `self._enabled`，缺失时会再次进入
         # __getattr__ 取 `_enabled` → 无限递归（RecursionError）。缺失即按"属性不存在"抛
@@ -335,7 +336,7 @@ class HealingLocator:
         """把原生动作包成：前置可忽略等待 → 失败（超时）→ 自愈 → 用新定位器重试。"""
 
         def wrapped(*args: Any, **kwargs: Any) -> Any:
-            self._wait_before_action()  # T6：动作前可选的短稳等待（best-effort，失败不阻塞）
+            self._wait_before_action()  # 动作前可选的短稳等待（best-effort，失败不阻塞）
             try:
                 return action(*args, **kwargs)
             except Exception as exc:  # noqa: BLE001 - 需甄别超时后决定自愈或上抛
@@ -348,20 +349,22 @@ class HealingLocator:
                     except Exception:  # noqa: BLE001 - 弹窗非根因，继续走自愈闭环
                         logger.debug("清弹窗后重试仍失败，继续走自愈闭环", exc_info=True)
                 # 第一次自愈：修根（self._selector）+ 重放整条链，覆盖"根选择器断裂"
-                relocated = self._heal_and_resolve(exc)
+                relocated = self._heal_and_resolve(exc, action=name)
                 try:
                     result = self._replay_chain(relocated, name, args, kwargs)
-                    self._commit_success()  # B1：重试成功 → 沉淀暂存的修复
+                    self._commit_success()  # 重试成功 → 沉淀暂存的修复
                     return result
                 except Exception as retry_exc:  # noqa: BLE001 - 自愈后的选择器仍失败
                     if not _is_timeout_error(retry_exc):
                         raise
-                    # 第二次自愈（T4）：跳过知识缓存，直接修叶子（链意图拼入描述），
+                    # 第二次自愈：跳过知识缓存，直接修叶子（链意图拼入描述），
                     # 覆盖"中段/叶子选择器断裂"；重试用修复后的叶子、不再重放链；
                     # 上限一次、结果为裸调用不包裹，故不会死循环。
-                    stale_outcome = self._last_heal_outcome  # M9：下面会被第二次闭环覆盖
-                    relocated2 = self._heal_and_resolve(retry_exc, use_knowledge=False, leaf=True)
-                    # M9：第一次闭环的暂存不会再收到 commit（本次改用叶子修复），显式丢弃并记日志，
+                    stale_outcome = self._last_heal_outcome  # 下面会被第二次闭环覆盖
+                    relocated2 = self._heal_and_resolve(
+                        retry_exc, use_knowledge=False, leaf=True, action=name
+                    )
+                    # 第一次闭环的暂存不会再收到 commit（本次改用叶子修复），显式丢弃并记日志，
                     # 否则它一直占着 _pending 额度、且"这次修复没沉淀"这件事完全不可见。
                     if (
                         self._orch is not None
@@ -370,7 +373,7 @@ class HealingLocator:
                     ):
                         self._orch.discard_pending(stale_outcome.attempt_id)
                     result = getattr(relocated2, name)(*args, **kwargs)
-                    self._commit_success()  # B1：二次重试成功 → 沉淀暂存的修复
+                    self._commit_success()  # 二次重试成功 → 沉淀暂存的修复
                     return result
 
         wrapped.__name__ = name
@@ -378,7 +381,7 @@ class HealingLocator:
         return wrapped
 
     def _wait_before_action(self) -> None:
-        """T6：动作前可选的智能等待（healing.action_wait.enabled）。
+        """动作前可选的智能等待（healing.action_wait.enabled）。
 
         对目标 locator 做一次短稳等待（复用 engine/smart_wait.py 的 wait_until_stable），
         缓解"元素仍在加载/抖动就执行动作"导致的误报超时。**best-effort**：
@@ -396,13 +399,18 @@ class HealingLocator:
             logger.debug("动作前置智能等待跳过（元素未达稳定，不阻塞动作）", exc_info=True)
 
     def _heal_and_resolve(
-        self, exc: BaseException | None = None, use_knowledge: bool = True, leaf: bool = False
+        self,
+        exc: BaseException | None = None,
+        use_knowledge: bool = True,
+        leaf: bool = False,
+        action: str | None = None,
     ) -> Locator:
         """运行闭环并决定用哪个定位器重试（含 D6 兜底）。
 
         leaf=True 时修叶子目标（self._leaf_selector），否则修根（self._selector）。
         use_knowledge=False 用于二次自愈（跳过缓存）。
-        顶层兜底（H1）：闭环内部异常（采集/知识读取/策略等）不替换原始定位失败异常，
+        action 传给闭环：候选可交互性按动作取舍（如 set_input_files 不要求元素可见）。
+        顶层兜底：闭环内部异常（采集/知识读取/策略等）不替换原始定位失败异常，
         而是转为"自愈内部失败"outcome 走 D6 兜底（fallback/pause/fail），保留触发自愈的语义。
         """
         selector = self._leaf_selector if leaf else self._selector
@@ -416,21 +424,23 @@ class HealingLocator:
             message=str(exc) if exc is not None else None,
         )
         try:
-            outcome = self._orch.run(selector, desc, failure=failure, use_knowledge=use_knowledge)
+            outcome = self._orch.run(
+                selector, desc, failure=failure, use_knowledge=use_knowledge, action=action
+            )
         except Exception as run_exc:  # noqa: BLE001 - 闭环内部异常兜底，不替换原始异常
             logger.warning("自愈闭环内部异常，按不确定兜底处理", exc_info=True)
             outcome = HealOutcome(
                 success=False, root_cause=f"heal_internal:{type(run_exc).__name__}"
             )
         self._last_heal_outcome = (
-            outcome  # B1：供重试成功后 commit_pending（无 attempt_id 则 no-op）
+            outcome  # 闭环结果暂存：供重试成功后 commit_pending（无 attempt_id 则 no-op）
         )
         if outcome.success and outcome.new_selector:
             return self._page.locator(outcome.new_selector)
         return self._resolve_uncertain(outcome)
 
     def _commit_success(self) -> None:
-        """重试验证成功后触发知识沉淀（B1）：把 run() 暂存的修复落库 + 审计。"""
+        """重试验证成功后触发知识沉淀：把 run() 暂存的修复落库 + 审计。"""
         outcome = self._last_heal_outcome
         if outcome is not None and outcome.attempt_id and self._orch is not None:
             self._orch.commit_pending(outcome.attempt_id)
@@ -464,7 +474,7 @@ class HealingLocator:
         _wait_until_stable(self._locator, timeout_ms, stable_ms, poll_ms)
 
 
-# 装配层（HealingPage）已上移到 selfheal/plugin/healing_page.py（M10-②）：
+# 装配层（HealingPage）已上移到 selfheal/plugin/healing_page.py（D19）：
 # engine 只提供原语，不再在 import 期拉起 agent / knowledge / reporting。
 # 旧路径 selfheal.engine.healing_locator.HealingPage 不再提供（无兼容 shim，避免分层倒置回流）；
 # 迁移方式：from selfheal.plugin.healing_page import HealingPage（或 from selfheal.plugin import HealingPage）。

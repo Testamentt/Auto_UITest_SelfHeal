@@ -3,7 +3,7 @@
 流程：现场采集 →（知识库优先）→ 智能诊断 → 多策略修复 → 验证与沉淀 → 报告审计。
 Playwright 仅作类型依赖（TYPE_CHECKING），核心逻辑可在无浏览器环境下被单元测试覆盖。
 
-A1 重构（T12）后本类降为 **Router + 组合根**：run() 只做三件事——
+职责拆分后本类降为 **Router + 组合根**：run() 只做三件事——
 ContextAssembler 组装上下文 → FixGenerator 生成提案 → PersistenceHandler 阈值路由。
 业务逻辑已下沉到 `agent/context.py` / `agent/fix_generator.py` / `agent/persistence.py`，
 本类保留薄委托器以兼容既有内部方法调用与测试。
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 def _safe_close(obj) -> None:
-    """best-effort 关闭带 close() 的对象；失败记 warning（V4 复核：关闭故障不再完全不可见）。"""
+    """best-effort 关闭带 close() 的对象；失败记 warning（关闭故障不再完全不可见）。"""
     close = getattr(obj, "close", None)
     if close is None:
         return
@@ -61,11 +61,11 @@ _STRATEGY_REGISTRY: dict[str, type[RepairStrategy]] = {
 
 
 class SelfHealOrchestrator:
-    """编排「感知-诊断-决策-修复」闭环（A1 重构后降为 Router + 组合根）。
+    """编排「感知-诊断-决策-修复」闭环（职责拆分后降为 Router + 组合根）。
 
     knowledge / reporter 可注入（默认自建），便于测试替换与跨用例复用知识库。
-    trace_active（L4）为 trace 录制状态 provider，透传给上下文组装器/采集器；
-    close() 级联收口采集器监听（L3）。
+    trace_active 为 trace 录制状态 provider，透传给上下文组装器/采集器；
+    close() 级联收口采集器监听。
     """
 
     def __init__(
@@ -80,7 +80,7 @@ class SelfHealOrchestrator:
     ):
         self._page = page
         self._settings = settings
-        # 先置安全空值：构造中途失败时 close() 能安全清理"已建成的自有资源"（V4 复核：防泄漏）
+        # 先置安全空值：构造中途失败时 close() 能安全清理"已建成的自有资源"（防泄漏）
         self._knowledge = None
         self._llm_client = None
         self._vision_client = None
@@ -109,14 +109,14 @@ class SelfHealOrchestrator:
             self._embedding = get_embedding_for_settings(settings)
             # 规则式诊断：零成本恒跑，为成功路径提供根因归因（不触发 LLM，省 Token）
             rule_diagnoser = Diagnoser()
-            # LLM 诊断：仅失败/低置信路径触发；client 包计数代理（B2：诊断调用计入成本统计）
+            # LLM 诊断：仅失败/低置信路径触发；client 包计数代理（诊断调用计入成本统计）
             llm_diagnoser = (
                 LLMDiagnoser(counting_proxy(self._llm_client, "llm_calls", self._reporter.stats))
                 if self._llm_client
                 else None
             )
-            # 三个协作者（A1）：上下文组装 / 修复提案 / 持久化审计
-            # L4：trace 录制状态 provider 透传给采集器（None 时回退异常探测）
+            # 三个协作者：上下文组装 / 修复提案 / 持久化审计
+            # trace 录制状态 provider 透传给采集器（None 时回退异常探测）
             self._assembler = ContextAssembler(page, settings, trace_active)
             self._fix_gen = FixGenerator(
                 settings,
@@ -144,11 +144,16 @@ class SelfHealOrchestrator:
         description: str | None = None,
         failure: FailureContext | None = None,
         use_knowledge: bool = True,
+        action: str | None = None,
     ) -> HealOutcome:
-        """执行一次完整自愈闭环（Router：组装 → 生成 → 路由）。"""
+        """执行一次完整自愈闭环（Router：组装 → 生成 → 路由）。
+
+        action：触发自愈的动作名（如 `click` / `set_input_files`），用于候选的可交互性取舍
+        （见 `fix_generator._select_candidates`）；未知 / None 时按既有行为处理。
+        """
         context = self._assembler.assemble(original_selector, description)
-        # T13：高风险页豁免——URL 命中 exclude_url_patterns 则不触发自愈（只报告，不动作）。
-        # 豁免事件也记审计（m4）："只报告"的落点，供看板/审计追溯。
+        # 高风险页豁免——URL 命中 exclude_url_patterns 则不触发自愈（只报告，不动作）。
+        # 豁免事件也记审计："只报告"的落点，供看板/审计追溯。
         if context.excluded:
             self._reporter.record(
                 HealingRecord(
@@ -158,30 +163,30 @@ class SelfHealOrchestrator:
                     confidence=0.0,
                     root_cause="high_risk_page_excluded",
                     success=False,
-                    verified=False,  # V4 复核：豁免不是修复，勿计入"真自愈"指标
+                    verified=False,  # 豁免不是修复，勿计入"真自愈"指标
                 )
             )
             return HealOutcome(success=False, root_cause="high_risk_page_excluded")
-        proposal = self._fix_gen.generate(context, failure, use_knowledge)
+        proposal = self._fix_gen.generate(context, failure, use_knowledge, action=action)
         return self._persister.resolve(context, proposal)
 
     def commit_pending(self, attempt_id: str) -> None:
-        """B1：验证成功后沉淀知识 + 审计（委托 PersistenceHandler；幂等防重复提交）。"""
+        """验证成功后沉淀知识 + 审计（委托 PersistenceHandler；幂等防重复提交）。"""
         self._persister.commit_pending(attempt_id)
 
     def discard_pending(self, attempt_id: str | None) -> None:
-        """M9：显式丢弃一条不会被 commit 的暂存（委托 PersistenceHandler；未知 id 安全 no-op）。"""
+        """显式丢弃一条不会被 commit 的暂存（委托 PersistenceHandler；未知 id 安全 no-op）。"""
         self._persister.discard_pending(attempt_id)
 
     def close(self) -> None:
-        """释放本实例**自建**的资源（知识库连接 / LLM / VLM 客户端，审查 M3）。
+        """释放本实例**自建**的资源（知识库连接 / LLM / VLM 客户端）。
 
         注入的 knowledge / llm_client / vision_client 由注入方负责关闭（owns 标记）。
-        同时收口采集器生命周期（L3：摘除页面上的网络监听，幂等）。
+        同时收口采集器生命周期（摘除页面上的网络监听，幂等）。
         释放失败不掩盖业务（best-effort）；幂等（重复 close 安全）。
         """
         if self._assembler is not None:
-            self._assembler.close()  # L3：HealingPage.close() → 本方法 → 摘除网络监听
+            self._assembler.close()  # HealingPage.close() → 本方法 → 摘除网络监听
         if self._owns_knowledge:
             _safe_close(self._knowledge)
         if self._owns_llm:
@@ -198,11 +203,11 @@ class SelfHealOrchestrator:
     # --- 薄委托器：兼容既有内部方法调用与测试（逻辑已下沉协作者） ---
 
     def _counting_client(self, client, key: str):
-        """T17：计数代理（委托 FixGenerator，供诊断/测试复用）。"""
+        """计数代理（委托 FixGenerator，供诊断/测试复用）。"""
         return self._fix_gen._counting_client(client, key)
 
     def _selector_exists(self, selector: str) -> bool:
-        """校验选择器能否在当前页面定位到元素（缓存验证 / T16 verified 共用）。"""
+        """选择器是否**唯一命中**（缓存复用 / verified 判定的硬底线；可交互性另见候选择优）。"""
         return selector_exists(self._page, selector)
 
     def _lookup_knowledge(
@@ -225,7 +230,9 @@ class SelfHealOrchestrator:
             )
         )
 
-    def _best_candidate(self, scene, selector: str, description: str | None):
+    def _best_candidate(
+        self, scene, selector: str, description: str | None, action: str | None = None
+    ):
         """按 strategy_order 取最优候选（委托 FixGenerator；保留旧签名兼容测试）。"""
         return self._fix_gen.best_candidate(
             HealingContext(
@@ -235,7 +242,8 @@ class SelfHealOrchestrator:
                 dom_fingerprint=None,
                 page_fingerprint="",
                 element_context=None,
-            )
+            ),
+            action=action,
         )
 
     def _persist(

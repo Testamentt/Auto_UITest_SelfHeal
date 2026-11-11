@@ -52,7 +52,7 @@ class _RecOrch:
         self.discarded: list = []
         self.committed: list = []
 
-    def run(self, sel, desc, failure=None, use_knowledge=True):
+    def run(self, sel, desc, failure=None, use_knowledge=True, action=None):
         self.calls.append(use_knowledge)
         return self._outcomes.pop(0)
 

@@ -1,30 +1,30 @@
-"""语义定位策略（Phase 2 → Phase 5 A 升级）。
+"""语义定位策略（LLM 语义定位 + 知识库向量检索）。
 
-Phase 5 A 语义化后，本策略成为调度链的 **L3 语义向量检索**：
+本策略在调度链中承担 **L3 语义向量检索**：
 优先从知识库按 `find_semantic`（page 分桶 + numpy 余弦）命中语义相似的修复案例；
-未命中（或上下文为空）时，**退回 Phase 2 的 LLM 语义定位**（自然语言描述 + 防幻觉护栏）。
+未命中（或上下文为空）时，**退回 LLM 语义定位**（自然语言描述 + 防幻觉护栏）。
 
-**L3 采纳规则（防污染，见计划 v5）**：
+**L3 采纳规则（防污染）**：
 - sim > 0.92 且 `is_verified`（人审过）→ 自动采纳；
 - sim > 0.80 且 `created_at` 在 7 天新鲜窗口内 → 自动采纳（免人审，冷启动）；
 - 其余 0.75 < sim ≤ 0.92 → 仅写 `reports/review-queue.md` 人审清单，返回 None 降级 L4（不阻塞流水线）。
 
 不可用（无 client / 无 description / 调用异常 / 解析失败）一律返回 None。
 
-**R5 意图依据闸门（`_description_has_basis`）**：
+**意图依据闸门（`_description_has_basis`）**：
 LLM 段的既有护栏只保证"selector 真实存在 + 置信度合法"，**不保证描述与页面有关**：真实模型对
-完全无关的描述（`#ghost-btn-old` + `zzz_不存在的描述`）仍会高置信挑一个候选并被采纳（实测见
-docs/backlog/low-priority.md §三 R5）。本闸门补上这一下限——描述与页面**任一**候选的
-词元/子串都无交集 → 判定"描述无意图依据"，记 debug 后返回 None（交下一策略/人审），不采纳候选。
+完全无关的描述（`#ghost-btn-old` + `zzz_不存在的描述`）仍会高置信挑一个候选并被采纳（实测如此）。
+本闸门补上这一下限——描述与页面**任一**候选的词元/子串都无交集 → 判定"描述无意图依据"，
+记 debug 后返回 None（交下一策略/人审），不采纳候选。
 
-- **刻意不照搬视觉段的 C4 融合降权** `conf × (0.4 + 0.6 × l2)`：该公式把"字面重叠度"当置信度系数，
+- **刻意不照搬视觉段的交叉降权** `conf × (0.4 + 0.6 × l2)`：该公式把"字面重叠度"当置信度系数，
   而语义定位的前提恰是「描述可能与候选文案同义但字面不重叠」。实测（本机夹具）`#submit-btn-old`
   + `登录按钮` 的 l2 仅约 0.2，融合后 0.9 → 0.468 会跌破 0.6 阈值——真实语义冒烟
   （tests/e2e/test_llm_smoke.py::test_semantic_llm_locate_login_button）会因此误伤失败。
   故本闸门只做**布尔下限**（有/无依据），不动采纳置信度，避免误杀合法改述场景。
 - **依据只看描述，不看原选择器**：原选择器与候选的字面重叠正是误采纳的来源
   （`#ghost-btn-old` → `#ghost-btn` 共享 ghost/btn），计入依据会让本缺陷原样复现。
-- **后续若要按真实数据标定**（backlog 提到的"意图重叠下限 / 描述信息量"）：采集/标定点在
+- **后续若要按真实数据标定**（"意图重叠下限 / 描述信息量"）：采集/标定点在
   `agent/confidence.py` 的 `CALIBRATORS[KEY_SEMANTIC_LLM]`（把 l2 作为第二输入做数据标定映射），
   本闸门仅承担"零依据"这一最保守的拒绝，不在此处拍阈值。
 """
@@ -57,7 +57,7 @@ L3_VERIFIED_SIM = 0.92
 L3_FRESH_SIM = 0.80
 L3_FRESH_DAYS = 7
 
-# R5 意图依据闸门：子串口径的最短有效匹配长度。
+# 意图依据闸门：子串口径的最短有效匹配长度。
 # 单字符子串（如候选文本"登"落在描述"登录按钮"里）是噪声，不构成"意图依据"。
 INTENT_BASIS_MIN_SPAN = 2
 
@@ -87,7 +87,7 @@ def _is_fresh(created_at: str | None, days: int = L3_FRESH_DAYS) -> bool:
 
 
 def _description_has_basis(description: str, elements: Iterable[Element]) -> bool:
-    """R5 意图依据闸门：描述能否在页面候选中找到**任何**词元/子串落点。
+    """意图依据闸门：描述能否在页面候选中找到**任何**词元/子串落点。
 
     判定口径（只回答"有没有依据"，不回答"依据强弱"，也不判"LLM 选对了没"）：
     - **词元交集**：与 `heuristic._tokenize` 同一分词器（同层直接复用，防两处分词漂移），
@@ -120,12 +120,12 @@ def _description_has_basis(description: str, elements: Iterable[Element]) -> boo
 
 
 def _comparable_embedding(embedding, text: str) -> bytes | None:
-    """L6：把文本向量化为「可比较」的 bytes；不可比较 → None（跳过检索 / 不落库）。
+    """把文本向量化为「可比较」的 bytes；不可比较 → None（跳过检索 / 不落库）。
 
     契约（与 `agent/persistence.py` 的同名助手一致）：
     - 文本为空/纯空白 → 不向量化直接 None（省一次无意义计算）；
-    - `embed()` 返回空 bytes（L6 的"不可比较"标记）→ None，无论客户端自报什么；
-    - 客户端自报 `is_comparable(data)` 为假 → None（L6 在 `llm/embedding.py` 落地后的正式口径）；
+    - `embed()` 返回空 bytes（"不可比较"标记）→ None，无论客户端自报什么；
+    - 客户端自报 `is_comparable(data)` 为假 → None（`llm/embedding.py` 的正式口径）；
       签名不符（如无参）时记 debug 并退化为本地判据，不让调用方炸在半路；
     - 客户端尚无 `is_comparable()`（当前 `NgramEmbedding`）→ 本地判据：**全零向量**也不可比较
       （余弦未定义；纯标点文本如 "×" 即产出全零向量）。
@@ -158,8 +158,8 @@ class SemanticStrategy(RepairStrategy):
         page_fingerprint: str | None = None,
         element_context: ElementContext | None = None,
         review_writer: Callable | None = None,
-        page=None,  # 页面引用（M1：L3 采纳前验证候选 selector 仍存在）；None=页面不可用，视为存在
-        shrink_self_reported: bool = False,  # T5：LLM 自报段保守收缩开关（见 agent/confidence.py）
+        page=None,  # 页面引用（L3 采纳前验证候选 selector 仍唯一命中）；None=页面不可用，视为可用
+        shrink_self_reported: bool = False,  # LLM 自报段保守收缩开关（见 agent/confidence.py）
     ):
         self._client = client
         self._knowledge = knowledge
@@ -168,11 +168,11 @@ class SemanticStrategy(RepairStrategy):
         self._element_context = element_context
         self._page = page
         self._shrink_self_reported = shrink_self_reported
-        # B6：L3 未达自动采纳时的人审清单写出（由编排侧注入，策略不再直连 reporting 层）
+        # L3 未达自动采纳时的人审清单写出（由编排侧注入，策略不再直连 reporting 层）
         self._review_writer = review_writer
 
     def repair(self, scene: Scene, original_selector: str, description: str | None = None):
-        # L3 知识语义向量检索（Phase 5 A）—— 优先；未命中再退回 LLM 语义定位
+        # L3 知识语义向量检索——优先；未命中再退回 LLM 语义定位
         if (
             self._knowledge is not None
             and self._embedding is not None
@@ -181,14 +181,14 @@ class SemanticStrategy(RepairStrategy):
             and (candidate := self._knowledge_semantic(original_selector)) is not None
         ):
             return candidate
-        # 原 LLM 语义定位（Phase 2，防幻觉护栏保留）
+        # LLM 语义定位（防幻觉护栏保留）
         return self._llm_semantic(scene, original_selector, description)
 
     def _knowledge_semantic(self, original_selector: str) -> RepairCandidate | None:
         """L3：知识库向量检索 → 采纳或建议（不采纳返回 None，由编排继续 L4）。"""
-        # L6：查询向量不可比较（空文本 / 不可比较标记 / 全零向量）→ 直接跳过 L3。
+        # 查询向量不可比较（空文本 / 不可比较标记 / 全零向量）→ 直接跳过 L3。
         # 上游 is_empty 已挡过"完全空上下文"，此处挡的是"文本非空但向量退化"（纯标点等），
-        # 以及 L6 在 llm/embedding.py 落地后的显式不可比较标记——不必白跑一次检索。
+        # 以及 `llm/embedding.py` 的显式不可比较标记——不必白跑一次检索。
         query_vec = _comparable_embedding(self._embedding, self._element_context.query_text)
         if query_vec is None:
             logger.debug("L3 跳过：查询文本为空或向量不可比较（不进入知识库检索）")
@@ -203,9 +203,11 @@ class SemanticStrategy(RepairStrategy):
         if not hits:
             return None
         case, sim = hits[0]
-        # M1 护栏（与 L1 对称）：知识库候选可能已再次失效（页面又改版）——
-        # 采纳前验证 new_selector 仍真实存在；失效则写人审清单、不采纳（交 L4 重定位）。
-        # page=None（页面不可用）时视为存在，与 selector_exists 语义一致。
+        # 护栏（与 L1 对称）：知识库候选可能已再次失效（页面又改版）——
+        # 采纳前验证 new_selector 仍**唯一命中**（多命中时重试会 strict-mode 失败）；
+        # 可见 / enabled 属瞬态且与动作相关，不作为淘汰条件。
+        # 不可用则写人审清单、不采纳（交 L4 重定位）。
+        # page=None（页面不可用）时视为可用，与 selector_exists 语义一致。
         # selector_exists 惰性导入：context ↔ strategies 包存在导入环（orchestrator → context → strategies）。
         from selfheal.agent.context import selector_exists
 
@@ -224,11 +226,11 @@ class SemanticStrategy(RepairStrategy):
             self._bump(case)
             return RepairCandidate(
                 selector=case.new_selector,
-                # T5：L3 相似度段统一标尺出口（恒等，契约见 agent/confidence.py）
+                # L3 相似度段统一标尺出口（恒等，契约见 agent/confidence.py）
                 confidence=calibrate(KEY_SEMANTIC_L3, sim),
                 strategy=self.name,
             )
-        # 未达自动采纳：写人审清单（经编排侧注入的 review_writer，B6 收敛出口），
+        # 未达自动采纳：写人审清单（经编排侧注入的 review_writer 收敛出口），
         # 不采纳（继续 L4）、不阻塞流水线；writer 未注入则跳过（不写不炸）。
         if self._review_writer is not None:
             self._review_writer(
@@ -248,7 +250,7 @@ class SemanticStrategy(RepairStrategy):
         )
 
     def _bump(self, case) -> None:
-        """命中递增（热度 / 衰减用）；失败记 warning 不阻塞采纳（V5 复核：不再静默吞错）。"""
+        """命中递增（热度 / 衰减用）；失败记 warning 不阻塞采纳（不再静默吞错）。"""
         try:
             self._knowledge.bump_hit(case.repair_key)
         except Exception:  # noqa: BLE001 - 热度更新失败不影响已成功的采纳
@@ -260,12 +262,12 @@ class SemanticStrategy(RepairStrategy):
         if self._client is None or not description or not scene.dom_snapshot:
             return None
         # 护栏白名单：页面中真实存在、可由 build_stable_selector 生成的稳定定位器。
-        # T8：候选来源优先 Playwright 原生解析（有 page 采集），静态 DOM 快照解析兜底。
+        # 候选来源优先 Playwright 原生解析（有 page 采集），静态 DOM 快照解析兜底。
         candidates = interactive_candidates(scene)
         real_selectors = {s for el in candidates if (s := build_stable_selector(el))}
         if not real_selectors:
             return None
-        # R5 意图依据闸门（见模块 docstring）：描述与页面候选毫无词元/子串交集 → 拒绝。
+        # 意图依据闸门（见模块 docstring）：描述与页面候选毫无词元/子串交集 → 拒绝。
         # 位置在模型调用**之前**：拒绝与否只取决于描述与页面，不依赖模型输出，
         # 既然"无依据"必然不采纳，就不必为它付一次模型调用与延迟。
         if not _description_has_basis(description, candidates):
@@ -297,7 +299,7 @@ class SemanticStrategy(RepairStrategy):
             return None
         return RepairCandidate(
             selector=selector,
-            # T5：LLM 自报段统一标尺出口（shrink_self_reported 开启时保守收缩，见 confidence.py）
+            # LLM 自报段统一标尺出口（shrink_self_reported 开启时保守收缩，见 confidence.py）
             confidence=calibrate(
                 KEY_SEMANTIC_LLM,
                 round(confidence, 3),
