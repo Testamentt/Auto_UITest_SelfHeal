@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """自愈定位器 —— 引擎层原语（见 docs/decisions.md D5 / D6；装配层在 plugin/）。
 
 **分层位置（D19）**：本模块只提供 engine 原语——`HealingLocator`（动作包装 + 链式
@@ -89,6 +91,21 @@ class HealingFailedError(*_HealingFailedBases):  # type: ignore[misc]
     """自愈失败且无可用兜底时抛出，携带诊断报告（兼容 TimeoutError 语义）。"""
 
 
+class _ProbeTimeout(*_HealingFailedBases):  # type: ignore[misc]
+    """快速探测判定"目标当下不可用"。
+
+    继承链与 `HealingFailedError` 相同（Playwright TimeoutError + 内置 TimeoutError），
+    因此：
+    - `_is_timeout_error()` 视其为超时（它确实是"等待目标可用超时"的语义），
+      **自愈触发条件与"等满超时后"完全一致**；
+    - 若它意外冒泡到用户代码，`except TimeoutError` 仍能捕获（与原生超时一致）。
+
+    但请注意：它**不是** Playwright 原生 `TimeoutError` 实例，`failure_type` 报的是本类名
+    （`_ProbeTimeout`）。诊断侧对此有区分价值（"是我们主动探测判定的"vs"原生等满超时"），
+    归因不必与原生完全同形——如需要统一口径，看 `failure.message`（以「快速探测：」开头）。
+    """
+
+
 def _safe_close(obj) -> None:
     """best-effort 关闭带 close() 的对象（engine 层自持，避免为释放资源反向依赖 agent 层）。"""
     close = getattr(obj, "close", None)
@@ -146,6 +163,19 @@ CHAIN_HINT_LIMIT = 3
 
 # 判定 Locator 形态的核心方法（区分真实/假 Locator 与 FrameLocator/标量）
 _LOCATOR_API = ("locator", "nth", "click")
+
+# 不要求元素"当前可交互"的动作（快速探测的可交互性口径）。
+# `set_input_files` 对 display:none 的 <input type=file> 同样可用——若按"必须可见"探测，
+# 会把隐藏上传框误判为不可用并触发多余自愈。其余 HEALABLE 动作都要求可交互。
+#
+# **与 agent 层 `context._ACTIONS_WITHOUT_ACTIONABILITY` 同义但各自独立**：engine 不许
+# import agent（分层铁律，见 D19 与 test_layering）。两处都收窄到同一单一集合，改动需同步。
+_ACTIONS_WITHOUT_ACTIONABILITY = frozenset({"set_input_files"})
+
+
+def _action_requires_actionability(action: str | None) -> bool:
+    """该动作是否要求元素**当前可交互**（None = 未知来源 → 不要求）。"""
+    return action is not None and action not in _ACTIONS_WITHOUT_ACTIONABILITY
 
 
 def _is_locator_like(result: Any) -> bool:
@@ -290,13 +320,21 @@ class HealingLocator:
         )
 
     def _replay_chain(self, root_locator: Any, action_name: str, args: tuple, kwargs: dict) -> Any:
-        """在修复后的根定位器上重放整条链操作 + 叶子动作（property 走 getattr、method 走调用）。"""
+        """在修复后的根定位器上重放整条链操作 + 叶子动作（property 走 getattr、method 走调用）。
+
+        链式重放使用探测预算作为**短超时**（`probe.timeout_ms`），让"修根没救回"
+        快速暴露并转去修叶子，而不是先白等一个完整默认超时（链式场景实测 -32s 的主因）。
+        调用方传入的显式 `timeout` 优先（用户显式控制时不覆盖）。
+        """
         target = root_locator
         for op_name, op_args, op_kwargs, is_property in self._chain_ops:
             if is_property:
                 target = getattr(target, op_name)
             else:
                 target = getattr(target, op_name)(*op_args, **op_kwargs)
+        short = self._replay_timeout_ms()
+        if short is not None and "timeout" not in kwargs:
+            kwargs = {**kwargs, "timeout": short}
         return getattr(target, action_name)(*args, **kwargs)
 
     def _chain_hint(self) -> str:
@@ -333,52 +371,145 @@ class HealingLocator:
         return f"元素{selector!r}，位于{url or '当前页面'}{self._chain_hint()}"
 
     def _healing_action(self, name: str, action: Callable) -> Callable:
-        """把原生动作包成：前置可忽略等待 → 失败（超时）→ 自愈 → 用新定位器重试。"""
+        """把原生动作包成：探测/等待 → 失败（超时）→ 自愈 → 用新定位器重试。"""
 
         def wrapped(*args: Any, **kwargs: Any) -> Any:
             self._wait_before_action()  # 动作前可选的短稳等待（best-effort，失败不阻塞）
+            # 快速探测——目标此刻是否可用。不可用则**立刻**进自愈，不必等满默认超时，
+            # 把单条失效的代价从 ~30s 降到 ~probe.timeout_ms。探测通过则完全走原路径。
+            probe_exc = self._probe_target(name)
+            if probe_exc is None:
+                return self._run_action_with_healing(name, action, args, kwargs, trigger=None)
+            logger.info(
+                "自愈快速探测未通过（%s 内未就绪），跳过默认超时直接进入自愈：%s",
+                f"{self._cfg.probe.timeout_ms}ms",
+                probe_exc,
+            )
+            return self._run_action_with_healing(name, action, args, kwargs, trigger=probe_exc)
+
+        wrapped.__name__ = name
+        wrapped.__doc__ = f"自愈包装动作 {name}：探测/失败（超时）→ 自愈 → 重试。"
+        return wrapped
+
+    def _probe_target(self, action_name: str | None = None) -> BaseException | None:
+        """自愈触发前的快速探测（`healing.probe`）。
+
+        Returns:
+            None：探测通过（目标在探测预算内可用）→ 调用方走原生动作；
+            异常实例：探测未通过 → 调用方把它当作"触发自愈的原因"，直接进自愈闭环。
+
+        **核心收益**：选择器失效（UI 改版）时原生动作要白等满默认超时（30s）才抛错；
+        探测把这段等待压到 `probe.timeout_ms`（默认 2.5s），单条失效步骤 ~30s → ~2.5s。
+
+        **不改变结论，只改变到达结论的速度**：
+        - 探测通过 → 走原生动作，与未开启探测完全一致；
+        - 探测未通过 → 走自愈闭环，与"等满超时后"的路径完全一致（兜底/回滚语义不变）。
+
+        **不误杀"稍后渲染"**：判定用 `wait_for(...)` 在探测预算内**等待**，而不是 `count()`
+        一次性判死——慢加载元素在预算内出现即视为可用，原生动作照常执行。
+
+        判定口径：
+        - `count == 0` → 预算内等 `state`（要求可交互时 `visible`，否则 `attached`）；
+        - `count == 1` 且动作要求可交互 → 预算内等 `visible`（存在但被隐藏/覆盖，原生同样超时）；
+        - `count > 1` → **返回 None（探测通过）**，交原生动作按 strict-mode 原语义报错。
+          多命中是"选择器写得过宽"（编程错误），不是"元素暂时不可用"；提前自愈会掩盖它。
+
+        任何**非超时类**异常（页面已关闭 / 定位器非法）一律视为探测通过，交原生动作抛真正
+        的错误——探测只负责提前发现不可用，不负责替换原生错误语义。
+        关闭探测（`probe.enabled=false`）或未开启自愈时恒返回 None（零回归）。
+        """
+        probe = getattr(self._cfg, "probe", None)
+        if not self._enabled or probe is None or not probe.enabled:
+            return None
+        timeout_ms = probe.timeout_ms
+        requires_actionability = _action_requires_actionability(action_name)
+        try:
+            # 探测目标是**动作真正作用的那个 locator**：链式定位时是整条链解析出的叶子
+            # （`self._locator` 已是链末端），不是根——"根存在但叶子失效"正是链式自愈要救的场景，
+            # 只看根会让这类失败照旧等满 30s（链式场景实测 32s）。
+            target = self._locator
+            count = target.count()
+            if count > 1:
+                return None  # 见 docstring：strict-mode 属编程错误，不提前自愈
+            if count == 0 or requires_actionability:
+                target.wait_for(
+                    state="visible" if requires_actionability else "attached",
+                    timeout=timeout_ms,
+                )
+            return None
+        except Exception as exc:  # noqa: BLE001 - 探测自身失败不等于目标不可用
+            if _is_timeout_error(exc):
+                return _ProbeTimeout(
+                    f"快速探测：元素在 {timeout_ms}ms 内未就绪"
+                    f"（selector={self._leaf_selector!r}）：{exc}"
+                )
+            # 非超时类（页面已关闭 / strict-mode 等）：交原生动作抛真正的错误
+            logger.debug("快速探测跳过（非超时异常，回退原生等待）", exc_info=True)
+            return None
+
+    def _run_action_with_healing(
+        self,
+        name: str,
+        action: Callable,
+        args: tuple,
+        kwargs: dict,
+        trigger: BaseException | None,
+    ) -> Any:
+        """执行动作；失败（或由 `trigger` 预判失败）时走「自愈 → 重试」链路。
+
+        `trigger` 非 None 表示快速探测已判定目标不可用：不再白等原生超时，直接进自愈。
+        自愈失败时的兜底语义与"等满超时后自愈失败"完全一致（`_resolve_uncertain`）。
+        """
+        if trigger is None:
             try:
                 return action(*args, **kwargs)
             except Exception as exc:  # noqa: BLE001 - 需甄别超时后决定自愈或上抛
                 if not _is_timeout_error(exc):
                     raise
-                # 先尝试清除弹窗（"被遮挡"类失败的高频根因）；清掉则直接重试原动作
-                if self._popup_guard is not None and self._popup_guard.dismiss_if_present():
-                    try:
-                        return action(*args, **kwargs)
-                    except Exception:  # noqa: BLE001 - 弹窗非根因，继续走自愈闭环
-                        logger.debug("清弹窗后重试仍失败，继续走自愈闭环", exc_info=True)
-                # 第一次自愈：修根（self._selector）+ 重放整条链，覆盖"根选择器断裂"
-                relocated = self._heal_and_resolve(exc, action=name)
-                try:
-                    result = self._replay_chain(relocated, name, args, kwargs)
-                    self._commit_success()  # 重试成功 → 沉淀暂存的修复
-                    return result
-                except Exception as retry_exc:  # noqa: BLE001 - 自愈后的选择器仍失败
-                    if not _is_timeout_error(retry_exc):
-                        raise
-                    # 第二次自愈：跳过知识缓存，直接修叶子（链意图拼入描述），
-                    # 覆盖"中段/叶子选择器断裂"；重试用修复后的叶子、不再重放链；
-                    # 上限一次、结果为裸调用不包裹，故不会死循环。
-                    stale_outcome = self._last_heal_outcome  # 下面会被第二次闭环覆盖
-                    relocated2 = self._heal_and_resolve(
-                        retry_exc, use_knowledge=False, leaf=True, action=name
-                    )
-                    # 第一次闭环的暂存不会再收到 commit（本次改用叶子修复），显式丢弃并记日志，
-                    # 否则它一直占着 _pending 额度、且"这次修复没沉淀"这件事完全不可见。
-                    if (
-                        self._orch is not None
-                        and stale_outcome is not None
-                        and stale_outcome.attempt_id
-                    ):
-                        self._orch.discard_pending(stale_outcome.attempt_id)
-                    result = getattr(relocated2, name)(*args, **kwargs)
-                    self._commit_success()  # 二次重试成功 → 沉淀暂存的修复
-                    return result
+                trigger = exc
+        # 先尝试清除弹窗（"被遮挡"类失败的高频根因）；清掉则直接重试原动作
+        if self._popup_guard is not None and self._popup_guard.dismiss_if_present():
+            try:
+                return action(*args, **kwargs)
+            except Exception:  # noqa: BLE001 - 弹窗非根因，继续走自愈闭环
+                logger.debug("清弹窗后重试仍失败，继续走自愈闭环", exc_info=True)
+        # 第一次自愈：修根（self._selector）+ 重放整条链，覆盖"根选择器断裂"
+        relocated = self._heal_and_resolve(trigger, action=name)
+        try:
+            result = self._replay_chain(relocated, name, args, kwargs)
+            self._commit_success()  # 重试成功 → 沉淀暂存的修复
+            return result
+        except Exception as retry_exc:  # noqa: BLE001 - 自愈后的选择器仍失败
+            if not _is_timeout_error(retry_exc):
+                raise
+            # 修根没救回（典型：根本来就没坏，坏的是叶子）→ 立刻转去修叶子，
+            # 不必再等一次完整超时。这与"等满超时再修叶子"结论相同，只是更快到。
+            logger.info("修根后重放仍失败，直接进入叶子修复（跳过二次默认超时）：%s", retry_exc)
+            # 第二次自愈：跳过知识缓存，直接修叶子（链意图拼入描述），
+            # 覆盖"中段/叶子选择器断裂"；重试用修复后的叶子、不再重放链；
+            # 上限一次、结果为裸调用不包裹，故不会死循环。
+            stale_outcome = self._last_heal_outcome  # 下面会被第二次闭环覆盖
+            relocated2 = self._heal_and_resolve(
+                retry_exc, use_knowledge=False, leaf=True, action=name
+            )
+            # 第一次闭环的暂存不会再收到 commit（本次改用叶子修复），显式丢弃并记日志，
+            # 否则它一直占着 _pending 额度、且"这次修复没沉淀"这件事完全不可见。
+            if self._orch is not None and stale_outcome is not None and stale_outcome.attempt_id:
+                self._orch.discard_pending(stale_outcome.attempt_id)
+            result = getattr(relocated2, name)(*args, **kwargs)
+            self._commit_success()  # 二次重试成功 → 沉淀暂存的修复
+            return result
 
-        wrapped.__name__ = name
-        wrapped.__doc__ = f"自愈包装动作 {name}：失败（超时）→ 自愈 → 重试。"
-        return wrapped
+    def _replay_timeout_ms(self) -> int | None:
+        """链重放的短超时：修根后重放若注定失败，不必等满默认超时。
+
+        仅在**开启探测且存在链操作**时生效——单步定位没有"重放"这一步，无需缩短；
+        返回 None 表示沿用原生默认超时（`probe.enabled=false` 的零回归路径）。
+        """
+        probe = getattr(self._cfg, "probe", None)
+        if not self._enabled or probe is None or not probe.enabled or not self._chain_ops:
+            return None
+        return probe.timeout_ms
 
     def _wait_before_action(self) -> None:
         """动作前可选的智能等待（healing.action_wait.enabled）。

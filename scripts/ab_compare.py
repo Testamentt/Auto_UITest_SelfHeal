@@ -1,6 +1,8 @@
-"""自愈价值 A/B 对比（T20）：同一组失效场景 ×（关闭/开启自愈）双轮运行 → 对比报告。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""自愈价值 A/B 对比：同一组失效场景 ×（关闭/开启自愈）双轮运行 → 对比报告。
 
-核心卖点「自愈提升 UI 自动化稳定性」的量化实证（TODO T3b）：
+核心卖点「自愈提升 UI 自动化稳定性」的量化实证：
 - A 组（disabled）：强制关闭自愈——失效定位器超时失败 = 「需人工修复」；
 - B 组（healing）：开启自愈——自动修复后通过；
 - 对比产物：`reports/ab-compare.md`（通过率 / 需人工修复数 / 耗时 / 自愈成本）。
@@ -10,7 +12,7 @@
 - pytest 解析与对比统计均为**纯函数**（parse_junit / build_rows / render_markdown，
   tests/unit/test_ab_compare.py 快照覆盖）；
 - 两轮定向运行以 `-k <variant>` 过滤变体（同一份用例代码，见 tests/e2e/test_ab_scenarios.py）；
-- L14 守卫：A 组（无自愈基线）为空 → 中止并说明原因；个别行「未运行」→ 报告显式告警。
+- 守卫：A 组（无自愈基线）为空 → 中止并说明原因；个别行「未运行」→ 报告显式告警。
 
 用法：
     python scripts/ab_compare.py            # 两轮运行 + 产出 reports/ab-compare.md
@@ -105,7 +107,7 @@ def build_rows(
     - 双 failed → 「自愈未救回（需人工）」
     - 双 passed → 「原定位器仍有效（非失效场景）」
 
-    L14：任一轮缺该场景结果（值为「未运行」）的行数进 `summary["not_run"]`，
+    任一轮缺该场景结果（值为「未运行」）的行数进 `summary["not_run"]`，
     由 render_markdown 在报告里显式告警——作废行不得静默混进结论。
     """
     rows: list[dict[str, str | float]] = []
@@ -135,7 +137,7 @@ def build_rows(
             }
         )
     healed = sum(1 for r in rows if r["value"] == "自愈修复 ✓")
-    # L14：任一轮缺该场景结果（junit 未收集到）→ 该行结论无意义；统计出来供报告显式告警，
+    # 任一轮缺该场景结果（junit 未收集到）→ 该行结论无意义；统计出来供报告显式告警，
     # 避免"部分未运行"的作废表格被当成有效对比（render_markdown 会渲染 ⚠️ 行）。
     not_run = sum(1 for r in rows if r["no_heal"] == "未运行" or r["with_heal"] == "未运行")
     summary = {
@@ -154,7 +156,7 @@ def render_markdown(rows: list[dict], summary: dict[str, str], cost: dict | None
     """对比结果 → Markdown 报告（纯函数；cost 存在时附自愈成本行）。"""
     total = len(rows) or 1
     lines = [
-        "# 自愈价值 A/B 对比报告（T20）",
+        "# 自愈价值 A/B 对比报告",
         "",
         "> 同一组失效场景 ×（关闭/开启自愈）双轮运行 · 生成于 CI/本地，数据源：junitxml",
         "",
@@ -165,7 +167,7 @@ def render_markdown(rows: list[dict], summary: dict[str, str], cost: dict | None
         lines.append(f"| {r['scenario']} | {r['no_heal']} | {r['with_heal']} | {r['value']} |")
     not_run = int(summary.get("not_run", 0) or 0)
     if not_run:
-        # L14：把"未运行"从表格里的一格提升为报告级告警——否则读者会把作废对比当结论
+        # 把"未运行"从表格里的一格提升为报告级告警——否则读者会把作废对比当结论
         lines += [
             "",
             f"> ⚠️ **告警**：{not_run} 行「未运行」——A/B 至少一轮没有该场景的结果"
@@ -179,11 +181,16 @@ def render_markdown(rows: list[dict], summary: dict[str, str], cost: dict | None
         f"| 用例通过 | {summary['no_heal_pass']}/{total} | {summary['with_heal_pass']}/{total} |",
         f"| 需人工修复的失效 | **{summary['manual_fixes']}** | **{0 if summary['with_heal_pass'] == total else total - int(summary['with_heal_pass'])}** |",
         f"| 总耗时 | {summary['no_heal_time']} | {summary['with_heal_time']} |",
+        "",
+        # 口径声明：两组耗时**不可直接横向对比**，避免读者误读成"自愈更快/更慢"
+        "> ⚠️ **耗时口径**：两组超时设置不同——无自愈组用 `set_default_timeout(800ms)` 快速失败，"
+        "开启自愈组沿用用例默认超时。**总耗时不可横向对比**，本表只用于说明"
+        "「通过数」差异；单条失效的耗时收益请看 `docs/architecture.md` 的探测小节。",
     ]
     if cost:
         lines.append(
             f"\n> 自愈成本：LLM {cost.get('llm_calls', 0)} 次 / VLM {cost.get('vlm_calls', 0)} 次，"
-            f"估算费用约 ¥{cost.get('total_cost', 0.0):.4f}（T17 成本看板口径）"
+            f"估算费用约 ¥{cost.get('total_cost', 0.0):.4f}（成本看板口径）"
         )
     lines.append("\n> 复现：`python scripts/ab_compare.py`")
     return "\n".join(lines) + "\n"
@@ -203,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
     # Windows GBK 控制台无法编码 ¥/emoji：stdout 统一按 UTF-8 容错输出（报告文件本就是 UTF-8）
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    parser = argparse.ArgumentParser(description="自愈价值 A/B 对比（T20）")
+    parser = argparse.ArgumentParser(description="自愈价值 A/B 对比")
     parser.add_argument("--skip-run", action="store_true", help="跳过运行，仅重渲染既有 junitxml")
     parser.add_argument("--junit-disabled", default=str(ROOT / "reports" / "ab-junit-disabled.xml"))
     parser.add_argument("--junit-healing", default=str(ROOT / "reports" / "ab-junit-healing.xml"))
@@ -218,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
 
     junit_disabled = parse_junit(args.junit_disabled)
     junit_healing = parse_junit(args.junit_healing)
-    # L14：A 组为空同样中止（此前只守 B 组）——A 组空 = 没有"无自愈"基线，
+    # A 组为空同样中止（此前只守 B 组）——A 组空 = 没有"无自愈"基线，
     # 生成的表格全是「未运行」，任何"自愈提升"结论都不成立，属作废产物。
     if not junit_disabled:
         print(f"A 组结果为空（{args.junit_disabled} 无用例结果？），无对照基线，中止报告生成")

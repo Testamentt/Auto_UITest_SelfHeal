@@ -1,12 +1,14 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """pytest 公共 fixture（测试分层）。
 
 - `-m unit`：单元测试，不依赖浏览器 / 网络（不请求下方浏览器 fixture）。
 - `-m e2e`：集成 / 端到端测试，使用 healing_page / disabled_page（需要浏览器内核）。
 - 自愈开关：CLI `--selfheal` / `--no-selfheal` 优先于 `settings.healing.enabled`。
-- L18：e2e/erp 用例带基线守卫——本机配置开了 `healing.dry_run` / 关掉自愈会直接 fail
+- e2e/erp 用例带基线守卫——本机配置开了 `healing.dry_run` / 关掉自愈会直接 fail
   并提示"本机配置会污染 e2e"，而不是让 e2e 集体失败后靠猜。
 - trace 开关：CLI `--trace-healing` / `--no-trace-healing` 优先于 `settings.browser.trace`；
-  同一取值以 provider 形式注入 `HealingPage`（L4），使采集器的"是否在录制"判定显式化。
+  同一取值以 provider 形式注入 `HealingPage`，使采集器的"是否在录制"判定显式化。
 
 注意：engine（含 playwright）在 fixture 内**惰性导入**，使 `-m unit` 无需安装 playwright 即可收集运行。
 """
@@ -14,6 +16,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 
 import pytest
 
@@ -27,13 +30,13 @@ from selfheal.reporting.allure_bridge import (
     write_environment,
 )
 
-# B3：会话级自愈记录聚合（写 HTML 看板的运行时生成路径）
+# 会话级自愈记录聚合（写 HTML 看板的运行时生成路径）
 _session_reporters: list = []
 
 
 @pytest.fixture(autouse=True)
 def _allure_auto_labels(request):
-    """T18：按 marker 优先级（healing > e2e > unit）自动打 Allure epic/feature 标签。
+    """按 marker 优先级（healing > e2e > unit）自动打 Allure epic/feature 标签。
 
     无 allure-pytest（_HAS_ALLURE=False）时零开销直通；dynamic 标签须在测试
     上下文（fixture/setup 期）调用，故放 autouse fixture 而非收集钩子。
@@ -76,20 +79,31 @@ def pytest_addoption(parser):
 
 @pytest.fixture(scope="session")
 def settings() -> Settings:
-    return load_settings()
+    """会话级配置（从 `config/settings.yaml` 加载，缺失时用默认值）。
+
+    `SELFHEAL_PROBE_DISABLED=1` 时把 `healing.probe.enabled` 覆盖为 False——供
+    `scripts/benchmark_probe.py` 做「探测开/关」对比基准，**无需改仓库配置文件**。
+    取不到该字段（老配置对象）时静默跳过，不影响既有用例。
+    """
+    loaded = load_settings()
+    if os.getenv("SELFHEAL_PROBE_DISABLED"):
+        probe = getattr(loaded.healing, "probe", None)
+        if probe is not None:
+            probe.enabled = False
+    return loaded
 
 
-# --- L18：e2e 基线守卫（本机 gitignored 配置不得污染 e2e 结果） ---
+# --- e2e 基线守卫（本机 gitignored 配置不得污染 e2e 结果） ---
 
 # 受守卫的 marker：e2e 与 erp（erp 用例同样是端到端自愈链路）
 _GUARDED_MARKERS = ("e2e", "erp")
 
 
 def e2e_baseline_violation(settings: Settings, cli_selfheal: bool | None = None) -> str | None:
-    """L18：检查本机 `config/settings.yaml`（gitignored）是否把 e2e 跑成了"另一种模式"。
+    """检查本机 `config/settings.yaml`（gitignored）是否把 e2e 跑成了"另一种模式"。
 
     问题：session 级 `settings` fixture 读本机配置，若本机开了"测试基线开关"
-    （`healing.dry_run` = T14 仅报告不执行；`healing.enabled=false` = 关掉插件），
+    （`healing.dry_run` = 仅报告不执行；`healing.enabled=false` = 关掉插件），
     e2e 会集体失败且报错点远离真实原因（"定位器还是超时"而不是"本机开了 dry_run"）。
 
     返回 None = 基线干净；否则返回给 `pytest.fail` 的提示文案。
@@ -99,7 +113,7 @@ def e2e_baseline_violation(settings: Settings, cli_selfheal: bool | None = None)
         return None
     polluted: list[str] = []
     if settings.healing.dry_run:
-        polluted.append("healing.dry_run=true（T14 仅报告不执行：修复不会真正重试）")
+        polluted.append("healing.dry_run=true（仅报告不执行：修复不会真正重试）")
     if not settings.healing.enabled:
         polluted.append("healing.enabled=false（自愈插件被本机配置关闭）")
     if not polluted:
@@ -119,7 +133,7 @@ def is_guarded_e2e_item(node) -> bool:
 
 @pytest.fixture(autouse=True)
 def _e2e_baseline_guard(request):
-    """L18：e2e 层基线断言（判定逻辑见 e2e_baseline_violation）。
+    """e2e 层基线断言（判定逻辑见 e2e_baseline_violation）。
 
     - 只对 e2e/erp 用例生效；
     - `settings` 惰性获取：unit 用例不读本机 `config/settings.yaml`（零开销、零误伤）；
@@ -137,7 +151,7 @@ def _e2e_baseline_guard(request):
 
 
 def _trace_active_provider(config, settings):
-    """trace 录制状态 provider（L4）：CLI 覆盖优先，否则 `settings.browser.trace`。
+    """trace 录制状态 provider：CLI 覆盖优先，否则 `settings.browser.trace`。
 
     与 `context` fixture 里 `tracing.start` 的判定**同源**（同一 CLI / 配置取值），
     保证采集器拿到的"当前是否在录制"与外层实际录制状态一致——采集器据此显式判定，
@@ -156,7 +170,7 @@ def knowledge(tmp_path_factory) -> KnowledgeBackend:
     db_path = tmp_path_factory.mktemp("knowledge") / "knowledge.db"
     store = SqliteKnowledgeStore(str(db_path))
     yield store
-    store.close()  # M3：会话结束关闭连接（临时库，Windows 下不关会锁文件）
+    store.close()  # 会话结束关闭连接（临时库，Windows 下不关会锁文件）
 
 
 @pytest.fixture(scope="session")
@@ -169,9 +183,9 @@ def browser_manager(settings):
 
 @pytest.fixture
 def context(browser_manager, settings, request):
-    """函数级浏览器上下文（基座标准，见 docs/archive/plans/2026-08-05-base-framework.md B3）。
+    """函数级浏览器上下文（基座标准，见 docs/architecture.md 分层与 fixtures 小节）。
 
-    开启 trace 时录制；teardown 保存 trace 并关闭上下文（修复 context 泄漏，评审 #25）。
+    开启 trace 时录制；teardown 保存 trace 并关闭上下文（修复 context 泄漏）。
     trace 开关：CLI --trace-healing/--no-trace-healing > settings.browser.trace。
     """
     from pathlib import Path
@@ -182,7 +196,7 @@ def context(browser_manager, settings, request):
     if trace_enabled:
         ctx.tracing.start(
             **TRACE_RECORDING_KWARGS
-        )  # 与 collector 内联 trace 恢复参数同源（评审 m6）
+        )  # 与 collector 内联 trace 恢复参数同源（两处取值必须一致）
     yield ctx
     if trace_enabled:
         trace_dir = Path(settings.browser.trace_dir)
@@ -192,18 +206,18 @@ def context(browser_manager, settings, request):
         # trace 保存失败不影响用例结果
         with contextlib.suppress(Exception):
             ctx.tracing.stop(path=str(trace_path))
-            _attach_trace_to_allure(trace_path)  # C5：trace 作为证据附件进报告
+            _attach_trace_to_allure(trace_path)  # trace 作为证据附件进报告
     ctx.close()
 
 
 def _attach_trace_to_allure(trace_path) -> None:
-    """把已落盘的 trace 附到 Allure 报告（T18 统一经 allure_bridge：best-effort）。"""
+    """把已落盘的 trace 附到 Allure 报告（统一经 allure_bridge：best-effort）。"""
     attach_file(trace_path, name="Playwright Trace（回放）")
 
 
 @pytest.fixture
 def page(context):
-    """函数级原生页面（基座标准，见 docs/archive/plans/2026-08-05-base-framework.md B3）。
+    """函数级原生页面（基座标准，见 docs/architecture.md 分层与 fixtures 小节）。
 
     有意覆盖 pytest-playwright 自带的 page fixture——本框架用自研 BrowserManager 控制生命周期。
     """
@@ -215,7 +229,7 @@ def pom(page):
     """POM 工厂：`demo = pom(DemoPage)`。
 
     POM 面向 Page 接口编写，自愈开/关由注入的 page 决定（注入原生 page 则原生、
-    注入 healing_page 则带自愈）。配合 BasePage 使用（见 B1）。
+    注入 healing_page 则带自愈）。配合 BasePage 使用。
     """
 
     def _factory(pom_cls):
@@ -226,8 +240,8 @@ def pom(page):
 
 @pytest.fixture
 def healing_page(settings, knowledge, context, request):
-    """自愈页面插件。开关：CLI > settings.healing.enabled；trace 状态经 provider 注入（L4）。"""
-    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（M10-②：装配层在 plugin/）
+    """自愈页面插件。开关：CLI > settings.healing.enabled；trace 状态经 provider 注入。"""
+    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（装配层在 plugin/）
 
     cli = request.config.getoption("selfheal")
     page = HealingPage(
@@ -237,15 +251,15 @@ def healing_page(settings, knowledge, context, request):
         enabled_override=cli,
         trace_active=_trace_active_provider(request.config, settings),
     )
-    _session_reporters.append(page.reporter)  # B3：登记 reporter 供会话结束聚合写看板
+    _session_reporters.append(page.reporter)  # 登记 reporter 供会话结束聚合写看板
     yield page
-    page.close()  # M3：释放自愈资源（orchestrator 自建资源；注入的会话级 knowledge 由 fixture 关闭）
+    page.close()  # 释放自愈资源（orchestrator 自建资源；注入的会话级 knowledge 由 fixture 关闭）
 
 
 @pytest.fixture
 def disabled_page(settings, context):
     """强制关闭自愈的页面，用于验证"关闭=原生行为"。"""
-    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（M10-②：装配层在 plugin/）
+    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（装配层在 plugin/）
 
     yield HealingPage(context.new_page(), settings, enabled_override=False)
 
@@ -254,12 +268,12 @@ def disabled_page(settings, context):
 def offline_healing_page(settings, context, request):
     """**离线**自愈页面：自愈开启，但关闭 LLM / VLM / embedding（只跑规则式 + 启发式策略）。
 
-    2026-10-08（修复轮新发现）：真实模型可用后，"故意不可自愈"的场景不再确定——
+    真实模型可用后，"故意不可自愈"的场景不再确定——
     LLM/VLM 仍可能为与页面无关的描述给出高置信候选（自报置信度 + 语义路径无 L2 交叉校验），
     使 D6 兜底用例变成"模型心情驱动"的抖动用例（全量跑实测：同一用例在全量中点到 ghost、
     单文件跑却走 fallback）。需要"确定性不可自愈"的场景请用本 fixture，并断言模型调用为 0。
     """
-    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（M10-②：装配层在 plugin/）
+    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（装配层在 plugin/）
 
     # 不污染 session 级 settings：深拷贝后关闭模型与持久化知识库
     offline = settings.model_copy(deep=True)
@@ -280,7 +294,7 @@ def offline_healing_page(settings, context, request):
         page.close()
 
 
-# --- T23：管伊佳 ERP 被测系统（marker erp；需本地 ERP 环境，CI 不跑） ---
+# --- 管伊佳 ERP 被测系统（marker erp；需本地 ERP 环境，CI 不跑） ---
 # 角色语义（专家确认）：租户 = 业务数据管理员（UI 测试与 API 造数共用其凭证）；
 # admin = 平台运维用户（不能编辑业务数据），测试基建不使用。
 
@@ -289,7 +303,7 @@ def offline_healing_page(settings, context, request):
 def erp_api(settings):
     """ERP 租户 API 客户端（测试数据造数/清理；凭证缺失或服务未启动时 skip 整组用例）。
 
-    2026-10-08 审查 M12：此前只在"凭证缺失"时 skip，**凭证已配置但 ERP 服务未启动**时
+    只在"凭证缺失"时 skip，**凭证已配置但 ERP 服务未启动**时
     直接 ERROR（外部依赖缺失应 skip）——实测 ERP 未启动即让 `pytest -m e2e` 必然红。
     """
     import pytest as _pytest
@@ -316,7 +330,7 @@ def erp_page(settings, knowledge, context, request):
 
     import pytest as _pytest
 
-    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（M10-②：装配层在 plugin/）
+    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（装配层在 plugin/）
     from tests.e2e.pages.erp.home_page import ErpHomePage
     from tests.e2e.pages.erp.login_page import ErpLoginPage
 
@@ -330,20 +344,20 @@ def erp_page(settings, knowledge, context, request):
         context.new_page(),
         settings,
         knowledge=knowledge,
-        trace_active=_trace_active_provider(request.config, settings),  # L4：trace 状态显式注入
+        trace_active=_trace_active_provider(request.config, settings),  # trace 状态显式注入
     )
-    # 评审 R4（2026-09-03）：与 healing_page 同款——ERP 用例自愈记录进会话聚合
-    # （dashboard / healing-records.json / T19 通知），否则审计看板缺 ERP 数据。
+    # 与 healing_page 同款——ERP 用例自愈记录进会话聚合
+    # （dashboard / healing-records.json / 通知摘要），否则审计看板缺 ERP 数据。
     _session_reporters.append(page.reporter)
-    page.set_default_timeout(8_000)  # T23：失效定位器较快进入自愈（默认 30s 过长）
+    page.set_default_timeout(8_000)  # 失效定位器较快进入自愈（默认 30s 过长）
     try:
         login = ErpLoginPage(page, sut.base_url).open_login()
         login.login(username, password)
-    except Exception as exc:  # noqa: BLE001 - ERP 前端未启动/不可达：外部依赖缺失 → skip（M12）
+    except Exception as exc:  # noqa: BLE001 - ERP 前端未启动/不可达：外部依赖缺失 → skip
         page.close()
         _pytest.skip(f"ERP 前端不可用（{sut.name} 未启动？）：{type(exc).__name__}: {exc}")
     from tests.e2e.pages.erp import (
-        dismiss_intro,  # T23 勘测：intro.js 引导层遮挡操作，登录后先清一次
+        dismiss_intro,  # intro.js 引导层遮挡操作，登录后先清一次
     )
 
     dismiss_intro(page)
@@ -352,16 +366,16 @@ def erp_page(settings, knowledge, context, request):
     try:
         yield page
     finally:
-        page.close()  # M12：与 healing_page 对齐，释放自建 LLM/VLM 客户端与知识库
+        page.close()  # 与 healing_page 对齐，释放自建 LLM/VLM 客户端与知识库
 
 
 def is_xdist_worker(config) -> bool:
-    """T21：xdist worker 进程判定（仅 worker 有 workerinput；controller / 单进程均无）。"""
+    """xdist worker 进程判定（仅 worker 有 workerinput；controller / 单进程均无）。"""
     return getattr(config, "workerinput", None) is not None
 
 
 def _write_shard(directory, worker_id: str, records: list, stats: dict) -> None:
-    """T21：xdist worker 把自愈记录写为独立分片（controller 统一聚合，避免互相覆盖丢数据）。"""
+    """xdist worker 把自愈记录写为独立分片（controller 统一聚合，避免互相覆盖丢数据）。"""
     import json
     from dataclasses import asdict
 
@@ -373,7 +387,7 @@ def _write_shard(directory, worker_id: str, records: list, stats: dict) -> None:
 
 
 def _read_shards(directory):
-    """T21：合并全部 worker 分片 → (records, stats)；无分片返回空（单进程行为不变）。"""
+    """合并全部 worker 分片 → (records, stats)；无分片返回空（单进程行为不变）。"""
     import json
     from pathlib import Path as _Path
 
@@ -395,7 +409,7 @@ def _read_shards(directory):
 
 
 def _cleanup_shards(directory) -> None:
-    """T21：聚合完成后清理分片临时文件（best-effort）。"""
+    """聚合完成后清理分片临时文件（best-effort）。"""
     from pathlib import Path as _Path
 
     for shard in _Path(directory).glob(".healing-shard-*.json"):
@@ -404,7 +418,7 @@ def _cleanup_shards(directory) -> None:
 
 
 def _finalize_healing_reports(config, records: list, stats: dict) -> None:
-    """T21：看板 / 通知摘要的统一出口（xdist 感知）。
+    """看板 / 通知摘要的统一出口（xdist 感知）。
 
     - worker 进程：仅写分片（记录不丢，dashboard 由 controller 统一生成）；
     - controller / 单进程：合并 worker 分片 + 本进程记录 → 写 dashboard + healing-records.json
@@ -430,7 +444,7 @@ def _finalize_healing_reports(config, records: list, stats: dict) -> None:
 
         cost = estimate_cost(merged_stats.get("llm_calls", 0), merged_stats.get("vlm_calls", 0))
         write_dashboard(all_records, "reports/dashboard.html", cost=cost)
-        _write_healing_records_json(all_records, cost)  # T19：通知摘要数据源（CI artifact）
+        _write_healing_records_json(all_records, cost)  # 通知摘要数据源（CI artifact）
     except Exception:  # noqa: BLE001 - 看板生成失败不影响测试结果
         pass
     finally:
@@ -438,15 +452,15 @@ def _finalize_healing_reports(config, records: list, stats: dict) -> None:
 
 
 def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 - pytest 钩子签名固定
-    """会话结束（B3）：聚合全部自愈记录写入 HTML 看板（T21：xdist 分片聚合感知）。
+    """会话结束：聚合全部自愈记录写入 HTML 看板（xdist 分片聚合感知）。
 
     此前看板只能手工导出；本钩子让 CI / 本地跑完测试即产出 reports/dashboard.html。
     """
-    # T18：Allure 环境页（--alluredir 启用时写入；会话结束后写，不被 allure-pytest 清理）
+    # Allure 环境页（--alluredir 启用时写入；会话结束后写，不被 allure-pytest 清理）
     try:
         results_dir = session.config.getoption("allure_report_dir", None)
         if results_dir:
-            # M16：把 CLI 实际生效的 trace 开关写进环境页（此前只写配置值，--trace-healing
+            # 把 CLI 实际生效的 trace 开关写进环境页（此前只写配置值，--trace-healing
             # 覆盖时报告显示 False 而附件里却有 trace，审计口径相反）
             cli_trace = session.config.getoption("trace_healing", None)
             write_environment(results_dir, load_settings(), trace_enabled=cli_trace)
@@ -462,7 +476,7 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 - pytest 钩子�
 
 
 def _write_healing_records_json(records: list, cost: dict) -> None:
-    """T19：把会话自愈记录 + 成本摘要落盘 JSON，供 scripts/notify.py 组装通知。
+    """把会话自愈记录 + 成本摘要落盘 JSON，供 scripts/notify.py 组装通知。
 
     best-effort：写出失败不影响测试结果；文件随 CI artifact 上传（healing-records）。
     """

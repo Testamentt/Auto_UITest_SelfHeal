@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """语义定位策略（LLM 语义定位 + 知识库向量检索）。
 
 本策略在调度链中承担 **L3 语义向量检索**：
@@ -33,6 +35,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from selfheal.agent.confidence import KEY_SEMANTIC_L3, KEY_SEMANTIC_LLM, calibrate
@@ -52,10 +55,39 @@ from selfheal.llm.embedding import EmbeddingClient
 from selfheal.llm.io import extract_json, safe_float, safe_str
 
 # L3 语义检索：最低相似度 / 自动采纳阈值 / 新鲜窗口
+# 2026-11-12：以下常量降级为**默认值**，实际取值由配置
+# `knowledge.semantic` 经 `L3Thresholds` 注入（可按被测系统标定，不必发版）。
 L3_MIN_SIM = 0.75
 L3_VERIFIED_SIM = 0.92
 L3_FRESH_SIM = 0.80
 L3_FRESH_DAYS = 7
+
+
+@dataclass(frozen=True)
+class L3Thresholds:
+    """L3 语义检索阈值（配置注入载体，默认值即上面的模块常量）。
+
+    由 `agent/fix_generator.py` 从 `settings.knowledge.semantic` 构造并注入策略；
+    直接实例化（不传配置）时行为与改动前逐值一致（零回归）。
+    """
+
+    min_sim: float = L3_MIN_SIM
+    verified_sim: float = L3_VERIFIED_SIM
+    fresh_sim: float = L3_FRESH_SIM
+    fresh_days: int = L3_FRESH_DAYS
+
+    @classmethod
+    def from_config(cls, cfg) -> L3Thresholds:
+        """由 `config.SemanticKnowledgeConfig` 构造（None 时返回默认值）。"""
+        if cfg is None:
+            return cls()
+        return cls(
+            min_sim=cfg.min_sim,
+            verified_sim=cfg.verified_sim,
+            fresh_sim=cfg.fresh_sim,
+            fresh_days=cfg.fresh_days,
+        )
+
 
 # 意图依据闸门：子串口径的最短有效匹配长度。
 # 单字符子串（如候选文本"登"落在描述"登录按钮"里）是噪声，不构成"意图依据"。
@@ -160,6 +192,7 @@ class SemanticStrategy(RepairStrategy):
         review_writer: Callable | None = None,
         page=None,  # 页面引用（L3 采纳前验证候选 selector 仍唯一命中）；None=页面不可用，视为可用
         shrink_self_reported: bool = False,  # LLM 自报段保守收缩开关（见 agent/confidence.py）
+        thresholds: L3Thresholds | None = None,  # 阈值可配；None=用模块默认常量
     ):
         self._client = client
         self._knowledge = knowledge
@@ -170,6 +203,8 @@ class SemanticStrategy(RepairStrategy):
         self._shrink_self_reported = shrink_self_reported
         # L3 未达自动采纳时的人审清单写出（由编排侧注入，策略不再直连 reporting 层）
         self._review_writer = review_writer
+        # 阈值外置（配置注入），未注入时回退模块常量（零回归）
+        self._thresholds = thresholds or L3Thresholds()
 
     def repair(self, scene: Scene, original_selector: str, description: str | None = None):
         # L3 知识语义向量检索——优先；未命中再退回 LLM 语义定位
@@ -198,7 +233,7 @@ class SemanticStrategy(RepairStrategy):
             self._page_fingerprint,
             self._embedding.embedding_version,
             k=1,
-            threshold=L3_MIN_SIM,
+            threshold=self._thresholds.min_sim,
         )
         if not hits:
             return None
@@ -244,9 +279,10 @@ class SemanticStrategy(RepairStrategy):
         return None
 
     def _accept(self, case, sim: float) -> bool:
-        """L3 采纳规则：已 verified 高相似 / 新鲜窗口内高相似 → 自动采纳。"""
-        return (sim > L3_VERIFIED_SIM and case.is_verified) or (
-            sim > L3_FRESH_SIM and _is_fresh(case.created_at, L3_FRESH_DAYS)
+        """L3 采纳规则：已 verified 高相似 / 新鲜窗口内高相似 → 自动采纳（阈值来自配置）。"""
+        return (sim > self._thresholds.verified_sim and case.is_verified) or (
+            sim > self._thresholds.fresh_sim
+            and _is_fresh(case.created_at, self._thresholds.fresh_days)
         )
 
     def _bump(self, case) -> None:

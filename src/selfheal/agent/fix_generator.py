@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """修复提案生成器 —— 专职「知识库优先 → 诊断 → 策略链调度」。
 
 产出 FixProposal（知识缓存命中 / 最佳候选 / 根因），由 PersistenceHandler 做阈值路由。
@@ -22,6 +24,7 @@ from selfheal.agent.context import (
 )
 from selfheal.agent.strategies import SemanticStrategy, VisualStrategy
 from selfheal.agent.strategies.base import RepairCandidate
+from selfheal.agent.strategies.semantic import L3Thresholds
 from selfheal.config import Settings
 from selfheal.dom import compute_repair_key
 from selfheal.knowledge.base import KnowledgeBackend
@@ -341,6 +344,7 @@ class FixGenerator:
         """实例化策略；语义/视觉策略透传（计数代理包裹的）LLM/VLM client。
 
         语义策略注入 knowledge/embedding/页面指纹/元素上下文，执行 L3 向量检索。
+        L3 阈值由 `settings.knowledge.semantic` 注入（可按被测系统标定，不必发版）。
         client 包一层计数代理，真实 LLM/VLM 调用计入 reporter.stats。
         """
         if strategy_cls is SemanticStrategy:
@@ -353,6 +357,7 @@ class FixGenerator:
                 review_writer=self._review_writer,  # L3 人审清单收敛出口
                 page=self._page,  # L3 采纳前验证候选 selector 仍唯一命中
                 shrink_self_reported=self._settings.healing.shrink_self_reported,  # 自报置信度收缩
+                thresholds=L3Thresholds.from_config(self._settings.knowledge.semantic),  # 阈值外置
             )
         if strategy_cls is VisualStrategy:
             return strategy_cls(client=self._counting_client(self._vision_client, "vlm_calls"))
