@@ -1,16 +1,17 @@
+<!-- 本项目统一使用 UTF-8（无 BOM）编码。 -->
 # 架构决策记录（ADR）
 
-> **定位**：影响系统结构与可维护性的决策记录；D 编号稳定，代码注释只引用其中 9 个关键 ADR。
+> **定位**：影响系统结构与可维护性的决策记录；D 编号稳定，是架构取舍的当前事实源。
 > **状态**：事实源（决策变化须与 [architecture.md](architecture.md) 同批更新）
-> **最后更新**：2026-11-11 · 关联：[architecture.md](architecture.md) 架构 · [../README.md](../README.md) 项目展示
+> **最后更新**：2026-11-12 · 关联：[architecture.md](architecture.md) 架构 · [../README.md](../README.md) 项目展示
 
 ## 使用约定
 
-- 编号沿用 D1–D21；T24 为模型调用韧性决策的独立编号。
-- 代码注释**只**引用以下 9 个关键 ADR：D2 / D5 / D6 / D7 / D9 / D14 / D18 / D19 / T24。其余实现细节用「问题 → 方案 → 验证」式注释自解释，不依赖内部工单编号。
-- 历史评审、计划、待办与路线图快照在 `docs/archive/`（维护者用，根 README 不链接），本文件是决策的当前事实源。
+- 编号沿用 D1–D25，单序列到底（不再有 T 前缀的独立编号）。
+- 代码实现细节用「问题 → 方案 → 验证」式注释自解释；关键取舍在注释中引用本表编号（如 D6 兜底、D19 分层、D25 韧性）。
+- 历史评审、计划、待办与路线图为维护者本地记录（不随代码入库）；本文件是决策的当前事实源。
 
-## 关键 ADR（代码中保留引用）
+## 关键 ADR
 
 ### D2 · LLM/VLM 接入方式
 
@@ -60,12 +61,6 @@
 - **决策**：新增装配层 `selfheal/plugin/`（`HealingPage` 自 engine 上移）、中立 DTO 层 `selfheal/contracts.py`、`dom/` 下沉为 `selfheal/dom/`；`engine/popup_guard.py` 用窄 Protocol 去掉对 knowledge 的依赖；分层不变量由 AST 扫描用例守护。
 - **验证**：四个入口的 import 闭包里 `agent` / `knowledge` / `reporting` 全为空；护栏做过「故意违规必失败」验证。
 
-### T24 · 模型调用韧性（2026-11-10）
-
-- **问题**：异常分级已区分 Fatal / Transient，但一直没有消费者；SDK 自带重试不可见、不区分 Fatal，且与业务重试叠加会放大付费调用。
-- **决策**：`llm/resilience.py` 统一实现指数退避 + 三态熔断（CLOSED / OPEN / HALF_OPEN）；瞬态故障重试，连续失败熔断后抛 `CircuitOpenError` 走既有降级；Fatal 不重试；SDK 自带重试固定关闭（`max_retries=0`）；熔断状态为单进程（xdist 各 worker 独立）。
-- **验证**：假 provider 的 e2e 覆盖重试 / 熔断 / 降级；模拟演示 15 次自愈等待 31.53s → 6.31s（`scripts/resilience_demo.py`）；成本按真实尝试次数计。
-
 ### D20 · 逐候选阈值裁决
 
 - **问题**：按策略独立阈值（`strategy_thresholds`）曾"先按原始置信度取最大、再用赢家自己的阈值裁决"——高置信但**未达自身阈值**的候选会遮蔽低置信但**已达标**的候选（审计复现：heuristic 0.75 / 自身阈值 0.8 遮蔽 visual 0.62 / 自身阈值 0.6 → 本可修复却整体判失败）。
@@ -77,6 +72,12 @@
 - **问题**：`selector_exists` 曾只判 `count() > 0`——两个同名按钮时启发式产出的 `text="提交"` 被当成"可用的修复"采纳，重试 `click()` 抛 Playwright strict-mode violation（**非 TimeoutError**，不触发自愈，直接冒泡），且脏案例会经 stage → commit 落库成为后续复用的污染源。
 - **决策**：**唯一命中（`count()==1`）为硬底线**，统一用于候选采纳 / L1·L3 知识复用 / `verified` 判定；**可交互性按动作区分**（`set_input_files` 对隐藏 `input[type=file]` 同样可用，click / fill 等由 Playwright 自动等待），只作早接受门槛与同分 tie-break，**不以可交互性压置信度**（D6：宁可失败，也不错误地动作），候选当前不可交互时仍采纳并记日志；无浏览器替身缺探测方法时只校验唯一性。
 - **验证**：`tests/unit/test_bugfix_regression.py`（非唯一 `text="提交"` 必须被拒）+ `tests/unit/test_selector_usability.py`（count 0/1/2、hidden/disabled、探测异常、隐藏上传框采纳、置信度优先 / tie-break、知识复用、verified 口径）；独立复核用真 Chrome 验证隐藏 file input 与"暂不可见稍后可见"未被误杀、同名按钮场景无 strict-mode 冒泡。
+
+### D25 · 模型调用韧性（2026-11-10）
+
+- **问题**：异常分级已区分 Fatal / Transient，但一直没有消费者；SDK 自带重试不可见、不区分 Fatal，且与业务重试叠加会放大付费调用。
+- **决策**：`llm/resilience.py` 统一实现指数退避 + 三态熔断（CLOSED / OPEN / HALF_OPEN）；瞬态故障重试，连续失败熔断后抛 `CircuitOpenError` 走既有降级；Fatal 不重试；SDK 自带重试固定关闭（`max_retries=0`）；熔断状态为单进程（xdist 各 worker 独立）。
+- **验证**：假 provider 的 e2e 覆盖重试 / 熔断 / 降级；模拟演示 15 次自愈等待 31.53s → 6.31s（`scripts/resilience_demo.py`）；成本按真实尝试次数计。
 
 ## 全部决策索引
 
@@ -98,9 +99,12 @@
 | D14 | 知识库语义化 | 本地确定性 n-gram 哈希 TF 向量 + numpy 余弦；L1 `repair_key` 硬短路 → L2 启发式 → L3 语义检索 → L4 VLM；按 `page_fingerprint` 分桶；采纳规则见关键 ADR | 热路径不调 API embedding；ID 变但文本 / 结构不变仍可命中；防污染 + 冷启动免人审 |
 | D15 | Allure 报告增强 | 轻量桥 `reporting/allure_bridge.py`（`_HAS_ALLURE` 单点探测，未装全 no-op）；环境页 + marker→标签 + 证据附件；CI `publish` job 发布 GitHub Pages（gh-pages，含历史趋势，仅 main） | 展示层不该侵入 agent；标签单 feature 防爆炸；闭环过程以结构化附件呈现够用 |
 | D16 | 模型层护栏与异常语义 | 超时 / 输出上限 / 重试次数 / 图片体积上限**全部可配**（`LLMConfig`、`VisionConfig`）；异常分级为 `FatalUnavailableError`（鉴权 / 参数，重试无用）与 `TransientUnavailableError`（限流 / 超时 / 5xx，可重试），均继承 `UnavailableError`；`HealingFailedError` 同时继承 Playwright 与内置 `TimeoutError` | 2026-10-08 实证：key 与端点不同平台时只报异常类名，无法定位；401 与 429 同待遇导致重试策略与成本不可控 |
-| D17 | 文档治理 | 主线只保留三篇：根 `README.md`（展示）、`docs/architecture.md`（架构）、`docs/decisions.md`（决策）；历史评审 / 计划 / 待办 / 模板归档到 `docs/archive/`（维护者用，根 README 不链接）；`reviews/plans/sessions` 只读 | 2026-11-11 文档收敛：主线对抗噪音，历史材料保留可查证 |
+| D17 | 文档治理 | 主线只保留三篇：根 `README.md`（展示）、`docs/architecture.md`（架构）、`docs/decisions.md`（决策）；历史评审 / 计划 / 待办 / 模板归档到 `docs/archive/`（维护者本地记录，不随代码入库）；`reviews/plans/sessions` 只读 | 2026-11-11 文档收敛：主线对抗噪音，历史材料保留可查证 |
 | D18 | 视觉模型切换 | VLM 由通义 `qwen3-vl-plus`（DashScope）改为 **CommandCode 网关的 `deepseek/deepseek-v4.1-flash`**（与 LLM 同网关同凭据）；凭据变量由 `DASHSCOPE_API_KEY` 改名为 `COMMANDCODE_API_KEY`；代码默认值仍保留 qwen3-vl-plus + DashScope 公共端点作为可移植基线（仅本机 `config/settings.yaml` 覆盖） | ① 项目自身客户端实测该模型**支持图片输入**；② 真实视觉冒烟 `1 passed`、`confidence=0.873`（原 qwen3-vl-plus 0.921）、耗时 8.6s vs 60s 级；③ 与 LLM 同平台可少一套端点与计费口径。代价：推理模型含 reasoning token，成本单价需按新平台重估 |
 | D19 | 分层倒置修复 | 新增装配层 `selfheal/plugin/` + 中立 DTO 层 `selfheal/contracts.py` + `dom/` 下沉为 `selfheal/dom/`；`engine/popup_guard.py` 用窄 Protocol `PopupKnowledge` 去掉对 knowledge 的依赖；分层不变量改由 AST 扫描用例守护 | 反向依赖让"能力建设层"实际拉起整个大脑与知识库：单测无法隔离、替换/裁剪困难。实测改后四个入口的 `sys.modules` 闭包里 agent/knowledge/reporting 全为空；护栏做过"故意违规必失败"验证 |
 | D20 | 阈值裁决 | 逐候选先按自身策略阈值过滤，合格者再取最优；被拒候选进人审建议；候选 strategy 归一为调度键 | 高置信未达标候选不得遮蔽低置信达标候选（审计复现过误判失败，见关键 ADR） |
 | D21 | 修复定位器校验 | `selector_exists` 唯一命中硬校验；可交互性按动作取舍（早接受门槛 / 同分 tie-break，不压置信度） | 非唯一 `text="提交"` 重试时 strict-mode 崩溃并污染知识库；隐藏上传框不可硬拒（见关键 ADR） |
-| T24 | 模型调用韧性 | `llm/resilience.py` 指数退避重试 + 三态熔断；瞬态重试、Fatal 不重试；`CircuitOpenError` 继承 `UnavailableError` 走既有降级；SDK 重试固定关闭；熔断状态单进程 | 异常分级长期无消费者；SDK 重试不可见且与业务层叠加成 9 次付费调用；模拟演示 31.53s → 6.31s |
+| D22 | 自愈触发快速探测 | 动作前以 `healing.probe.timeout_ms`（默认 2.5s）探测目标是否就绪，不就绪直接进自愈；探测**不改变结论、只改变到达结论的速度**；判定用 `wait_for()` 在预算内等待（不误杀慢加载）；`count>1` 与 `disabled` 不提前判死；链式重放复用同一预算 | 原实现要等满 Playwright 默认超时（30s）才进闭环，单条失效 +30s、e2e 全量 492s。实测：单条 30.63s → 0.63s、链式 33s → 5.4s、全量 492s → 106s。多命中属编程错误、disabled 可恢复，提前判会掩盖/误杀 |
+| D23 | L3 阈值外置 | 语义检索的 `min_sim` / `fresh_sim` / `verified_sim` / `fresh_days` 从模块常量改为 `knowledge.semantic` 配置（`L3Thresholds` 注入策略）；层级约束 `min <= fresh <= verified` 在加载期校验 | 阈值按被测系统标定要改代码、发版；倒挂配置会让"更严的信任条件反而更易采纳"，属静默错误 |
+| D24 | 知识库运维入口 | `scripts/knowledge_admin.py`：`--stats / --prune / --dedupe / --export`；写操作**默认 dry-run**；`--prune` 保护已人审与被复用过的案例 | `verify_case.py` 只管人审标记，缺"看全貌、清垃圾"入口；知识库长期运行会积累失效、低价值与重复案例，无入口只能人工直连数据库 |
+| D25 | 模型调用韧性 | `llm/resilience.py` 指数退避重试 + 三态熔断；瞬态重试、Fatal 不重试；`CircuitOpenError` 继承 `UnavailableError` 走既有降级；SDK 重试固定关闭；熔断状态单进程 | 异常分级长期无消费者；SDK 重试不可见且与业务层叠加成 9 次付费调用；模拟演示 31.53s → 6.31s |
