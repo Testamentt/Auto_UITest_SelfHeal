@@ -1,14 +1,16 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """端到端冒烟：真实 LLM 语义定位（有 API key 才跑，否则 skip）。
 
 - test_semantic_healing_smoke：验证**完整自愈链路**在真实环境可闭环（注意：演示页登录
   按钮带 aria-label，启发式早停即达，此用例不一定触发 LLM 调用）。
 - test_semantic_llm_locate_login_button：**直怼语义策略**的真实 LLM 冒烟——绕开启发式
   短路直接构造 SemanticStrategy + 真实 LLMClient（deepseek-v4-flash），验证模型能依据
-  精简 DOM 索引给出登录按钮的真实稳定定位器，并拿到真实置信度数据点（T5 收缩标定输入）。
+  精简 DOM 索引给出登录按钮的真实稳定定位器，并拿到真实置信度数据点（供置信度收缩标定参考）。
 
 无 OPENAI_API_KEY 时自动跳过，不影响 CI。
 
-L19：本模块是**真实模型调用**（外呼付费 API），打 `live` marker——常规 e2e
+本模块是**真实模型调用**（外呼付费 API），打 `live` marker——常规 e2e
 （`-m "e2e and not erp and not live"`）不会跑到它，显式 `-m live` 才跑。
 """
 
@@ -23,7 +25,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.live]
 
 @pytest.fixture(autouse=True)
 def _require_llm_env():
-    """无 OPENAI_API_KEY → 跳过（L19 改造：由模块级 skip 改为用例级 skip）。
+    """无 OPENAI_API_KEY → 跳过（由模块级 skip 改为用例级 skip）。
 
     模块级 skip 会让本模块在无 key 环境**收集不到**任何用例，`-m live` 的隔离
     就无从验证、也看不见"哪些用例要付费"；改为 fixture 级 skip 后：收集恒可见，
@@ -44,7 +46,7 @@ def test_semantic_healing_smoke(healing_page):
     rec = healing_page.reporter.records[0]
     assert rec.original_selector == "#submit-btn-old"
 
-    # T2 证据留存：自愈记录（reports/ 已 gitignore，如需展示可另行提交）
+    # 证据留存：自愈记录（reports/ 已 gitignore，如需展示可另行提交）
     import json
     from dataclasses import asdict
     from pathlib import Path
@@ -62,7 +64,7 @@ def test_semantic_healing_smoke(healing_page):
 def test_semantic_llm_locate_login_button(healing_page):
     """真实 LLM 语义定位冒烟：直构 SemanticStrategy + 真实 client，绕开启发式早停。
 
-    演示页登录按钮对语义策略是"硬场景"（T8 后 DOM 索引含 testid/aria 全量信息），
+    演示页登录按钮对语义策略是"硬场景"（DOM 索引含 testid/aria 全量信息），
     真实模型应从候选集中挑出登录按钮的稳定定位器；结果受 3 处护栏约束
     （selector 必须在真实索引 / 置信度 0~1 / 返回解析），失败返回 None 允许重试。
     """
@@ -95,7 +97,7 @@ def test_semantic_llm_locate_login_button(healing_page):
     assert cand.strategy == "semantic"
     assert cand.confidence >= 0.3
 
-    # 证据留存：语义定位结果（含真实置信度数据点，T5 收缩标定输入）
+    # 证据留存：语义定位结果（含真实置信度数据点，供收缩标定参考）
     import json
     from pathlib import Path
 
@@ -109,7 +111,7 @@ def test_semantic_llm_locate_login_button(healing_page):
                 "healed_selector": cand.selector,
                 "strategy": cand.strategy,
                 "confidence": cand.confidence,
-                "note": "T5 默认恒等标尺；shrink_self_reported=True 时按 raw^2 保守收缩",
+                "note": "默认恒等标尺；shrink_self_reported=True 时按 raw^2 保守收缩",
             },
             ensure_ascii=False,
             indent=2,

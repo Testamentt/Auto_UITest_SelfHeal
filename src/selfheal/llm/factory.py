@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """LLM / VLM 可用性判定与构建（agent 层唯一入口）。
 
 get_llm_for_settings / get_vision_for_settings 集中做四级检查
@@ -35,7 +37,7 @@ def get_llm_for_settings(settings: Settings, *, stats: dict | None = None) -> LL
 
     不可用时记 warning 说明**具体原因**（enabled 关闭 / 缺 key / provider 未注册 / SDK 不可用）。
 
-    T24：底层 SDK 的 `max_retries` 固定传 0——重试由自研韧性层接管（只重试瞬态、带退避）；
+    D25：底层 SDK 的 `max_retries` 固定传 0——重试由自研韧性层接管（只重试瞬态、带退避）；
     否则 SDK 自带重试与本层叠加会变成 3×3=9 次付费调用且彼此不可见。
     `stats` 传 `reporter.stats` 时，attempts / retries / circuit_open 会计入成本与看板。
     """
@@ -66,7 +68,7 @@ def get_llm_for_settings(settings: Settings, *, stats: dict | None = None) -> LL
             timeout_s=llm_cfg.timeout_s,  # 超时/上限/重试均可配置
             max_tokens=llm_cfg.max_tokens,
             max_tokens_field=llm_cfg.max_tokens_field,  # 输出上限字段名可按模型族切换
-            max_retries=0,  # T24：SDK 重试关闭，统一由 resilience 层接管（防双层重试）
+            max_retries=0,  # D25：SDK 重试关闭，统一由 resilience 层接管（防双层重试）
             provider=llm_cfg.provider,  # 异常信息带 provider，便于定位 key/端点错配
         )
         return wrap_llm_client(raw, llm_cfg, stats=stats)
@@ -80,7 +82,7 @@ def get_vision_for_settings(
 ) -> VisionClient | None:
     """按配置构建可用 VLM 客户端；不可用返回 None（视觉策略被跳过）。
 
-    T24：与 LLM 侧同款——SDK 重试关闭、由韧性层按配置做退避与熔断（VLM 独立实例）。
+    D25：与 LLM 侧同款——SDK 重试关闭、由韧性层按配置做退避与熔断（VLM 独立实例）。
     """
     vcfg = settings.vision
     if not vcfg.enabled:
@@ -107,7 +109,7 @@ def get_vision_for_settings(
             base_url=vcfg.base_url,
             timeout_s=vcfg.timeout_s,  # plus 级模型响应慢，超时/上限可配置
             max_tokens=vcfg.max_tokens,
-            max_retries=0,  # T24：SDK 重试关闭，统一由 resilience 层接管
+            max_retries=0,  # D25：SDK 重试关闭，统一由 resilience 层接管
             max_image_bytes=vcfg.max_image_bytes,  # 图片体积护栏
             provider=vcfg.provider,
         )

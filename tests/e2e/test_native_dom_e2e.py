@@ -1,9 +1,11 @@
-"""端到端测试：T8 Playwright 原生解析与静态 HTMLParser 交叉校验（需浏览器内核，-m e2e）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""端到端测试：Playwright 原生解析与静态 HTMLParser 交叉校验（需浏览器内核，-m e2e）。
 
 验证真实页面上：
 1. SceneCollector.capture() 产出原生解析结果（native_elements）与交叉校验（dom_cross_check）；
 2. 两来源（静态 HTMLParser vs Playwright 原生）交互候选一致（consistent）——
-   自解析未偏离真实 DOM 结构（T8 的"交叉校验"价值：静态口径可信）；
+   自解析未偏离真实 DOM 结构（"交叉校验"价值：静态口径可信）；
 3. 策略链经 interactive_candidates 用原生候选能正常产出修复候选（native 路径跑通）。
 """
 

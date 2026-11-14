@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """LLM / VLM 抽象层。
 
 业务代码只依赖本模块定义的抽象接口，通过 registry 获取具体 provider，

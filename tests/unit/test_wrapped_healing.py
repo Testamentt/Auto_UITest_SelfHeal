@@ -1,4 +1,6 @@
-"""单元测试：H2 wrapped 自愈重试闭环（纯逻辑，不依赖浏览器）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：wrapped 自愈重试闭环（纯逻辑，不依赖浏览器）。
 
 覆盖 HealingLocator.__getattr__→_healing_action 的 wrapped 完整循环：
 动作超时→自愈→重试→再次超时→二次自愈(use_knowledge=False)→最终重试，
@@ -57,11 +59,11 @@ class _RecOrch:
         return self._outcomes.pop(0)
 
     def commit_pending(self, attempt_id):
-        """B1：重试成功后引擎层提交暂存。"""
+        """重试成功后引擎层提交暂存。"""
         self.committed.append(attempt_id)
 
     def discard_pending(self, attempt_id):
-        """M9：二次自愈会显式丢弃第一次闭环的暂存。"""
+        """二次自愈会显式丢弃第一次闭环的暂存。"""
         self.discarded.append(attempt_id)
 
 
@@ -95,14 +97,14 @@ def test_secondary_healing_bounded():
     )
     hl = HealingLocator(page.locator("#old"), page, "#old", HealingConfig(), orch)
     assert hl.click() == "second-ok"
-    assert orch.calls == [True, False]  # T4 不变量：第二次跳过知识缓存
-    # M9 回归：第一次闭环的暂存永远不会被 commit（本次改用叶子修复），必须显式丢弃
+    assert orch.calls == [True, False]  # 不变量：第二次跳过知识缓存
+    # 第一次闭环的暂存永远不会被 commit（改用叶子修复后），必须显式丢弃
     assert orch.discarded == ["heal-1"]
-    assert orch.committed == ["heal-2"]  # 二次自愈自己的暂存仍按 B1 提交
+    assert orch.committed == ["heal-2"]  # 二次自愈自己的暂存仍照常提交
 
 
 def test_secondary_healing_discards_only_first_attempt():
-    """M9：只丢弃被替换的那一条暂存；二次自愈自己的 attempt 仍等 commit。"""
+    """只丢弃被替换的那一条暂存；二次自愈自己的 attempt 仍等 commit。"""
     orch = _RecOrch(
         [
             HealOutcome(success=True, new_selector="#new", confidence=0.9),

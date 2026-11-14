@@ -1,8 +1,10 @@
-"""端到端测试：智能等待（wait_until_stable + T6 动作前置等待，需浏览器内核，-m e2e）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""端到端测试：智能等待（wait_until_stable + 动作前置等待，需浏览器内核，-m e2e）。
 
 演示页的 moving-btn 在加载后 ~30ms 移动一次再稳定；wait_until_stable 应等到
 其移动完成并稳定后才返回，返回时元素已处于最终位置。
-T6：开启 healing.action_wait 后，动作（click）执行前自动做短稳等待，
+开启 healing.action_wait 后，动作（click）执行前自动做短稳等待，
 无需 POM 显式调用即可兜住加载抖动（默认关闭=保持既有行为）。
 """
 
@@ -10,7 +12,7 @@ import pytest
 
 from selfheal.config import Settings
 from selfheal.knowledge.store import KnowledgeStore
-from selfheal.plugin.healing_page import HealingPage  # M10-②：装配层在 plugin/
+from selfheal.plugin.healing_page import HealingPage  # 惰性导入（装配层在 plugin/）
 from tests.e2e.pages.popup_page import PopupPage
 
 pytestmark = pytest.mark.e2e

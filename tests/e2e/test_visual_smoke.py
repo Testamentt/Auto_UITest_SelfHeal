@@ -1,10 +1,12 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """端到端冒烟：真实 VLM 视觉定位（有 DASHSCOPE_API_KEY 且装了 openai 才跑）。
 
 直接构造 VisualStrategy + 真实视觉客户端，对演示页截图做视觉定位，验证
 qwen3-vl-flash 能识别"登录按钮"并返回候选集中真实存在的定位器。
 无 key / 无 openai 时跳过，不影响 CI。
 
-L19：本模块是**真实模型调用**（外呼付费 API），打 `live` marker——常规 e2e
+本模块是**真实模型调用**（外呼付费 API），打 `live` marker——常规 e2e
 （`-m "e2e and not erp and not live"`）不会跑到它，显式 `-m live` 才跑。
 """
 
@@ -24,7 +26,7 @@ except ImportError:
 
 @pytest.fixture(autouse=True)
 def _require_vision_env():
-    """无 DASHSCOPE_API_KEY / 未装 openai → 跳过（L19 改造：模块级 skip → 用例级 skip）。
+    """无 DASHSCOPE_API_KEY / 未装 openai → 跳过（模块级 skip → 用例级 skip）。
 
     模块级 skip 会在缺依赖的环境**收集不到**用例，`-m live` 隔离无法验证；
     本模块 `import openai` 本身是容错的（try/except），故收集恒可见、运行仍安全跳过。
@@ -64,7 +66,7 @@ def test_visual_locate_login_button(healing_page):
     assert cand.strategy == "visual"
     assert cand.confidence >= 0.3
 
-    # T2 证据留存：截图 + VLM 定位结果（reports/ 已 gitignore，如需展示可另行提交）
+    # 证据留存：截图 + VLM 定位结果（reports/ 已 gitignore，如需展示可另行提交）
     import json
     from pathlib import Path
 

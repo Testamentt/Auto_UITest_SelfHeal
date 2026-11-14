@@ -1,4 +1,6 @@
-"""单元测试：P2 诊断与成本收敛 —— 诊断后置 / C7 低置信归因 / B2 成本计数 / B4 L1 门控（不触网）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：诊断与成本收敛 —— 诊断后置 / 低置信归因 / 成本计数 / L1 键门控（不触网）。"""
 
 import pytest
 
@@ -66,7 +68,7 @@ def _use_fixed_strategy(monkeypatch, candidate):
     monkeypatch.setitem(orch_mod._STRATEGY_REGISTRY, "fixed", _FixedStrategy)
 
 
-# --- 诊断后置（C3）：高置信成功不触发 LLM，失败/低置信才触发 ---
+# --- 诊断后置：高置信成功不触发 LLM，失败/低置信才触发 ---
 
 
 def test_high_confidence_success_skips_llm_diagnosis(monkeypatch):
@@ -85,7 +87,7 @@ def test_high_confidence_success_skips_llm_diagnosis(monkeypatch):
 
 
 def test_low_confidence_success_triggers_llm_diagnosis(monkeypatch):
-    """C7：置信度落在 [threshold, llm_diagnose_threshold) → 补 LLM 归因，丰富审计。"""
+    """置信度落在 [threshold, llm_diagnose_threshold) → 补 LLM 归因，丰富审计。"""
     llm = _RecLLM()
     settings = Settings()
     settings.healing.strategy_order = ["fixed"]
@@ -97,7 +99,7 @@ def test_low_confidence_success_triggers_llm_diagnosis(monkeypatch):
     assert outcome.success is True
     assert llm.chat_calls == 1
     assert orch._reporter.stats.get("llm_diagnoses", 0) == 1
-    assert orch._reporter.stats.get("llm_calls", 0) >= 1  # B2：诊断调用计入成本
+    assert orch._reporter.stats.get("llm_calls", 0) >= 1  # 诊断调用同样计入成本
     assert outcome.root_cause == "not_visible"  # LLM 归因覆盖规则式
 
 
@@ -144,7 +146,7 @@ def test_no_llm_falls_back_to_rule_only(monkeypatch):
     assert orch._reporter.stats.get("llm_diagnoses", 0) == 0
 
 
-# --- 配置阈值（C7）---
+# --- 配置阈值 ---
 
 
 def test_llm_diagnose_threshold_must_exceed_confidence():
@@ -153,11 +155,11 @@ def test_llm_diagnose_threshold_must_exceed_confidence():
     assert HealingConfig().llm_diagnose_threshold == 0.75
 
 
-# --- B4：L1 键写入不依赖 embedding ---
+# --- L1 键写入不依赖 embedding ---
 
 
 def test_persist_writes_l1_key_without_embedding():
-    """B4：embedding 关闭时 L1 键仍写入 → 后续同结构 L1 硬短路（读写门控对称化）。"""
+    """embedding 关闭时 L1 键仍写入 → 后续同结构 L1 硬短路（读写门控对称化）。"""
     settings = Settings()
     settings.embedding.enabled = False  # embedding 不可用
     store = KnowledgeStore()
@@ -177,7 +179,7 @@ def test_persist_writes_l1_key_without_embedding():
         ctx,
     )
     case = store._repairs[0]
-    assert case.repair_key is not None  # B4：L1 键写入不依赖 embedding
+    assert case.repair_key is not None  # L1 键写入不依赖 embedding
     assert case.embedding is None  # embedding 缺失 → 无向量（L3 自然不命中）
     assert case.embedding_version is None
     # 同结构上下文再次查询 → L1 命中（无需 embedding）

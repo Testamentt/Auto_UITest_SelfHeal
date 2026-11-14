@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """知识库后端抽象。
 
 定义知识存储与检索的统一接口（Protocol）。内存实现（store.KnowledgeStore）与

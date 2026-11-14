@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """DOM 公共能力包（中立包；D19 自 agent/dom 下沉至此）。
 
 heuristic（启发式打分）、diagnose_llm/semantic（构造精简 DOM 给 LLM，见 compact）、

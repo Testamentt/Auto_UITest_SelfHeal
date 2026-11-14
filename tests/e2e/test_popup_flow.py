@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """端到端测试：弹窗自愈场景（需浏览器内核，-m e2e）。
 
 验证 PopupGuard：有效定位器但被弹窗遮挡 → 动作超时 → 自动关闭弹窗 → 重试成功，
@@ -8,7 +10,7 @@ import pytest
 
 from tests.e2e.pages.popup_page import PopupPage
 
-pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # L16：Allure feature 落「AI 自愈」分组
+pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # Allure feature 落「AI 自愈」分组
 
 
 def test_popup_auto_dismiss_then_action(healing_page, knowledge):

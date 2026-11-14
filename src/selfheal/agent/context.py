@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """自愈管线数据模型 + 上下文组装器。
 
 - HealOutcome / HealingContext / FixProposal：管线共享的不可变 DTO。
@@ -110,7 +112,7 @@ def _probe_bool(probe: Any) -> bool:
 def selector_exists(page: Any, selector: str) -> bool:
     """校验选择器是否**唯一命中**（`count() == 1`）——候选可用性的硬底线（strict mode 安全）。
 
-    只判 `count() > 0` 不够（审计复现的缺陷）：两个同名按钮时启发式产出的 `text="提交"` 会被
+    只判 `count() > 0` 不够：两个同名按钮时启发式产出的 `text="提交"` 会被
     当成"可用的修复"采纳，重试 `click()` 抛 Playwright strict-mode violation（**非 TimeoutError**，
     不触发自愈，直接冒泡成另一个异常），脏案例还会经 stage → commit 落库供后续复用——能骗过
     存在性检查的假修复就是知识库污染源。

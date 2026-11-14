@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """LLM 层异常定义（分级）。
 
 不可用故障按**可恢复性**分级：此前全层只有一个 UnavailableError，
@@ -9,7 +11,7 @@
 - TransientUnavailableError：瞬态（限流 429 / 超时 / 连接失败 / 5xx）——可重试。
 - FatalUnavailableError：不可恢复（鉴权 401/403、参数错、模型不存在）——重试无用，
   且几乎总是"配置写错"（如 key 与 base_url 不属于同一平台），需要立刻可见而非静默降级。
-- CircuitOpenError（T24）：熔断器打开时的短路异常，同属 UnavailableError 家族，
+- CircuitOpenError（D25）：熔断器打开时的短路异常，同属 UnavailableError 家族，
   既有降级链无需改动即可接管。
 
 分类不 import openai（SDK 是可选依赖，决策 D7），按 `status_code` 属性优先、异常类名兜底。
@@ -37,7 +39,7 @@ class FatalUnavailableError(UnavailableError):
 class CircuitOpenError(UnavailableError):
     """熔断打开（或半开探针在飞）：本次调用直接短路，由既有降级链接管。
 
-    T24：继承 `UnavailableError` 是**刻意**的——上层（诊断 / 语义 / 视觉策略）
+    D25：继承 `UnavailableError` 是**刻意**的——上层（诊断 / 语义 / 视觉策略）
     早已按 `except UnavailableError` 做优雅降级，新增异常不需要任何调用方改动。
     """
 

@@ -1,4 +1,6 @@
-"""单元测试：现场采集器尽力而为（H1）与 T11 现场内联 trace（不依赖浏览器）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：现场采集器尽力而为与现场内联 trace（不依赖浏览器）。"""
 
 from pathlib import Path
 
@@ -71,7 +73,7 @@ def test_capture_all_fail():
 
 
 def test_capture_network_logs_from_listeners():
-    """C5：构造时挂载 on_request/on_response，capture() 带出近期网络日志。"""
+    """构造时挂载 on_request/on_response，capture() 带出近期网络日志。"""
 
     class _Req:
         url = "https://x/api"
@@ -130,7 +132,7 @@ def test_network_listeners_absent_skipped():
     assert scene.network_logs == []
 
 
-# --- L3：网络监听摘除（detach/close 幂等，摘除后不再计数） ---
+# --- 网络监听摘除（detach/close 幂等，摘除后不再计数） ---
 
 
 class _ListenerPage:
@@ -173,7 +175,7 @@ class _Req:
 
 
 def test_l3_detach_removes_listeners_and_stops_counting():
-    """L3：detach() 用 remove_listener 摘除两类监听，摘除后事件不再计入（已采集的保留）。"""
+    """detach() 用 remove_listener 摘除两类监听，摘除后事件不再计入（已采集的保留）。"""
     page = _ListenerPage()
     collector = SceneCollector(page)
     page.emit("request", _Req())
@@ -190,7 +192,7 @@ def test_l3_detach_removes_listeners_and_stops_counting():
 
 
 def test_l3_detach_is_idempotent_and_close_aliases_it():
-    """L3：detach() 幂等（重复调用不重复摘除、不抛异常）；close() 等价于 detach()。"""
+    """detach() 幂等（重复调用不重复摘除、不抛异常）；close() 等价于 detach()。"""
     page = _ListenerPage()
     collector = SceneCollector(page)
     collector.detach()
@@ -203,7 +205,7 @@ def test_l3_detach_is_idempotent_and_close_aliases_it():
 
 
 def test_l3_reattach_after_detach_resumes_counting():
-    """L3：detach 后可重新挂载（同实例复用）→ 恢复计数，且不会重复挂同一事件。"""
+    """detach 后可重新挂载（同实例复用）→ 恢复计数，且不会重复挂同一事件。"""
     page = _ListenerPage()
     collector = SceneCollector(page)
     collector.detach()
@@ -214,7 +216,7 @@ def test_l3_reattach_after_detach_resumes_counting():
 
 
 def test_l3_repeated_construction_after_detach_no_double_count():
-    """L3：同页"先 detach 旧实例、再构造新实例"→ 事件只被新实例计一次（不重复计数）。"""
+    """同页"先 detach 旧实例、再构造新实例"→ 事件只被新实例计一次（不重复计数）。"""
     page = _ListenerPage()
     old = SceneCollector(page)
     old.detach()
@@ -227,7 +229,7 @@ def test_l3_repeated_construction_after_detach_no_double_count():
 
 
 def test_l3_detach_without_remove_listener_still_stops_counting(caplog):
-    """L3：页面无 remove_listener（摘不掉）→ 记 warning 且守卫确保不再计数（R4 不静默）。"""
+    """页面无 remove_listener（摘不掉）→ 记 warning 且守卫确保不再计数（不静默失效）。"""
 
     class _NoRemovePage(_ListenerPage):
         remove_listener = None  # 显式无摘除手段
@@ -244,11 +246,11 @@ def test_l3_detach_without_remove_listener_still_stops_counting(caplog):
     assert len(collector.capture().network_logs) == 1
 
 
-# --- T11 现场内联 trace（fake tracing，不依赖浏览器） ---
+# --- 现场内联 trace（fake tracing，不依赖浏览器） ---
 
 
 class _SimplePage:
-    """带可注入 context 的最小页面 fake（供 T11 用例复用）。"""
+    """带可注入 context 的最小页面 fake（供内联 trace 用例复用）。"""
 
     def __init__(self, context=None):
         self._context = context
@@ -331,7 +333,7 @@ def test_inline_trace_restore_failure_keeps_path(tmp_path):
     assert Path(scene.trace_path).parent == tmp_path
 
 
-# --- L4：内联 trace 的录制状态由注入的 trace_active 判定（不再只靠异常探测） ---
+# --- 内联 trace 的录制状态由注入的 trace_active 判定（不再只靠异常探测） ---
 
 
 def _raise_provider() -> bool:
@@ -340,7 +342,7 @@ def _raise_provider() -> bool:
 
 
 def test_l4_trace_provider_false_skips_stop(tmp_path):
-    """L4：注入 trace_active=False → 完全不触碰 tracing（不调 stop、不建文件）。"""
+    """注入 trace_active=False → 完全不触碰 tracing（不调 stop、不建文件）。"""
     tracing = _RecordingTracing()
     asked: list[bool] = []
 
@@ -362,7 +364,7 @@ def test_l4_trace_provider_false_skips_stop(tmp_path):
 
 
 def test_l4_trace_provider_true_saves_and_restores(tmp_path):
-    """L4：注入 trace_active=True → 正常落盘现场 trace 并立即恢复外层录制。"""
+    """注入 trace_active=True → 正常落盘现场 trace 并立即恢复外层录制。"""
     tracing = _RecordingTracing()
     collector = SceneCollector(
         _SimplePage(type("Ctx", (), {"tracing": tracing})()),
@@ -378,7 +380,7 @@ def test_l4_trace_provider_true_saves_and_restores(tmp_path):
 
 
 def test_l4_trace_provider_error_treated_as_not_recording(tmp_path, caplog):
-    """L4：provider 自身抛错 → 按未录制处理（不动 tracing）并记 warning（R4 不静默）。"""
+    """provider 自身抛错 → 按未录制处理（不动 tracing）并记 warning（不静默失效）。"""
     tracing = _RecordingTracing()
     collector = SceneCollector(
         _SimplePage(type("Ctx", (), {"tracing": tracing})()),
@@ -393,7 +395,7 @@ def test_l4_trace_provider_error_treated_as_not_recording(tmp_path, caplog):
 
 
 def test_l4_without_provider_keeps_exception_probe(tmp_path):
-    """L4：未注入 provider（默认 None）→ 保留异常探测兜底路径（兼容旧行为）。"""
+    """未注入 provider（默认 None）→ 保留异常探测兜底路径（兼容旧行为）。"""
     tracing = _RecordingTracing(stop_error=RuntimeError("Must start tracing before stopping"))
     collector = SceneCollector(
         _SimplePage(type("Ctx", (), {"tracing": tracing})()), trace_dir=str(tmp_path)

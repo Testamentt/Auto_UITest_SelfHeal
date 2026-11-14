@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """POM 基类。
 
 统一"POM 如何拿 page、如何打开、如何定位"。POM 只依赖 page 接口

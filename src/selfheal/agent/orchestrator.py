@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """自愈闭环编排器 —— 本项目最核心的链路。
 
 流程：现场采集 →（知识库优先）→ 智能诊断 → 多策略修复 → 验证与沉淀 → 报告审计。
@@ -91,7 +93,7 @@ class SelfHealOrchestrator:
             self._owns_knowledge = knowledge is None  # 注入的资源由注入方负责关闭
             self._reporter = reporter or HealingReporter()
             # LLM 可用才构建；缺省时按配置判定，不可用则 None（降级回规则式 / 跳过语义策略）
-            # T24：stats 透传给韧性层——重试/熔断计数进成本口径（attempts 为真实调用次数）
+            # D25：stats 透传给韧性层——重试/熔断计数进成本口径（attempts 为真实调用次数）
             self._llm_client = (
                 llm_client
                 if llm_client is not None

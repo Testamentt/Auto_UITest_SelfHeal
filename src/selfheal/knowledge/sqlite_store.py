@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """SQLite 知识库后端（stdlib sqlite3 + numpy 向量）。
 
 持久化修复案例与弹窗特征，重启后仍可命中复用（"越用越聪明"）。

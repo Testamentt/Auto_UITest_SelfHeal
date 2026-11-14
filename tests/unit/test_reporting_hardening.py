@@ -1,9 +1,11 @@
-"""单元测试：代码审查修复项 —— H6 指标口径 / M8 静默失败日志 / M16 交付物口径与格式。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：指标口径 / 静默失败日志 / 交付物口径与格式。
 
-- H6：verified / flaky / verified_rate 分母 = 成功数；失败记录不计入 flaky；verified_rate ≤ 1。
-- M8：allure_bridge 三个捕获分支记 warning（R4 不静默、返回值语义不变）；
+- verified / flaky / verified_rate 分母 = 成功数；失败记录不计入 flaky；verified_rate ≤ 1。
+- allure_bridge 三个捕获分支记 warning（不静默、返回值语义不变）；
   collector 网络事件处理失败记 debug（高频路径不刷屏）。
-- M16：write_environment 的 `Browser.Trace` 记录实际生效值（trace_enabled 优先）；
+- write_environment 的 `Browser.Trace` 记录实际生效值（trace_enabled 优先）；
   fix-proposals.md 首次写入补表头 + 分隔行、二次不重复、strategy 字段转义。
 
 不依赖浏览器 / 不触网。
@@ -36,7 +38,7 @@ def _settings(trace: bool = False):
     )
 
 
-# --- H6：verified / flaky / verified_rate 口径（分母 = 成功数） ---
+# --- verified / flaky / verified_rate 口径（分母 = 成功数） ---
 
 
 def test_verified_rate_never_exceeds_one_when_unsuccessful_record_verified():
@@ -66,7 +68,7 @@ def test_verified_rate_zero_when_no_success_record():
     assert m.verified_rate == 0.0
 
 
-# --- M8：allure_bridge 失败分支记 warning（返回值语义不变） ---
+# --- allure_bridge 失败分支记 warning（返回值语义不变） ---
 
 
 def test_write_environment_failure_logs_warning(tmp_path, caplog):
@@ -104,7 +106,7 @@ def test_attach_file_failure_logs_warning(tmp_path, monkeypatch, caplog):
     assert caplog.records and caplog.records[-1].exc_info
 
 
-# --- M16-1：环境页 Browser.Trace 记录实际生效值 ---
+# --- 环境页 Browser.Trace 记录实际生效值 ---
 
 
 def test_write_environment_trace_enabled_overrides_config(tmp_path):
@@ -132,7 +134,7 @@ def test_write_environment_trace_falls_back_to_config(tmp_path):
     )
 
 
-# --- M16-2：fix-proposals.md 表头 / 分隔行 / 转义 ---
+# --- fix-proposals.md 表头 / 分隔行 / 转义 ---
 
 
 def _proposal(tmp_path, monkeypatch, **overrides) -> None:
@@ -196,7 +198,7 @@ def test_fix_proposal_escapes_pipe_in_strategy(tmp_path, monkeypatch):
     assert data_row.count("|") - data_row.count("\\|") == 7  # 6 列 → 7 个未转义竖线
 
 
-# --- M8：collector 网络事件失败分支记 debug ---
+# --- collector 网络事件失败分支记 debug ---
 
 
 class _BoomList(list):
@@ -219,6 +221,6 @@ def test_network_event_failure_logs_debug(handler_name, event, caplog):
     collector._network_logs = _BoomList()
     with caplog.at_level(logging.DEBUG, logger=_COLLECTOR_LOGGER):
         getattr(collector, handler_name)(event)  # 不抛异常（best-effort 契约不变）
-    assert caplog.records, "网络事件处理失败必须留痕（R4 禁止静默失败）"
+    assert caplog.records, "网络事件处理失败必须留痕（禁止静默失败）"
     assert caplog.records[-1].levelno == logging.DEBUG  # 高频路径用 debug，不刷屏
     assert "网络" in caplog.text and "日志记录失败" in caplog.text

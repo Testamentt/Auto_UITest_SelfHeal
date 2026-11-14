@@ -1,9 +1,11 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """单元测试：LLM 可用性判定（不触网）。
 
-2026-10-08 审查修复：
-- M15：去掉 `test_ready_returns_client` 里的 `pytest.skip` 分支——原来的写法让断言恒真，
+用例要点：
+- `test_ready_returns_client` 不带 `pytest.skip` 分支——否则断言恒真，
   工厂回归（例如错误地把 UnavailableError 也吞成 None）会以 skipped 收场而 CI 依然绿。
-- H4：不可用的四类原因各自记 warning（此前统一静默返回 None）。
+- 不可用的四类原因各自记 warning（不统一静默返回 None）。
 """
 
 import logging
@@ -45,10 +47,10 @@ def test_ready_returns_client(monkeypatch):
 
 
 def test_config_reaches_client(monkeypatch):
-    """H3/T24：超时/上限/重试由配置透传；重试归韧性层，SDK 侧固定 0（防双层重试）。"""
+    """D25：超时/上限/重试由配置透传；重试归韧性层，SDK 侧固定 0（防双层重试）。"""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     client = get_llm_for_settings(_settings(timeout_s=42.5, max_tokens=1234, max_retries=0))
-    inner = client.inner_client  # T24：工厂返回韧性包装（max_retries=0 但熔断默认开启）
+    inner = client.inner_client  # D25：工厂返回韧性包装（max_retries=0 但熔断默认开启）
     assert (inner._timeout_s, inner._max_tokens, inner._max_retries) == (42.5, 1234, 0)
     assert client.retry_policy.max_retries == 0
 
@@ -62,7 +64,7 @@ def test_config_reaches_client(monkeypatch):
     ],
 )
 def test_unavailable_reasons_are_logged(monkeypatch, caplog, payload, needle):
-    """H4：每种不可用原因都要在日志里可区分（此前统一静默 None）。"""
+    """每种不可用原因都要在日志里可区分（不统一静默 None）。"""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("SELFHEAL_ABSENT_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
@@ -79,7 +81,7 @@ def test_vision_unavailable_reason_is_logged(monkeypatch, caplog):
 
 
 def test_vision_config_reaches_client(monkeypatch):
-    """H5/M1/T24：图片护栏由配置透传；重试次数归韧性层，SDK 侧固定 0。"""
+    """D25：图片护栏由配置透传；重试次数归韧性层，SDK 侧固定 0。"""
     monkeypatch.setenv("DASHSCOPE_API_KEY", "sk-test")
     settings = Settings()
     settings.vision.max_image_bytes = 4096

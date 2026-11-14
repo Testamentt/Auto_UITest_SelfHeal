@@ -1,4 +1,6 @@
-"""单元测试：自愈指标聚合 compute_metrics（T3，不依赖浏览器）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：自愈指标聚合 compute_metrics（不依赖浏览器）。"""
 
 import pytest
 

@@ -1,4 +1,6 @@
-"""单元测试：P1 链式定位自愈（C1 + C2 + C6，纯逻辑，不依赖浏览器）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：链式定位自愈（纯逻辑，不依赖浏览器）。
 
 覆盖 HealingLocator 的链式定位能力：
 - 链操作记录（chain_ops 元组）与递归包裹（first/last/nth/filter/locator/get_by_*）；
@@ -104,7 +106,7 @@ class _RecOrch:
         return self._outcomes.pop(0)
 
     def discard_pending(self, attempt_id):
-        """M9：二次自愈会显式丢弃第一次闭环的暂存。"""
+        """二次自愈会显式丢弃第一次闭环的暂存。"""
         self.discarded.append(attempt_id)
 
 
@@ -219,7 +221,7 @@ def test_deep_chain_replays_all_ops():
     assert [key for _name, key in page.derived_ops] == ["#l0", "#l1", "#l2", "#l3", "#l4", "#deep"]
 
 
-# --- auto_description（C1 + C6） ---
+# --- auto_description ---
 
 
 def test_auto_description_flows_to_run_when_no_user_desc():
@@ -245,7 +247,7 @@ def test_user_description_preserved():
 
 
 def test_chain_hint_truncates_to_recent_3():
-    """C6：链提示只保留最近 3 层 + 省略号（防描述稀释意图）。"""
+    """链提示只保留最近 3 层 + 省略号（防描述稀释意图）。"""
     page = _Page()
     hl = _hl(page)
     for i in range(5):

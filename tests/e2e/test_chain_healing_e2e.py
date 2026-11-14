@@ -1,4 +1,6 @@
-"""端到端测试：链式定位自愈（M15-3，需浏览器内核，-m e2e）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""端到端测试：链式定位自愈（需浏览器内核，-m e2e）。
 
 补 `tests/unit/test_chain_healing.py` 的缺口：单测用自写 fake 验证链记录 / 重放 / 二次修叶子的
 **逻辑**；本文件在真实 Playwright 页面上验证同一语义端到端成立（unit + e2e 双覆盖要求）。
@@ -14,7 +16,7 @@ description 只能挂在 `HealingPage.locator()`（根）上：链节点 `Healin
 自愈增强参数，会把 `description=` 原样透传给原生 `Locator.locator()` 并抛 `TypeError`；
 根描述会随链自动传播到每个节点（`_chain` 复制 `self._description`），叶子自愈因此也拿得到意图。
 
-模型调用说明（R4 不静默）：两个场景都在**根**上挂描述"面板按钮"，使两跳都由启发式收官——
+模型调用说明：两个场景都在**根**上挂描述"面板按钮"，使两跳都由启发式收官——
 修根：描述与容器文本"面板"互为子串 → 置信度 0.95 ≥ 早接受阈值 0.85 → 早短路，不走语义/视觉；
 修叶：描述与按钮文本完全相等 → 置信度 1.0。故本文件**不外呼真实模型**，用例带护栏断言
 `llm_calls`/`vlm_calls` 为 0（一旦退化为模型驱动即失败，避免变成"模型心情"抖动）。
@@ -80,7 +82,7 @@ def test_chain_replay_click_heals_leaf(healing_page):
 
 
 def test_second_heal_fixes_broken_leaf(healing_page):
-    """场景 B（二次自愈修叶子，M15 核心）：根 ok、叶子失效 → 第一次修根重放必失败。
+    """场景 B（二次自愈修叶子）：根 ok、叶子失效 → 第一次修根重放必失败。
 
     断言链在最终结果上成立，并证明**赢下这次动作的是叶子修复**：
     记录里的 original_selector 是叶子 selector（而非根 `#panel`），且带生效策略名。

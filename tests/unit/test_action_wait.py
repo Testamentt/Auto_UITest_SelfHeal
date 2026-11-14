@@ -1,4 +1,6 @@
-"""单元测试：T6 动作前置智能等待（healing.action_wait，不触网/不依赖浏览器）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：动作前置智能等待（healing.action_wait，不触网/不依赖浏览器）。
 
 覆盖：
 1. 配置模型：默认关闭（零侵入，守决策 D12）+ 参数默认值；
@@ -100,7 +102,7 @@ def test_disabled_locator_passes_through_even_if_cfg_enabled():
 
 
 def test_explicit_wait_until_stable_still_available():
-    """POM 显式 wait_until_stable（smart_wait）在开关两态下都可用（T6 不削弱显式调用）。"""
+    """POM 显式 wait_until_stable（smart_wait）在开关两态下都可用（不削弱显式调用）。"""
     hl, fake = _locator(Settings().healing)
     hl.wait_until_stable(timeout_ms=1000, stable_ms=50)
     assert fake.wait_for_calls  # 显式等待照常生效

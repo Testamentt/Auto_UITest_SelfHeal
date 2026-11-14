@@ -1,6 +1,7 @@
-"""单元测试：2026-10-08 代码审查修复回归（H1/H2/H3/M2/M6/M7/M9/M11/L6 + 配置值域）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：配置值域与上下文采集等回归覆盖。
 
-每条用例标题都带发现项编号，便于与 `docs/archive/reviews/2026-10-08-code-review.md` 对齐。
 不依赖浏览器（engine 侧一律用 fake page / fake playwright）。
 """
 
@@ -24,11 +25,11 @@ from selfheal.knowledge.schema import PopupFeature
 pytestmark = pytest.mark.unit
 
 
-# --- H3 / M6：配置值域与可配置性 ---
+# --- 配置值域与可配置性 ---
 
 
 def test_llm_timeout_and_token_limits_are_configurable():
-    """H3：llm 段此前无法配置 timeout_s/max_tokens（extra='forbid' 直接拒绝），现可配。"""
+    """llm 段此前无法配置 timeout_s/max_tokens（extra='forbid' 直接拒绝），现可配。"""
     settings = Settings.model_validate(
         {"llm": {"timeout_s": 30, "max_tokens": 4096, "max_retries": 0}}
     )
@@ -51,7 +52,7 @@ def test_llm_timeout_and_token_limits_are_configurable():
     ],
 )
 def test_invalid_bounds_are_rejected_at_load(payload):
-    """M6/H3：非法值域在加载期报错，而不是运行期变成"无界等待/不可用"。"""
+    """非法值域在加载期报错，而不是运行期变成"无界等待/不可用"。"""
     with pytest.raises(ValidationError):
         Settings.model_validate(payload)
 
@@ -62,7 +63,7 @@ def test_action_wait_defaults_are_positive():
     assert LLMConfig().max_tokens > 0 and VisionConfig().max_image_bytes > 0
 
 
-# --- M6：smart_wait 边界与预算 ---
+# --- smart_wait 边界与预算 ---
 
 
 class _WaitLocator:
@@ -80,7 +81,7 @@ class _WaitLocator:
 
 
 def test_wait_rejects_non_positive_timeout():
-    """M6：timeout=0 在 Playwright 里是"不超时"，必须显式拒绝而非静默无界等待。"""
+    """timeout=0 在 Playwright 里是"不超时"，必须显式拒绝而非静默无界等待。"""
     with pytest.raises(ValueError):
         wait_until_stable(_WaitLocator(), timeout_ms=0)
     with pytest.raises(ValueError):
@@ -88,14 +89,14 @@ def test_wait_rejects_non_positive_timeout():
 
 
 def test_wait_reserves_budget_for_stability_window():
-    """M6：可见性等待只占 (timeout - stable)，给稳定判定留独立窗口。"""
+    """可见性等待只占 (timeout - stable)，给稳定判定留独立窗口。"""
     locator = _WaitLocator()
     wait_until_stable(locator, timeout_ms=2000, stable_ms=300, poll_ms=100)
     assert locator.timeouts == [1700]
 
 
 def test_wait_poll_interval_has_floor(monkeypatch):
-    """M6：poll_ms<=0 不再退化成忙等。"""
+    """poll_ms<=0 不再退化成忙等。"""
     import types
 
     from selfheal.engine import smart_wait
@@ -121,11 +122,11 @@ def test_wait_poll_interval_has_floor(monkeypatch):
     assert sleeps and min(sleeps) >= 0.02
 
 
-# --- M7：BrowserManager 生命周期 ---
+# --- BrowserManager 生命周期 ---
 
 
 def test_browser_manager_cleans_up_when_launch_fails(monkeypatch):
-    """M7：launch 失败时也必须回收驱动子进程（此前 __exit__ 不会执行 → 进程泄漏）。"""
+    """launch 失败时也必须回收驱动子进程（此前 __exit__ 不会执行 → 进程泄漏）。"""
     from selfheal.engine import browser as browser_mod
 
     stopped = {"n": 0}
@@ -154,7 +155,7 @@ def test_browser_manager_cleans_up_when_launch_fails(monkeypatch):
 
 
 def test_browser_manager_exit_is_idempotent(monkeypatch):
-    """M7：重复 __exit__ 不再重复 close/stop；创建的 context 由管理器统一关闭。"""
+    """重复 __exit__ 不再重复 close/stop；创建的 context 由管理器统一关闭。"""
     from selfheal.engine import browser as browser_mod
 
     calls = {"browser_close": 0, "stop": 0, "context_close": 0}
@@ -193,14 +194,14 @@ def test_browser_manager_exit_is_idempotent(monkeypatch):
 
 
 def test_browser_manager_requires_enter_before_new_context():
-    """M7：未进入上下文时显式报错（此前是 assert，`python -O` 下会被剥离）。"""
+    """未进入上下文时显式报错（此前是 assert，`python -O` 下会被剥离）。"""
     from selfheal.engine.browser import BrowserManager
 
     with pytest.raises(RuntimeError):
         BrowserManager(Settings()).new_context()
 
 
-# --- M9：暂存淘汰 / 显式丢弃 / 幂等窗口有界 ---
+# --- 暂存淘汰 / 显式丢弃 / 幂等窗口有界 ---
 
 
 def _handler() -> PersistenceHandler:
@@ -231,7 +232,7 @@ def _context():
 
 
 def test_pending_overflow_is_logged(caplog):
-    """M9：暂存超上限被丢弃时必须可见（此前静默 pop）。"""
+    """暂存超上限被丢弃时必须可见（此前静默 pop）。"""
     handler = _handler()
     with caplog.at_level(logging.WARNING):
         for _ in range(handler._PENDING_LIMIT + 2):
@@ -242,7 +243,7 @@ def test_pending_overflow_is_logged(caplog):
 
 
 def test_discard_pending_logs_and_removes(caplog):
-    """M9：二次自愈替换暂存前显式丢弃，并记日志；未知 id 是安全 no-op。"""
+    """二次自愈替换暂存前显式丢弃，并记日志；未知 id 是安全 no-op。"""
     handler = _handler()
     handler.stage(_context(), _outcome())
     attempt_id = next(iter(handler._pending))
@@ -255,7 +256,7 @@ def test_discard_pending_logs_and_removes(caplog):
 
 
 def test_committed_window_is_bounded(monkeypatch):
-    """M9：幂等记忆有界，防长会话无界增长。"""
+    """幂等记忆有界，防长会话无界增长。"""
     handler = _handler()
     monkeypatch.setattr(PersistenceHandler, "_COMMITTED_LIMIT", 3)
     monkeypatch.setattr(handler, "_persist", lambda context, outcome: None)
@@ -265,7 +266,7 @@ def test_committed_window_is_bounded(monkeypatch):
     assert len(handler._committed) == 3
 
 
-# --- M11：选择器字面量转义 ---
+# --- 选择器字面量转义 ---
 
 
 class _El:
@@ -281,7 +282,7 @@ class _El:
 
 
 def test_stable_selector_escapes_quotes_and_newlines():
-    """M11：值里带引号会生成非法选择器，必须转义；换行折成空格。"""
+    """值里带引号会生成非法选择器，必须转义；换行折成空格。"""
     from selfheal.dom.selector_builder import build_stable_selector
 
     assert build_stable_selector(_El(attrs={"data-testid": 'a"b'})) == '[data-testid="a\\"b"]'
@@ -290,11 +291,11 @@ def test_stable_selector_escapes_quotes_and_newlines():
     assert build_stable_selector(_El(attrs={"aria-label": 'a"b'})) == '[aria-label="a\\"b"]'
 
 
-# --- H1：弹窗关闭的分级命中与容器限定 ---
+# --- 弹窗关闭的分级命中与容器限定 ---
 
 
 def test_close_hint_strength_levels():
-    """H1：整串标签=强信号；子串命中（"关闭订单"）=弱信号；无关文案=不命中。"""
+    """整串标签=强信号；子串命中（"关闭订单"）=弱信号；无关文案=不命中。"""
     assert _close_hint_strength("关闭", "", "") == 2
     assert _close_hint_strength("", "close", "") == 2
     assert _close_hint_strength("", "", "×") == 2
@@ -386,7 +387,7 @@ class _Clickable:
 
 
 def test_popup_knowledge_click_stays_inside_container():
-    """H1：知识命中的关闭点击必须限定在弹窗容器内，不再全页取 .first。"""
+    """知识命中的关闭点击必须限定在弹窗容器内，不再全页取 .first。"""
     dismiss = _FakeEl(attrs={"data-testid": "dismiss"})
     container = _Container(by_selector={"[data-testid='dismiss']": [dismiss]})
     knowledge = _Knowledge(
@@ -403,7 +404,7 @@ def test_popup_knowledge_click_stays_inside_container():
 
 
 def test_popup_close_button_prefers_strong_signal():
-    """H1：弹窗里同时存在"关闭订单"（弱）与 aria-label=关闭（强）时，点强信号。"""
+    """弹窗里同时存在"关闭订单"（弱）与 aria-label=关闭（强）时，点强信号。"""
     weak = _FakeEl(text="关闭订单")
     strong = _FakeEl(attrs={"aria-label": "关闭"})
     container = _Container(candidates=[weak, strong])
@@ -414,7 +415,7 @@ def test_popup_close_button_prefers_strong_signal():
 
 
 def test_popup_close_button_falls_back_to_weak_signal():
-    """H1：没有强信号时仍保留原有能力（弱信号兜底），不给自动化留死角。"""
+    """没有强信号时仍保留原有能力（弱信号兜底），不给自动化留死角。"""
     weak = _FakeEl(text="关闭订单")
     container = _Container(candidates=[weak])
     guard = PopupGuard(_Page(container), None)
@@ -423,7 +424,7 @@ def test_popup_close_button_falls_back_to_weak_signal():
     assert weak.clicked == 1
 
 
-# --- H2：HealingPage 自建知识库的关闭责任 ---
+# --- HealingPage 自建知识库的关闭责任 ---
 
 
 class _TrackedStore:
@@ -443,8 +444,8 @@ def _offline_settings() -> Settings:
 
 
 def test_healing_page_closes_self_built_knowledge(monkeypatch):
-    """H2：未注入时 HealingPage 自建的知识库必须由 close() 释放（此前无人关 → 连接泄漏）。"""
-    from selfheal.plugin import healing_page as hl_mod  # M10-②：装配层在 plugin/
+    """未注入时 HealingPage 自建的知识库必须由 close() 释放（此前无人关 → 连接泄漏）。"""
+    from selfheal.plugin import healing_page as hl_mod  # 装配层在 plugin/
 
     store = _TrackedStore()
     monkeypatch.setattr(hl_mod, "build_knowledge_store", lambda settings: store)
@@ -456,8 +457,8 @@ def test_healing_page_closes_self_built_knowledge(monkeypatch):
 
 
 def test_healing_page_leaves_injected_knowledge_alone(monkeypatch):
-    """H2：注入的知识库由注入方关闭（所有权边界不变）。"""
-    from selfheal.plugin import healing_page as hl_mod  # M10-②：装配层在 plugin/
+    """注入的知识库由注入方关闭（所有权边界不变）。"""
+    from selfheal.plugin import healing_page as hl_mod  # 装配层在 plugin/
 
     store = _TrackedStore()
     monkeypatch.setattr(hl_mod, "build_knowledge_store", lambda settings: pytest.fail("不应自建"))
@@ -468,11 +469,11 @@ def test_healing_page_leaves_injected_knowledge_alone(monkeypatch):
     assert store.closed == 0
 
 
-# --- M2：HealingFailedError 兼容 Playwright TimeoutError 语义 ---
+# --- HealingFailedError 兼容 Playwright TimeoutError 语义 ---
 
 
 def test_healing_failed_error_is_a_playwright_timeout():
-    """M2：开启自愈后失败也应能被 `except TimeoutError` 捕获（与关闭自愈时一致）。
+    """开启自愈后失败也应能被 `except TimeoutError` 捕获（与关闭自愈时一致）。
 
     两种写法都要兼容：Playwright 的 TimeoutError（POM 常 catch 的那个）与内置 TimeoutError。
     """
@@ -488,7 +489,7 @@ def test_healing_failed_error_is_a_playwright_timeout():
 
 
 def test_default_uncertain_path_raises_timeout_compatible_error():
-    """M2：默认配置（use_fallback 且无备用）走到 fail 分支时异常类型仍兼容 TimeoutError。"""
+    """默认配置（use_fallback 且无备用）走到 fail 分支时异常类型仍兼容 TimeoutError。"""
     from selfheal.engine.healing_locator import HealingLocator
 
     class _Outcome:
@@ -518,12 +519,12 @@ class _OrchStub:
         return None
 
 
-# --- L6：embedding 不可比较 → 调用方短路（检索侧 / 写入侧） ---
+# --- embedding 不可比较 → 调用方短路（检索侧 / 写入侧） ---
 #
-# 背景（docs/archive/backlog/low-priority.md §一 L6）：空文本会产出退化向量（余弦未定义），
-# `llm/embedding.py` 起把这种向量标为"不可比较"（空 bytes 标记，另有 `is_comparable()`）；
+# 空文本会产出退化向量（余弦未定义），`llm/embedding.py` 会把这种向量
+# 标为"不可比较"（空 bytes 标记，另有 `is_comparable()`）；
 # 调用方必须短路，否则 L3 白跑一次检索、写入侧还会把零长/全零 BLOB 落进知识库。
-# 队列第 03 条落地 `is_comparable()` 之前，调用方按"有无该方法"两条路径都要成立。
+# 调用方按"有无 `is_comparable()` 方法"两条路径都要成立（兼容尚未提供该方法的客户端）。
 
 
 class _Embedding:
@@ -534,7 +535,7 @@ class _Embedding:
     def __init__(self, data: bytes, *, comparable: bool | None = None):
         self._data = data
         self.calls: list[str] = []
-        if comparable is not None:  # 只在这类实例上挂方法，模拟 L6 落地后的客户端
+        if comparable is not None:  # 只在这类实例上挂方法，模拟提供 is_comparable() 的客户端
             self.is_comparable = lambda _data: comparable
 
     def embed(self, text: str) -> bytes:
@@ -620,7 +621,7 @@ _L6_MATRIX = [
 def test_l3_skips_retrieval_when_query_vector_not_comparable(
     data, comparable, expect_retrieval, caplog
 ):
-    """L6 检索侧：不可比较的查询向量直接跳过 L3（不白跑一次 find_semantic）。"""
+    """检索侧：不可比较的查询向量直接跳过 L3（不白跑一次 find_semantic）。"""
     import logging
 
     from selfheal.agent.strategies.semantic import SemanticStrategy
@@ -644,7 +645,7 @@ def test_l3_skips_retrieval_when_query_vector_not_comparable(
 def test_persist_skips_embedding_when_vector_not_comparable(
     data, comparable, expect_written, caplog
 ):
-    """L6 写入侧：不可比较向量不落库（embedding=None + embedding_version=None）。
+    """写入侧：不可比较向量不落库（embedding=None + embedding_version=None）。
 
     既有富化行为不变：可比较时照旧写入 bytes 与版本号；结构上下文照旧产出 L1 repair_key。
     """

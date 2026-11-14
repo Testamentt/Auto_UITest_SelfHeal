@@ -1,4 +1,6 @@
-"""单元测试：pytest-xdist 并行兼容（T21）——worker 判定 / 分片聚合 / SQLite 并发防御。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：pytest-xdist 并行兼容——worker 判定 / 分片聚合 / SQLite 并发防御。"""
 
 from types import SimpleNamespace
 

@@ -1,10 +1,12 @@
-"""修复建议自动开草稿 PR（T22）：把 T15 人审清单变成一键可审的草稿 PR。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""修复建议自动开草稿 PR：把人审清单变成一键可审的草稿 PR。
 
-职责边界（守 T15 人审原则）：
+职责边界（守人审原则）：
 - 本脚本只做「PR 内容组装 + 查重 + 调 gh 开**草稿** PR」，**绝不自动合并**、不改代码库；
 - 分支与产物提交由 CI 步骤完成（见 .github/workflows/ci.yml propose-pr job）；
 - 无建议产物 / 已有同名标签 open PR / gh 不可用 → 全部安全跳过（exit 0，不炸流水线）；
-- 但"安全跳过"不等于"静默"：真正的失败（gh 创建失败）额外输出 `::warning::` 注解（L13）。
+- 但"安全跳过"不等于"静默"：真正的失败（gh 创建失败）额外输出 `::warning::` 注解。
 
 用法（CI）：
     python scripts/propose_pr.py \
@@ -26,7 +28,7 @@ logger = logging.getLogger("selfheal.propose_pr")
 
 
 def warn_annotation(message: str) -> None:
-    """GitHub Actions 注解（L13）：best-effort 失败必须在流水线页面可见。
+    """GitHub Actions 注解：best-effort 失败必须在流水线页面可见。
 
     与 `scripts/notify.py` 同名助手保持一致的语义（脚本间零共享依赖，各自本地一份）：
     退出码恒 0，但 `::warning::` 会进 Actions 注解面板，长期故障不再只能翻日志。
@@ -34,7 +36,7 @@ def warn_annotation(message: str) -> None:
     print(f"::warning::{message}")
 
 
-CHECKLIST = """## ⚠️ 人审清单（T22 · 草稿 PR，绝不自动合并）
+CHECKLIST = """## ⚠️ 人审清单（草稿 PR，绝不自动合并）
 
 - [ ] 逐条核对「原 → 新」映射是否与真实 UI 一致（截图 / 手工点验）
 - [ ] 确认 `verified` 标记：真自愈（原定位器确已失效）≠ flaky 侥幸通过
@@ -60,7 +62,7 @@ def load_proposals(proposals_dir: str | Path) -> list[dict[str, Any]]:
 
 
 def _escape(text: str) -> str:
-    """转义 Markdown 表格中的竖线/换行（与 T15 fix_proposals.html_escape 同款约定；
+    """转义 Markdown 表格中的竖线/换行（与 fix_proposals.html_escape 同款约定；
     本地实现保持脚本零 selfheal 依赖——propose-pr CI job 不安装项目包）。"""
     return (text or "").replace("|", "\\|").replace("\n", " ")
 
@@ -130,7 +132,7 @@ def create_draft_pr(head_branch: str, title: str, body: str, label: str) -> bool
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="T22：修复建议自动开草稿 PR")
+    parser = argparse.ArgumentParser(description="修复建议自动开草稿 PR")
     parser.add_argument("--proposals-dir", default="reports/fix-proposals")
     parser.add_argument("--head-branch", default="selfheal/proposals")
     parser.add_argument("--label", default="selfheal-proposal")
@@ -150,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     ok = create_draft_pr(args.head_branch, title, body, args.label)
     if not ok:
-        # L13：开 PR 失败仍 exit 0（人审链路的产物已上传 artifact，不炸流水线），但
+        # 开 PR 失败仍 exit 0（人审链路的产物已上传 artifact，不炸流水线），但
         # "建议产出了却从没开成 PR"必须冒泡——此前只有日志 + 一行 print。
         warn_annotation(
             f"草稿 PR 创建失败（gh 不可用 / 权限不足 / 网络失败）：{len(proposals)} 条修复建议"

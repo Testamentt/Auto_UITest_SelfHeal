@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """修复建议输出（语义建议 + 修复写回人审清单 + 成本估算）。
 
 - append_review_proposal：L3 语义命中但未达自动采纳阈值 → 追加人审清单（reports/review-queue.md）。

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """AI 自愈 Agent 层 —— 大脑。
 
 orchestrator 编排「感知-诊断-决策-修复」闭环；diagnose 负责根因诊断；

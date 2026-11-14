@@ -1,4 +1,6 @@
-"""端到端测试：自愈价值 A/B 对比场景（T20，需浏览器内核，-m e2e）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""端到端测试：自愈价值 A/B 对比场景（需浏览器内核，-m e2e）。
 
 同一组「UI 改版定位失效」场景，parametrize 双变体同源运行：
 - `disabled` 变体：强制关闭自愈——失效定位器直接超时失败（xfail(strict) 保证 CI 绿，
@@ -14,7 +16,7 @@ import pytest
 
 from tests.e2e.pages.demo_page import DemoPage
 
-# L16：healing marker 让 Allure feature 落「AI 自愈」分组；disabled 变体的 xfail 语义不变
+# healing marker 让 Allure feature 落「AI 自愈」分组；disabled 变体的 xfail 语义不变
 pytestmark = [pytest.mark.e2e, pytest.mark.healing]
 
 # A/B 双变体注入（indirect）：disabled 关自愈 + 短超时快速失败；healing 正常自愈
@@ -24,7 +26,7 @@ ab_variants = pytest.mark.parametrize(
         pytest.param(
             "disabled",
             marks=pytest.mark.xfail(
-                strict=True, reason="无自愈：演示改版定位失效，需人工修复（T20 A 组）"
+                strict=True, reason="无自愈：演示改版定位失效，需人工修复（disabled 变体）"
             ),
         ),
         "healing",
@@ -36,7 +38,7 @@ ab_variants = pytest.mark.parametrize(
 @pytest.fixture
 def ab_page(request, settings, knowledge, context):
     """A/B 双变体页面（复用 healing_page/disabled_page 语义，支持参数化选择）。"""
-    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（M10-②：装配层在 plugin/）
+    from selfheal.plugin.healing_page import HealingPage  # 惰性导入（装配层在 plugin/）
 
     if request.param == "disabled":
         page = HealingPage(
@@ -46,7 +48,7 @@ def ab_page(request, settings, knowledge, context):
     else:
         page = HealingPage(context.new_page(), settings, knowledge=knowledge, enabled_override=True)
     yield page
-    page.close()  # M3：释放自愈资源
+    page.close()  # 释放自愈资源
 
 
 @ab_variants

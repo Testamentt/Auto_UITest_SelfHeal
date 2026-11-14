@@ -1,11 +1,13 @@
-"""管伊佳 ERP 后端 API 客户端（T23）：登录态 + 测试数据造数/清理。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""管伊佳 ERP 后端 API 客户端：登录态 + 测试数据造数/清理。
 
 定位：**测试基建而非被测对象**——UI 自动化的被测对象是 ERP 前端（Playwright）；
 后端 API 仅用于数据准备（比 UI 造数快且稳）与用例后清理（数据隔离约定）。
 
 标准库零第三方依赖（urllib/hashlib），propose-pr 式独立脚本风格。
 
-勘测结论（2026-08-31，见 docs/sessions/）：
+勘测结论：
 - 登录：POST /user/login，body={loginName, password}，**password 需 MD5 后提交**；
 - 响应：{code: 200, data: {msgTip, token}}，token 为字符串；
 - 鉴权头：X-Access-Token（/depot/getAllList 实测 200）；
@@ -48,7 +50,7 @@ class ErpCredentials:
 
 
 class ErpClient:
-    """轻量 jshERP 后端客户端：login() 取 token，最小造数/清理方法集（首轮场景）。"""
+    """轻量 jshERP 后端客户端：login() 取 token，演示所需的最小造数/清理方法集。"""
 
     def __init__(self, api_base_url: str, credentials: ErpCredentials, timeout_s: float = 15.0):
         self._base = api_base_url.rstrip("/")
@@ -111,7 +113,7 @@ class ErpClient:
         """jshERP 惯例：列表接口的 search 参数是 JSON 字符串（分页字段必带）。"""
         return {"search": json.dumps({"currentPage": 1, "pageSize": 20, **filters})}
 
-    # -- 商品造数/清理（T23 首轮场景） --
+    # -- 商品造数/清理 --
 
     def create_material(
         self, name: str, *, standard: str = "标准", model: str = "M-1", unit: str = "个"

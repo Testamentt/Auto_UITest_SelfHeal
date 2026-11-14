@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """自愈 Page 代理 —— 插件装配层（D19）。
 
 `HealingPage` 是自愈插件的**组合根**：开启时构建知识库 → 编排器（orchestrator 及其协作者）

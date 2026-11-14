@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """单元测试：编排器知识优先与配置默认值（不依赖浏览器）。"""
 
 import logging
@@ -46,7 +48,7 @@ def test_knowledge_first_miss():
 
 
 def test_unknown_strategy_logs_warning(caplog):
-    """#8：strategy_order 含未知策略名 → 记 warning，不静默跳过也不崩溃。"""
+    """strategy_order 含未知策略名 → 记 warning，不静默跳过也不崩溃。"""
     settings = Settings()
     settings.healing.strategy_order = ["heuristic", "nope"]
     orch = SelfHealOrchestrator(page=None, settings=settings, knowledge=KnowledgeStore())
@@ -57,7 +59,7 @@ def test_unknown_strategy_logs_warning(caplog):
 
 
 class _TrackedStore(KnowledgeStore):
-    """记录是否被 close（验证 owns 标记，审查 M3）。"""
+    """记录是否被 close（验证 owns 标记）。"""
 
     def __init__(self):
         super().__init__()
@@ -68,7 +70,7 @@ class _TrackedStore(KnowledgeStore):
 
 
 def test_close_owns_only_self_built_resources():
-    """审查 M3：close 只关闭自建资源；注入的 knowledge / llm / vision 由注入方负责。"""
+    """close 只关闭自建资源；注入的 knowledge / llm / vision 由注入方负责。"""
     injected = _TrackedStore()
     orch = SelfHealOrchestrator(page=None, settings=Settings(), knowledge=injected)
     orch.close()
@@ -77,7 +79,7 @@ def test_close_owns_only_self_built_resources():
 
 
 def test_close_self_built_knowledge():
-    """审查 M3：自建知识库（backend=memory）在 close 时关闭。"""
+    """自建知识库（backend=memory）在 close 时关闭。"""
     from selfheal.knowledge.store import KnowledgeStore as _KS
 
     settings = Settings()

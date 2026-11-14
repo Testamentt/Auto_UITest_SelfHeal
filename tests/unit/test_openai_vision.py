@@ -1,4 +1,6 @@
-"""单元测试：OpenAI 兼容视觉客户端（不触网；审查 M15 补齐 VLM 全路径覆盖）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：OpenAI 兼容视觉客户端（不触网，覆盖 VLM 全路径）。
 
 覆盖：base64 data-url 组装、SDK 异常归一化与分级、空 choices / content=None、
 SDK 缺失降级、图片体积护栏（Pillow 可用时压缩 / 不可用时记 warning 原样发送）、close 幂等。
@@ -58,12 +60,12 @@ def test_analyze_image_builds_data_url_and_returns_text(monkeypatch):
     assert url.startswith("data:image/png;base64,")
     assert base64.b64decode(url.split(",", 1)[1]) == b"PNGDATA"
     assert seen["max_tokens"] == 500  # 默认上限透传
-    assert "max_completion_tokens" not in seen  # L9 互斥：VLM 仍用 max_tokens 字段族
-    assert seen["temperature"] == 0.0  # L8：确定性解码参数显式写回 wire
+    assert "max_completion_tokens" not in seen  # 互斥：VLM 仍用 max_tokens 字段族
+    assert seen["temperature"] == 0.0  # 确定性解码参数显式写回 wire
 
 
 def test_max_retries_is_explicit_in_client_construction(monkeypatch):
-    """M1：重试次数显式传给 SDK，不再静默继承默认值。"""
+    """重试次数显式传给 SDK，不再静默继承默认值。"""
     captured = {}
     _inject_fake_openai(monkeypatch, lambda **kw: _reply(), ctor_recorder=captured)
     client = OpenAICompatibleVLM(api_key="sk-test", model="m", max_retries=0, timeout_s=7.5)
@@ -73,7 +75,7 @@ def test_max_retries_is_explicit_in_client_construction(monkeypatch):
 
 
 def test_auth_error_is_fatal_and_names_endpoint(monkeypatch):
-    """M1：401 归一化为 FatalUnavailableError，且错误信息带 provider/model/端点主机。"""
+    """401 归一化为 FatalUnavailableError，且错误信息带 provider/model/端点主机。"""
 
     class AuthenticationError(Exception):
         status_code = 401
@@ -94,7 +96,7 @@ def test_auth_error_is_fatal_and_names_endpoint(monkeypatch):
 
 
 def test_rate_limit_error_is_transient(monkeypatch):
-    """M1：429 归一化为可重试的 TransientUnavailableError。"""
+    """429 归一化为可重试的 TransientUnavailableError。"""
 
     class RateLimitError(Exception):
         status_code = 429
@@ -126,7 +128,7 @@ def test_missing_sdk_degrades(monkeypatch):
 
 
 def test_analyze_image_rejects_unknown_kwargs(monkeypatch):
-    """L8：未支持的调用期参数抛 TypeError（与文本侧同一约定），不静默丢弃。"""
+    """未支持的调用期参数抛 TypeError（与文本侧同一约定），不静默丢弃。"""
     called = {"n": 0}
 
     def _create(**kw):
@@ -156,7 +158,7 @@ def test_close_is_idempotent(monkeypatch):
     assert closed["n"] == 1
 
 
-# --- H5：图片体积护栏 ---
+# --- 图片体积护栏 ---
 
 
 def _png(size=(700, 700)) -> bytes:
@@ -179,7 +181,7 @@ def test_shrink_image_within_limit_keeps_png():
 
 
 def test_shrink_image_compresses_oversized_png():
-    """H5：超限 PNG 被压成 JPEG 且落在上限内（Pillow 可用时）。"""
+    """超限 PNG 被压成 JPEG 且落在上限内（Pillow 可用时）。"""
     pytest.importorskip("PIL")
     image = _png()
     assert len(image) > 20_000
@@ -192,7 +194,7 @@ def test_shrink_image_compresses_oversized_png():
 
 
 def test_oversized_without_pillow_warns_once_and_sends_original(monkeypatch, caplog):
-    """H5：Pillow 不可用时记一次 warning 并按原图发送（不静默、不崩）。"""
+    """Pillow 不可用时记一次 warning 并按原图发送（不静默、不崩）。"""
     import builtins
 
     real_import = builtins.__import__

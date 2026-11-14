@@ -1,9 +1,11 @@
-"""端到端测试：T7 知识二次命中（坐实"越用越聪明"，需浏览器内核，-m e2e）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""端到端测试：知识二次命中（坐实"越用越聪明"，需浏览器内核，-m e2e）。
 
-场景 A（知识复用）：第一次自愈成功 → 案例落库（B1 commit）→ 同场景第二次操作
+场景 A（知识复用）：第一次自愈成功 → 案例落库 → 同场景第二次操作
 直接命中知识缓存复用（strategy=="knowledge"、根因 cached/cached_l1），不再走策略链重修。
 
-场景 B（缓存失效重修，T4 延伸）：修复沉淀后页面再次改版使缓存 selector 失效 →
+场景 B（缓存失效重修）：修复沉淀后页面再次改版使缓存 selector 失效 →
 缓存选择器验证拒绝（selector_exists）→ 转策略重修成功——知识库不是"永久正确答案"。
 
 两个场景均使用**独立内存知识库**（fresh_knowledge_page），各自自证完整链路，
@@ -13,10 +15,10 @@
 import pytest
 
 from selfheal.knowledge.store import KnowledgeStore
-from selfheal.plugin.healing_page import HealingPage  # M10-②：装配层在 plugin/
+from selfheal.plugin.healing_page import HealingPage  # 惰性导入（装配层在 plugin/）
 from tests.e2e.pages.demo_page import DemoPage
 
-pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # L16：Allure feature 落「AI 自愈」分组
+pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # Allure feature 落「AI 自愈」分组
 
 
 @pytest.fixture
@@ -38,7 +40,7 @@ def test_knowledge_reuse_second_hit(fresh_knowledge_page):
     assert demo.result() == "logged-in"
     first = healing_page.reporter.records[-1]
     assert first.success and first.strategy == "heuristic"
-    assert knowledge.count_repairs() >= 1  # B1：重试验证成功后已落库
+    assert knowledge.count_repairs() >= 1  # 重试验证成功后已落库
 
     # 同场景第二次：页面回到相同改版状态 → 知识缓存直接命中复用（不再走策略链）
     demo.open()
@@ -68,7 +70,7 @@ def test_stale_cache_retries_strategies(fresh_knowledge_page):
         }"""
     )
 
-    # 第二次操作：缓存命中但 selector 校验失败（T4 缓存验证）→ 转策略重修
+    # 第二次操作：缓存命中但 selector 校验失败 → 转策略重修
     demo.login()
     assert demo.result() == "logged-in"
     second = healing_page.reporter.records[-1]

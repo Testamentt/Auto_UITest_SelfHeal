@@ -1,7 +1,9 @@
-"""单元测试：DOM 解析器（审查 C1 回归 + 基础行为，不依赖浏览器）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：DOM 解析器（基础行为与回归要点，不依赖浏览器）。
 
 覆盖：
-- void 元素（无结束标签）不入栈，不污染后续元素文本（审查 C1 实证缺陷）；
+- void 元素（无结束标签）不入栈，不污染后续元素文本（浏览器序列化不写斜杠）；
 - 嵌套文本向上汇聚（<button><span>x</span></button>）；
 - endtag 与栈顶不匹配时忽略（畸形 HTML 防弹错层）；
 - 显式自闭合（<input .../>）与无斜杠形式行为一致；
@@ -16,7 +18,7 @@ pytestmark = pytest.mark.unit
 
 
 def test_void_element_does_not_pollute_following_text():
-    """审查 C1：浏览器序列化风格（void 无斜杠）下，input 不应吸收后续元素文本。"""
+    """浏览器序列化风格（void 无斜杠）下，input 不应吸收后续元素文本。"""
     dom = """<html><body>
 <input data-testid="username" name="username">
 <button data-testid="submit-btn" aria-label="登录按钮">登录</button>
@@ -24,7 +26,7 @@ def test_void_element_does_not_pollute_following_text():
 </body></html>"""
     els = parse_interactive_elements(dom)
     by_tag = {el.attr("data-testid") or el.attr("id"): el for el in els}
-    # input 文本必须为空（修复前会被污染为 '\n登录\n说明文字\n'）
+    # input 文本必须为空（否则会被污染为 '\n登录\n说明文字\n'）
     assert by_tag["username"].text == ""
     assert by_tag["submit-btn"].text == "登录"
 

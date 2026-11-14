@@ -1,4 +1,6 @@
-"""单元测试：人工审核入口脚本（M3）——把知识库案例标记 is_verified（不触网、不碰真库）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：人工审核入口脚本——把知识库案例标记 is_verified（不触网、不碰真库）。"""
 
 from __future__ import annotations
 

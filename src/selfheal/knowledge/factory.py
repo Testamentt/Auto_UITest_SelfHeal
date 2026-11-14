@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """知识库工厂：按 settings.knowledge.backend 返回对应后端。
 
 调用方不直接构造具体实现，面向 KnowledgeBackend 接口编程。

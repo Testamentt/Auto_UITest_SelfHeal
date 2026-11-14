@@ -1,4 +1,6 @@
-"""端到端：模型瞬态故障下的退避重试与熔断（T24）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""端到端：模型瞬态故障下的退避重试与熔断（D25）。
 
 验证目标（真浏览器 + 假 LLM，**不调用真实付费模型**）：
 
@@ -85,7 +87,7 @@ def _fresh_knowledge(settings):
 
     不用 conftest 的 session 级 `knowledge`：e2e 全量跑时它会被其它用例写入的修复案例污染，
     导致本用例的 `run()` 走知识库命中（strategy=knowledge）而非 semantic，断言随执行顺序漂移
-    （与 backlog R9「session 级知识库跨用例串扰」同源）。
+    ——即 session 级知识库的跨用例串扰。
     """
     from selfheal.knowledge.factory import build_knowledge_store  # 惰性导入（e2e 专用）
 
@@ -157,7 +159,7 @@ def test_retry_recovers_and_healing_succeeds(context, settings):
         assert fake.calls == 2  # 第 1 次瞬态失败 → 第 2 次成功
         assert stats["llm_attempts"] == 2
         assert stats["llm_retries"] == 1
-        # 修复后原定位器仍不存在 → 真自愈（T16 口径）由页面重试阶段验证，这里只断言候选可用
+        # 修复后原定位器仍不存在 → 真自愈由页面重试阶段验证，这里只断言候选可用
         assert page.locator('[data-testid="submit-btn"]').count() == 1
     finally:
         orchestrator.close()

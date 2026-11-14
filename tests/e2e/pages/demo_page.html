@@ -1,5 +1,6 @@
+<!-- 本项目统一使用 UTF-8（无 BOM）编码。 -->
 <!--
-  自愈演示页（自建本地测试页，见 docs/roadmap.md 决策 D3）。
+  自愈演示页（自建本地测试页，见 docs/decisions.md 决策 D3）。
   - 用 file:// 直接打开，零依赖、不起服务。
   - 模拟"UI 改版"：提交按钮旧 id 已失效（#submit-btn-old → #submit-btn-v2），
     但稳定属性齐全（data-testid / aria-label / 文本），供自愈重新识别。
@@ -34,7 +35,7 @@
     <button type="button" id="real-secondary" data-testid="secondary" aria-label="备用入口">备用入口</button>
   </form>
 
-  <!-- 链式自愈演示（M15-3）：外层 #panel 是稳定"根"（容器），内层按钮是"已失效"的旧 id。
+  <!-- 链式自愈演示：外层 #panel 是稳定"根"（容器），内层按钮是"已失效"的旧 id。
        页面里**不存在** #inner-btn-old，真实按钮改用 #inner-btn-v2（文本稳定）——恰好构造出
        「根 ok、叶子失效」的链式定位，供 e2e 验证"修根重放链 / 二次自愈修叶子"。 -->
   <section id="panel">

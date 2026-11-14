@@ -1,4 +1,6 @@
-"""单元测试：自愈价值 A/B 对比（T20）——junit 解析 / 对齐统计 / Markdown 渲染（纯函数）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：自愈价值 A/B 对比 —— junit 解析 / 对齐统计 / Markdown 渲染（纯函数）。"""
 
 import sys
 from pathlib import Path
@@ -90,7 +92,7 @@ def test_build_round_cmd_targets_variant():
     assert "-k disabled" in joined and "--junitxml" in joined and "test_ab_scenarios" in joined
 
 
-# --- L14：A 组守卫 +「未运行」告警行（作废对比不得静默产出） ---
+# --- A 组守卫 +「未运行」告警行（作废对比不得静默产出） ---
 
 
 def test_build_rows_counts_not_run_rows():
@@ -131,13 +133,13 @@ def test_render_markdown_tolerates_summary_without_not_run_key():
     """兼容手工构造的旧 summary（缺 not_run 键）：退化为不告警，而不是 KeyError。"""
     rows = [{"scenario": "s1", "no_heal": "failed", "with_heal": "passed", "value": "自愈修复 ✓"}]
     _rows, summary = ab_compare.build_rows({}, {})
-    summary.pop("not_run")  # 模拟旧版 summary（L14 之前无该键）
+    summary.pop("not_run")  # 模拟旧版 summary（无 not_run 键）
     md = ab_compare.render_markdown(rows, summary, None)
     assert "⚠️ **告警**" not in md
 
 
 def test_main_aborts_when_group_a_empty(monkeypatch, tmp_path, capsys):
-    """L14：A 组（无自愈基线）为空 → 中止报告生成、退出码 1、不写报告文件。"""
+    """A 组（无自愈基线）为空 → 中止报告生成、退出码 1、不写报告文件。"""
     monkeypatch.setattr(ab_compare, "parse_junit", lambda path: {})
     monkeypatch.setattr(ab_compare, "REPORT_PATH", tmp_path / "ab-compare.md")
     assert ab_compare.main(["--skip-run"]) == 1

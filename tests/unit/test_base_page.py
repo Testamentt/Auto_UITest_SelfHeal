@@ -1,4 +1,6 @@
-"""单元测试：POM 基类 BasePage（基础框架 B1，不依赖浏览器）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：POM 基类 BasePage（不依赖浏览器）。"""
 
 import pytest
 
