@@ -1,7 +1,0 @@
-DEBUG    selfheal.collect.collector:collector.py:195 网络响应日志记录失败（忽略该条）
-Traceback (most recent call last):
-  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/collect/collector.py", line 185, in _on_response
-    self._network_logs.append(
-  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/tests/unit/test_reporting_hardening.py", line 206, in append
-    raise RuntimeError("network log append failed")
-RuntimeError: network log append failed

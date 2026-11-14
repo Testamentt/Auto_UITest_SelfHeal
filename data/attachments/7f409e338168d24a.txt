@@ -1,0 +1,1 @@
+DEBUG    selfheal.agent.strategies.semantic:semantic.py:229 L3 跳过：查询文本为空或向量不可比较（不进入知识库检索）

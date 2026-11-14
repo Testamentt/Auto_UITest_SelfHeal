@@ -1,2 +1,0 @@
-WARNING  selfheal.llm.factory:factory.py:91 VLM 不可用：环境变量 DASHSCOPE_API_KEY 未设置或为空（只报变量名，不打印值）
-WARNING  selfheal.llm.resilience:resilience.py:293 LLM 瞬态故障（第 1/2 次重试，等待 0.00s 后重试）：429 simulated transient failure

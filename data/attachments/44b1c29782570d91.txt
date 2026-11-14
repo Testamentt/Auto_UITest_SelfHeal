@@ -1,0 +1,1 @@
+WARNING  selfheal.reporting.allure_bridge:allure_bridge.py:176 未知附件类型 'zip'（可选：BMP/CSV/GIF/HTML/JPG/JSON/MP4/OGG/PCAP/PDF/PNG/SVG/TEXT/TIFF/TSV/URI_LIST/WEBM/XML/YAML/ZIP）→ 跳过附件 /tmp/pytest-of-runner/pytest-0/test_attach_file_typo_warns_ev0/trace.zip

@@ -1,0 +1,1 @@
+WARNING  selfheal.llm.openai_client:openai_client.py:128 max_tokens_field=max_completion_tokens：该模型族不支持自定义 temperature，已省略（配置值 0.30 不生效；需要固定温度请改用 max_tokens 字段族）

@@ -1,1 +1,1 @@
-{"reportName":"AutoAiSelfHeal 自愈报告","testRuns":[],"statistic":{"failed":0,"broken":0,"skipped":4,"passed":675,"unknown":0,"total":679},"time":{"start":1794398625889,"stop":1794399149929,"duration":524040,"minDuration":0,"maxDuration":60373,"sumDuration":482732}}
+{"reportName":"AutoAiSelfHeal 自愈报告","testRuns":[],"statistic":{"failed":0,"broken":0,"skipped":4,"passed":777,"unknown":0,"total":781},"time":{"start":1794618612137,"stop":1794618757429,"duration":145292,"minDuration":0,"maxDuration":30515,"sumDuration":94858}}

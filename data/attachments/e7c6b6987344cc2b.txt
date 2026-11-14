@@ -1,8 +1,0 @@
-WARNING  selfheal.collect.collector:collector.py:238 trace_active 状态提供者调用失败，按未录制处理（不生成现场 trace）
-Traceback (most recent call last):
-  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/src/selfheal/collect/collector.py", line 236, in _try_inline_trace
-    recording = bool(self._trace_active())
-                     ^^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/work/Auto_UITest_SelfHeal/Auto_UITest_SelfHeal/tests/unit/test_collector.py", line 339, in _raise_provider
-    raise RuntimeError("trace 状态不可用")
-RuntimeError: trace 状态不可用

@@ -1,0 +1,15 @@
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.strategy 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.confidence 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.page_url 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.dom_fingerprint 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.page_fingerprint 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.repair_key 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.embedding 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.embedding_version 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.hit_count 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.last_hit_at 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.is_verified 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：repairs.created_at 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：popups.dismiss_selector 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:159 迁移竞态：popups.category 已由其它进程补齐，跳过
+INFO     selfheal.knowledge.sqlite_store:sqlite_store.py:262 知识库 schema 迁移无本进程改动 path=/tmp/pytest-of-runner/pytest-0/test_store_ignored_only_case_l0/race-store.db 竞态忽略列=['repairs.strategy', 'repairs.confidence', 'repairs.page_url', 'repairs.dom_fingerprint', 'repairs.page_fingerprint', 'repairs.repair_key', 'repairs.embedding', 'repairs.embedding_version', 'repairs.hit_count', 'repairs.last_hit_at', 'repairs.is_verified', 'repairs.created_at', 'popups.dismiss_selector', 'popups.category']

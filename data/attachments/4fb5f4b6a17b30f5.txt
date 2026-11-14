@@ -1,0 +1,4 @@
+❌ 提交信息不符合规范（只写「改了什么 + 为什么」，不写批次编号与协作过程）：
+   /tmp/pytest-of-runner/pytest-0/test_main_returns_nonzero_for_0/COMMIT_EDITMSG:1 提交信息含内部编号 'T19'：fix: 修好门禁（T19）
+
+允许的编号：公开 ADR（D 系列，见 docs/decisions.md）与检索层级术语 L1–L4。

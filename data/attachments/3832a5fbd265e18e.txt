@@ -1,0 +1,15 @@
+usage: pytest [-h] [--db DB] [--stats] [--prune] [--older-than OLDER_THAN]
+              [--dedupe] [--export EXPORT] [--apply]
+
+知识库运维（统计 / 清理 / 去重 / 导出）
+
+options:
+  -h, --help            show this help message and exit
+  --db DB               知识库路径（默认取 settings.knowledge.path）
+  --stats               显示统计（只读）
+  --prune               清理失效案例（默认仅预览）
+  --older-than OLDER_THAN
+                        --prune 的年龄门槛（天，默认 30）
+  --dedupe              按 upsert 键去重（默认仅预览）
+  --export EXPORT       导出为 JSON 文件路径
+  --apply               真正执行写操作（默认 dry-run）

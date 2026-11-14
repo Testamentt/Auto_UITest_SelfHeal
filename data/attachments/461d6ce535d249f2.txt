@@ -1,0 +1,1 @@
+WARNING  selfheal.llm.resilience:resilience.py:295 VLM 瞬态故障（第 1/1 次重试，等待 0.00s 后重试）：429
