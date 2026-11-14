@@ -1,4 +1,6 @@
-"""单元测试：P3 验证与沉淀闭环（B1）—— 重试成功才沉淀、失败不沉淀、commit 幂等（不依赖浏览器）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：验证与沉淀闭环——重试成功才沉淀、失败不沉淀、commit 幂等（不依赖浏览器）。"""
 
 import pytest
 
@@ -101,7 +103,7 @@ def _orch(page=None, store=None, settings=None):
     return orch
 
 
-# --- run() 暂存 vs commit_pending（B1）---
+# --- run() 暂存 vs commit_pending ---
 
 
 def test_run_stages_then_commit_persists():

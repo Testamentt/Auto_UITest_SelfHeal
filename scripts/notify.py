@@ -1,10 +1,12 @@
-"""自愈回归通知（T19）：把回归结论 + 自愈摘要推送到团队 webhook。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""自愈回归通知：把回归结论 + 自愈摘要推送到团队 webhook。
 
 设计：
 - 标准库零第三方依赖（urllib/json/argparse），CI 直接可跑；
 - payload 组装为**纯函数**（build_summary / build_payload），便于单测快照；
 - send 为 best-effort：网络失败只记 warning 返回 False，不抛、不阻塞 CI；
-- 失败路径统一输出 `::warning::` GitHub 注解（L13）：退出码仍是 0（不炸流水线），
+- 失败路径统一输出 `::warning::` GitHub 注解：退出码仍是 0（不炸流水线），
   但故障在 Actions 注解面板可见，不再"只能翻日志"；
 - WEBHOOK_URL 未配置 → CLI 打印 skip 并以退出码 0 结束（不炸流水线）；
 - 触发范围由 CI 侧 job 条件控制（当前：仅 main 失败告警；定时回归启用后
@@ -35,11 +37,11 @@ PROVIDERS = ("dingtalk", "wecom", "slack", "generic")
 
 
 def warn_annotation(message: str) -> None:
-    """输出 GitHub Actions 注解（L13）：best-effort 失败必须在流水线页面可见。
+    """输出 GitHub Actions 注解：best-effort 失败必须在流水线页面可见。
 
     - CI：`::warning::` 进 Actions 注解面板（run 页面直接看到，无需翻日志）；
     - 本地：只是一行普通输出，无副作用。
-    - **退出码语义不变**（通知失败永远不炸 CI），但 R4"不允许静默失败"由此满足：
+    - **退出码语义不变**（通知失败永远不炸 CI），但"不允许静默失败"由此满足：
       长期故障（webhook 一直不可达 / 摘要文件一直解析失败）会在每次运行的注解里冒泡。
     """
     print(f"::warning::{message}")
@@ -57,12 +59,12 @@ def build_summary(
 
     records 为 HealingRecord 的 asdict 列表（healing-records.json）；
     统计口径与 metrics 一致：成功率、verified（真自愈）率、策略分布。
-    空记录（本轮无自愈）合法，total=0。
+    空记录（本次运行无自愈）合法，total=0。
     """
     total = len(records)
     success = sum(1 for r in records if r.get("success"))
     verified = sum(1 for r in records if r.get("verified"))
-    # 评审 m3（2026-09-03）：strategy=None（如 T13 豁免记录）不计入分布——与 metrics.compute_metrics
+    # strategy=None（如豁免记录）不计入分布——与 metrics.compute_metrics
     # 的 `if r.strategy:` 口径对齐，避免通知里出现 "None" 键。
     strategies = dict(Counter(r["strategy"] for r in records if r.get("strategy")))
     return {
@@ -144,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     # Windows GBK 控制台无法编码 payload 里的 emoji（⛔/✅）：stdout 按 UTF-8 容错输出
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    parser = argparse.ArgumentParser(description="自愈回归通知推送（T19）")
+    parser = argparse.ArgumentParser(description="自愈回归通知推送")
     parser.add_argument("--provider", default="dingtalk", choices=PROVIDERS)
     parser.add_argument("--summary-file", default="reports/healing-records.json")
     parser.add_argument("--run-url", default="")
@@ -166,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
             records, cost = data.get("records", []), data.get("cost")
         except Exception:  # noqa: BLE001 - 摘要解析失败降级为空摘要
             logger.warning("摘要文件解析失败（按空摘要告警）", exc_info=True)
-            # L13：降级不静默——摘要内容失真会影响告警判断，必须冒泡到注解面板
+            # 降级不静默——摘要内容失真会影响告警判断，必须冒泡到注解面板
             warn_annotation(f"自愈记录摘要解析失败（{summary_path}），本次按空摘要发送")
     else:
         print(f"摘要文件不存在（{summary_path}），按空摘要通知")
@@ -180,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     ok = send(webhook_url, build_payload(args.provider, summary))
     if not ok:
-        # L13：通知失败仍 exit 0（best-effort 设计），但必须显式冒泡（webhook 长期不可达时
+        # 通知失败仍 exit 0（best-effort 设计），但必须显式冒泡（webhook 长期不可达时
         # 此前只有日志 + 一行 print，绿色 job 掩盖了"告警根本没发出去"）
         warn_annotation(
             f"自愈回归通知发送失败（provider={args.provider}，webhook 不可达或非 2xx），"

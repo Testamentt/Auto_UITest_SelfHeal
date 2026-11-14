@@ -1,0 +1,43 @@
+#!/bin/sh
+# 本项目统一使用 UTF-8（无 BOM）编码。
+# 提交信息门禁：拒绝内部工单编号与 AI 协作署名。
+#
+# 安装（一次性，克隆仓库后执行）：
+#   git config core.hooksPath .githooks
+#
+# 规则与 scripts/check_commit_messages.py / tests/unit/test_comment_hygiene.py 同源：
+# 允许公开 ADR（D 系列）与检索层级术语 L1–L4，其余 T*/M*/R*/H*/V*/B*/C*/L**/P*/m* 一律拒绝。
+#
+# 设计原则：**工具故障不得阻断正常提交**。若所有候选解释器都不可用（例如 venv 的
+# 基础 Python 被移动过——本项目真实踩过），只告警后放行；反之若信息确实违规，必须拒绝。
+
+MSG_FILE="$1"
+
+# 逐个候选解释器试跑，用 -c 验证"能真正启动"再采用。
+# venv 优先（项目依赖齐全），但 venv 可能因基础 Python 迁移而失效，故必须实测。
+find_python() {
+    for candidate in "venv/Scripts/python.exe" python python3; do
+        if "$candidate" -c "import sys" >/dev/null 2>&1; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+PY=$(find_python)
+if [ -z "$PY" ]; then
+    echo "⚠️  未找到可用 Python，跳过提交信息检查（请手动确认信息不含批次编号）" >&2
+    exit 0
+fi
+
+"$PY" scripts/check_commit_messages.py --file "$MSG_FILE"
+STATUS=$?
+
+if [ $STATUS -ne 0 ]; then
+    echo "" >&2
+    echo "提交已被拒绝。修好提交信息后重试（或用 git commit --amend）。" >&2
+    echo "规则见 README「提交规范」与 docs/decisions.md（允许公开 ADR：D 系列）。" >&2
+fi
+
+exit $STATUS

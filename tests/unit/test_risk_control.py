@@ -1,4 +1,6 @@
-"""单元测试：D1 风险控制 —— T13 高风险页豁免 / T14 dry-run 仅报告不执行（不触网）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：D1 风险控制 —— 高风险页豁免 / dry-run 仅报告不执行（不触网）。"""
 
 import pytest
 
@@ -32,7 +34,7 @@ def _orch(
     return orch
 
 
-# --- T13 高风险页豁免 ---
+# --- 高风险页豁免 ---
 
 
 def test_excluded_url_skips_healing():
@@ -72,7 +74,7 @@ def test_exclude_pattern_matching():
     assert orch._assembler._is_excluded("") is False
 
 
-# --- T14 dry-run 仅报告不执行 ---
+# --- dry-run 仅报告不执行 ---
 
 
 def test_dry_run_reports_proposal_not_applied(monkeypatch, tmp_path):

@@ -1,7 +1,9 @@
-"""单元测试：语义定位策略（防幻觉护栏 + R5 意图依据闸门，不触网）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：语义定位策略（防幻觉护栏 + 意图依据闸门，不触网）。
 
 注意：本文件的描述一律取**与 DOM 夹具候选有词元/子串交集**者（`登录按钮`）。
-描述与页面零交集会被 R5 意图闸门拦在模型调用之前（用例会变成"测错分支"），
+描述与页面零交集会被意图闸门拦在模型调用之前（用例会变成"测错分支"），
 该闸门自身的回归在 tests/unit/test_semantic_intent_guard.py。
 """
 
@@ -27,7 +29,7 @@ SCENE = Scene(url="x", dom_snapshot=DOM)
 _REAL = (
     '[data-testid="submit-btn"]'  # 由 build_stable_selector 生成的稳定定位器（在 DOM 中真实存在）
 )
-_DESC = "登录按钮"  # 与夹具 aria-label 一致 → 通过 R5 意图闸门
+_DESC = "登录按钮"  # 与夹具 aria-label 一致 → 通过意图闸门
 
 
 def _reply(selector: str, confidence: float) -> str:

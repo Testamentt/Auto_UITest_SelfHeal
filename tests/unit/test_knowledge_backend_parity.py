@@ -1,6 +1,8 @@
-"""单元测试：知识库双后端（内存 / SQLite）语义对齐（M4，不依赖浏览器与网络）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：知识库双后端（内存 / SQLite）语义对齐（不依赖浏览器与网络）。
 
-背景：代码审查发现双后端语义漂移——内存端 add_repair 直接 append（无 upsert）、
+背景：双后端语义漂移——内存端 add_repair 直接 append（无 upsert）、
 find_repair 取"插入序首个"指纹匹配者（SQLite 取置信度最高者）、last_hit_at 用 Python ISO
 而 SQLite 用 datetime('now')、内存端缺 close()。本文件用**同一组输入**跑两个后端并逐条
 比对观测结果（upsert 键 / 覆盖列 / 择优规则 / 时间格式 / 人工审核标记保留）。
@@ -156,14 +158,14 @@ def _observations(store) -> list[tuple]:
 
 
 def test_backends_parity_same_inputs_same_results(tmp_path):
-    """M4 主回归：同一组输入 → 内存与 SQLite 的观测结果逐条相同（含条数、字段、择优）。"""
+    """同一组输入 → 内存与 SQLite 的观测结果逐条相同（含条数、字段、择优）。"""
     with _store("memory", tmp_path) as memory, _store("sqlite", tmp_path) as sqlite:
         assert _observations(memory) == _observations(sqlite)
 
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_upsert_converges_and_last_write_wins(backend, tmp_path):
-    """M4：同键重复沉淀收敛为 1 条，覆盖列取末次写入值（此前内存端会堆 3 条）。"""
+    """同键重复沉淀收敛为 1 条，覆盖列取末次写入值（否则内存端会堆 3 条）。"""
     with _store(backend, tmp_path) as store:
         for confidence, strategy in ((0.5, "heuristic"), (0.7, "semantic"), (0.9, "visual")):
             store.add_repair(
@@ -178,7 +180,7 @@ def test_upsert_converges_and_last_write_wins(backend, tmp_path):
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_upsert_preserves_is_verified(backend, tmp_path):
-    """M4：upsert 不清除人工审核标记 is_verified（与 SQLite DO UPDATE 列清单一致）。"""
+    """upsert 不清除人工审核标记 is_verified（与 SQLite DO UPDATE 列清单一致）。"""
     with _store(backend, tmp_path) as store:
         store.add_repair(_case(fp="fp", repair_key="rk"))
         store.set_verified("rk", True)
@@ -190,7 +192,7 @@ def test_upsert_preserves_is_verified(backend, tmp_path):
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_find_repair_prefers_highest_confidence_fingerprint_match(backend, tmp_path):
-    """M4：指纹命中多条 → 取该指纹下置信度最高者（此前内存端取插入序首个）。"""
+    """指纹命中多条 → 取该指纹下置信度最高者（否则内存端会取插入序首个）。"""
     with _store(backend, tmp_path) as store:
         store.add_repair(_case(new="#first", confidence=0.4, fp="fpB"))
         store.add_repair(_case(new="#best", confidence=0.75, fp="fpB"))
@@ -201,7 +203,7 @@ def test_find_repair_prefers_highest_confidence_fingerprint_match(backend, tmp_p
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_find_repair_falls_back_to_highest_confidence(backend, tmp_path):
-    """M4：指纹无匹配 / 未给指纹 → 退化取置信度最高者；选择器无命中 → None。"""
+    """指纹无匹配 / 未给指纹 → 退化取置信度最高者；选择器无命中 → None。"""
     with _store(backend, tmp_path) as store:
         store.add_repair(_case(new="#low", confidence=0.3, fp="fpA"))
         store.add_repair(_case(new="#high", confidence=0.95, fp="fpB"))
@@ -210,14 +212,14 @@ def test_find_repair_falls_back_to_highest_confidence(backend, tmp_path):
         assert store.find_repair("#missing") is None
 
 
-# --- R2（K2）：find_repair 同分并列的稳定次序 ---
+# --- find_repair 同分并列的稳定次序 ---
 
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_find_repair_tie_break_stable_and_matches_memory(backend, tmp_path):
-    """R2：置信度全部并列 → 次序稳定且取插入序首个（SQLite 端靠 ``ORDER BY … rowid ASC``）。
+    """置信度全部并列 → 次序稳定且取插入序首个（SQLite 端靠 ``ORDER BY … rowid ASC``）。
 
-    修复前 SQL 未显式写次级排序键，次序依赖 SQLite 扫描/索引选择（理论不保证）；现约定
+    未显式写次级排序键时，次序依赖 SQLite 扫描/索引选择（理论不保证）；现约定
     "置信度降序 → rowid 升序（插入序）"，与内存端稳定排序的列表序一致。
     """
     with _store(backend, tmp_path) as store:
@@ -230,7 +232,7 @@ def test_find_repair_tie_break_stable_and_matches_memory(backend, tmp_path):
 
 
 def test_find_repair_tie_break_uses_rowid_ascending(tmp_path):
-    """R2：带指纹时同样按 "置信度降序 → 插入序" 取首个指纹匹配者（SQLite 侧逐条验证）。"""
+    """带指纹时同样按 "置信度降序 → 插入序" 取首个指纹匹配者（SQLite 侧逐条验证）。"""
     store = SqliteKnowledgeStore(str(tmp_path / "tie.db"))
     try:
         store.add_repair(_case(new="#n1", confidence=0.6, fp="fpX", repair_key="rk-1"))
@@ -247,16 +249,16 @@ def test_find_repair_tie_break_uses_rowid_ascending(tmp_path):
         store.close()
 
 
-# --- R3（K3）：NULL / 负值 confidence 的读出与排序一致性 ---
+# --- NULL / 负值 confidence 的读出与排序一致性 ---
 
 
 def test_dirty_confidence_ordering_parity(tmp_path):
-    """R3 主回归：脏库（confidence 为 NULL / 负值）在两端读出与排序结论一致。
+    """脏库（confidence 为 NULL / 负值）在两端读出与排序结论一致。
 
     - 读出：NULL → 0.0、负值 → 0.0（两端同值，越界值不泄进指标）；
-    - 排序：负值不再被排到有效候选之后（SQLite 侧此前 ``ORDER BY confidence DESC`` 把负值
+    - 排序：负值不再被排到有效候选之后（否则 SQLite 侧 ``ORDER BY confidence DESC`` 把负值
       排最后，而内存端按真实值排序 → 两端可能给出相反结论）；
-    - 历史 NULL 行（旧库 ALTER 补列）不参与并列争抢，语义与改动前一致。
+    - 历史 NULL 行（旧库 ALTER 补列）不参与并列争抢，语义与旧口径一致。
     """
     with _store("memory", tmp_path) as memory, _store("sqlite", tmp_path) as sqlite:
         for store in (memory, sqlite):
@@ -308,7 +310,7 @@ def test_dirty_confidence_ordering_parity(tmp_path):
         assert _ordered(memory) == _ordered(sqlite)
         assert _ordered(memory)[0] == (0.6, "#d-good")
         assert sorted(_ordered(memory)) == [
-            (0.0, "#d-neg"),  # 写侧归一：负值 → 0.0（修复前 SQLite 端会排到最后）
+            (0.0, "#d-neg"),  # 写侧归一：负值 → 0.0（否则 SQLite 端会排到最后）
             (0.0, "#d-null"),  # 直插 NULL → 读出 0.0
             (0.0, "#d-zero"),  # 直插 NULL → 读出 0.0
             (0.6, "#d-good"),
@@ -322,9 +324,9 @@ def test_dirty_confidence_ordering_parity(tmp_path):
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_read_side_confidence_normalized(backend, tmp_path):
-    """R3：读侧同样归一——脏库里的 NULL confidence 经任一读路径都返回 0.0（两端对称）。
+    """读侧同样归一——脏库里的 NULL confidence 经任一读路径都返回 0.0（两端对称）。
 
-    修复前：SQLite 端读侧归一 0.0，内存端把 ``None`` 原样泄给调用方（``float`` 消费者会炸、
+    反例：SQLite 端读侧归一 0.0，内存端把 ``None`` 原样泄给调用方（``float`` 消费者会炸、
     排序比较会抛 ``TypeError``），同一份脏数据两端不一致。
     """
     with _store(backend, tmp_path) as store:
@@ -344,7 +346,7 @@ def test_read_side_confidence_normalized(backend, tmp_path):
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_write_side_confidence_normalized(backend, tmp_path):
-    """R3：两端写入即归一——``None`` / 负值 → 0.0；``> 1.0`` 原样保留。
+    """两端写入即归一——``None`` / 负值 → 0.0；``> 1.0`` 原样保留。
 
     越上界刻意不夹取：``fix_generator.lookup_knowledge`` 用 ``0.0 <= conf <= 1.0`` 门槛
     拒绝无效置信度（见 ``test_secondary_healing`` 的越界用例），知识库层洗成 1.0 会静默
@@ -359,7 +361,7 @@ def test_write_side_confidence_normalized(backend, tmp_path):
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_last_hit_at_iso_utc_format(backend, tmp_path):
-    """M4：last_hit_at 两端同格式——UTC ISO、秒精度、可被 fromisoformat 解析且 tz-aware。"""
+    """last_hit_at 两端同格式——UTC ISO、秒精度、可被 fromisoformat 解析且 tz-aware。"""
     with _store(backend, tmp_path) as store:
         store.add_repair(_case(repair_key="rk-iso"))
         store.bump_hit("rk-iso")
@@ -370,11 +372,11 @@ def test_last_hit_at_iso_utc_format(backend, tmp_path):
         assert abs((datetime.now(timezone.utc) - datetime.fromisoformat(raw)).total_seconds()) < 60
         if backend == "sqlite":
             stored = store._conn.execute("SELECT last_hit_at FROM repairs").fetchone()[0]
-            assert stored == raw  # 落库即 ISO（修复前落的是 datetime('now')）
+            assert stored == raw  # 落库即 ISO，而非 datetime('now') 的空格格式
 
 
 def test_legacy_last_hit_at_space_format_normalized(tmp_path):
-    """M4：旧库 datetime('now') 值（空格分隔、无时区）读出时归一为 UTC ISO，仍可解析。"""
+    """旧库 datetime('now') 值（空格分隔、无时区）读出时归一为 UTC ISO，仍可解析。"""
     store = SqliteKnowledgeStore(str(tmp_path / "legacy-ts.db"))
     try:
         store.add_repair(_case(repair_key="rk-legacy"))
@@ -387,14 +389,14 @@ def test_legacy_last_hit_at_space_format_normalized(tmp_path):
         store.close()
 
 
-# --- R1（K1）：created_at 双端格式漂移 ---
+# --- created_at 双端格式漂移 ---
 
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_created_at_filled_and_iso_utc_when_missing(backend, tmp_path):
-    """R1：写入方未传 created_at 时两端都补 UTC ISO 串——不再"内存 None / SQLite 空格格式"。
+    """写入方未传 created_at 时两端都补 UTC ISO 串——不再"内存 None / SQLite 空格格式"。
 
-    修复前：内存端整字段为 ``None``（不可解析），SQLite 靠列默认值 ``CURRENT_TIMESTAMP``
+    反例：内存端整字段为 ``None``（不可解析），SQLite 靠列默认值 ``CURRENT_TIMESTAMP``
     产出 ``2026-10-08 12:00:00``（空格分隔、无时区），L3 七天新鲜窗口（``_is_fresh``）的
     判定口径因此在两端不同。
     """
@@ -402,17 +404,17 @@ def test_created_at_filled_and_iso_utc_when_missing(backend, tmp_path):
         store.add_repair(_case(repair_key="rk-created"))  # created_at 刻意留空（None）
         found = store.find_by_repair_key("rk-created")
         raw = found.created_at
-        assert raw is not None  # 修复前内存端为 None
+        assert raw is not None  # 不补值时内存端会漏出 None
         assert _is_utc_iso(raw)  # 可解析、tz-aware、秒精度、与 last_hit_at 同格式
         assert raw.endswith("+00:00") and "T" in raw and " " not in raw
         assert abs((datetime.now(timezone.utc) - datetime.fromisoformat(raw)).total_seconds()) < 60
         if backend == "sqlite":
             stored = store._conn.execute("SELECT created_at FROM repairs").fetchone()[0]
-            assert stored == raw  # 落库即 ISO（修复前落的是 CURRENT_TIMESTAMP 空格格式）
+            assert stored == raw  # 落库即 ISO，而非 CURRENT_TIMESTAMP 的空格格式
 
 
 def test_explicit_created_at_preserved_on_both_backends(tmp_path):
-    """R1：调用方显式给出的 created_at 原样保留（两端一致，不被补值覆盖）。"""
+    """调用方显式给出的 created_at 原样保留（两端一致，不被补值覆盖）。"""
     explicit = "2026-01-02T03:04:05+00:00"
     cases = [
         _case(new="#n1", fp="fpA", repair_key="rk-exp"),
@@ -434,7 +436,7 @@ def test_explicit_created_at_preserved_on_both_backends(tmp_path):
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_created_at_preserved_on_upsert(backend, tmp_path):
-    """R1：upsert 保留首写 created_at（与 is_verified 同策略），两端一致。"""
+    """upsert 保留首写 created_at（与 is_verified 同策略），两端一致。"""
     explicit = "2026-01-02T03:04:05+00:00"
     with _store(backend, tmp_path) as store:
         store.add_repair(replace(_case(fp="fp", repair_key="rk-keep"), created_at=explicit))
@@ -443,7 +445,7 @@ def test_created_at_preserved_on_upsert(backend, tmp_path):
 
 
 def test_legacy_created_at_space_format_normalized(tmp_path):
-    """R1：旧库 CURRENT_TIMESTAMP 值（空格分隔、无时区）读出时归一为 UTC ISO 且可解析。"""
+    """旧库 CURRENT_TIMESTAMP 值（空格分隔、无时区）读出时归一为 UTC ISO 且可解析。"""
     store = SqliteKnowledgeStore(str(tmp_path / "legacy-created.db"))
     try:
         store.add_repair(_case(repair_key="rk-legacy-created"))
@@ -457,7 +459,7 @@ def test_legacy_created_at_space_format_normalized(tmp_path):
 
 
 def test_legacy_null_created_at_reads_back_none(tmp_path):
-    """R1：历史 NULL 列（ALTER 补列）读出为 None，不伪造时间、不抛异常。"""
+    """历史 NULL 列（ALTER 补列）读出为 None，不伪造时间、不抛异常。"""
     db = tmp_path / "legacy-null-created.db"
     conn = sqlite3.connect(db)
     conn.execute(
@@ -478,7 +480,7 @@ def test_legacy_null_created_at_reads_back_none(tmp_path):
 
 
 def test_memory_close_noop_idempotent():
-    """M4：内存后端 close() 为 no-op 且幂等，且不清空已沉淀数据。"""
+    """内存后端 close() 为 no-op 且幂等，且不清空已沉淀数据。"""
     store = KnowledgeStore()
     store.add_repair(_case(repair_key="rk-close"))
     store.close()
@@ -487,14 +489,14 @@ def test_memory_close_noop_idempotent():
 
 
 def test_protocol_declares_count_repairs_and_close():
-    """M4：KnowledgeBackend 显式声明 count_repairs / close（缺声明会让 _safe_close 静默跳过）。"""
+    """KnowledgeBackend 显式声明 count_repairs / close（缺声明会让 _safe_close 静默跳过）。"""
     assert callable(getattr(KnowledgeBackend, "count_repairs", None))
     assert callable(getattr(KnowledgeBackend, "close", None))
 
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
 def test_implementations_expose_protocol_lifecycle_members(backend, tmp_path):
-    """M4：两端实现都暴露协议声明的生命周期成员（结构一致性，防再次漂移）。"""
+    """两端实现都暴露协议声明的生命周期成员（结构一致性，防再次漂移）。"""
     with _store(backend, tmp_path) as store:
         for name in ("add_repair", "find_repair", "count_repairs", "close"):
             assert callable(getattr(store, name, None))

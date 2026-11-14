@@ -1,3 +1,4 @@
+# 本项目统一使用 UTF-8（无 BOM）编码。
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -28,7 +29,7 @@ dev = [
     "ruff>=0.4",
 ]
 # LLM / VLM provider（已定，见 docs/architecture.md「已定选型」）：DeepSeek + 通义 qwen3-vl-flash，经 llm/ 抽象层接入
-# pillow：视觉截图体积护栏（H5）用于超限降质/缩放转 JPEG；缺失时仅记 warning 后发原图（非硬依赖）
+# pillow：视觉截图体积护栏用于超限降质/缩放转 JPEG；缺失时仅记 warning 后发原图（非硬依赖）
 llm = [
     "openai>=1.30",
     "pillow>=10",
@@ -40,15 +41,15 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-# --strict-markers（2026-10-08 审查 M14）：marker 拼错/未注册直接报错，而不是让用例
+# --strict-markers：marker 拼错/未注册直接报错，而不是让用例
 # 被静默 deselected（CI 两个 job 都用 -m 过滤，漏标 marker 的用例会同时被两边跳过）。
 addopts = "-ra --strict-markers"
 markers = [
     "unit: 单元测试（不依赖浏览器与网络）",
     "e2e: 端到端测试（需要 Playwright 浏览器内核）",
     "healing: 自愈闭环相关测试",
-    "erp: 管伊佳 ERP 被测系统用例（需本地 ERP 环境，CI 不跑；T23）",
-    # L19：真实模型调用（外呼付费 API）。CI / 常规本地 e2e 用
+    "erp: 管伊佳 ERP 被测系统用例（需本地 ERP 环境，CI 不跑）",
+    # 真实模型调用（外呼付费 API）。CI / 常规本地 e2e 用
     # `-m "e2e and not erp and not live"` 排除；显式 `-m live` 才跑。
     "live: 真实模型调用（外呼付费 API，需 api key；默认被 e2e 过滤排除）",
 ]
@@ -64,7 +65,16 @@ extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
-# E501 保留 ignore（2026-10-08 审查 M14 评估结论）：启用后全仓 52 处告警，绝大多数是
+# E501 保留 ignore：启用后全仓 52 处告警，绝大多数是
 # 中文注释与长字符串字面量（`ruff format` 无法换行的那类），修它只产生噪音；
 # 代码换行约束改由 CI 的 `ruff format --check .` 真正兜住（此前完全没跑）。
 ignore = ["E501"]
+# UP009：本仓库要求每个源码文件首行显式声明 UTF-8 编码（本项目约定，见 README「编码」小节；
+# 由 tests/unit/test_file_encoding.py 强制）。Python 3 默认 UTF-8，该声明按 PEP 263 属"冗余"，
+# 所以 ruff 会把它判为可删——但它是本项目刻意保留的可见约定，不是历史残留。
+# 只对本仓库自己的目录关闭；第三方/生成目录不在 lint 范围内。
+[tool.ruff.lint.per-file-ignores]
+"src/**/*.py" = ["UP009"]
+"tests/**/*.py" = ["UP009"]
+"scripts/**/*.py" = ["UP009"]
+"docs/**/*.py" = ["UP009"]

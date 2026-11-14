@@ -1,6 +1,8 @@
-"""管伊佳 ERP 商品管理页 POM（T23 P2）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""管伊佳 ERP 商品管理页 POM。
 
-勘测确认（2026-08-31，jsh 账号）：
+勘测确认（jsh 账号）：
 - 列表路由 /material/material（SPA 同文档渲染，内容不在 iframe）；
 - 新增弹窗表单输入框带稳定 id（#name / #standard / #model / #unit），
   placeholder 齐全（"请输入商品名称"等）——heuristic 语义匹配的依据；
@@ -61,7 +63,7 @@ class MaterialPage(BasePage):
             return False
 
     def inject_renamed_id(self, old_id: str = "name", new_id: str = "name-v2") -> None:
-        """T23 改版注入：把弹窗内输入框的 id 改名（模拟前端升级后 id 变更）。
+        """改版注入：把弹窗内输入框的 id 改名（模拟前端升级后 id 变更）。
 
         旧定位器 #<old_id> 随即失效，而元素仍保留 id/placeholder 稳定属性——
         与真实"前端升级改 id"场景同构，自愈应凭 description 语义重定位到新 id。

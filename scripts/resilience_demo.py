@@ -1,4 +1,6 @@
-"""韧性演示（T24）：模型端点持续故障时，熔断把"每条用例都付重试成本"变成"快速短路"。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""韧性演示（D25）：模型端点持续故障时，熔断把"每条用例都付重试成本"变成"快速短路"。
 
 用法：
     python scripts/resilience_demo.py                # 默认 15 次逻辑调用、模拟端点 200ms
@@ -113,7 +115,7 @@ def _render(results: list[ScenarioResult], *, latency_s: float) -> str:
             f"（-{cut:.0f}%）**，请求数从 {baseline.requests} 降到 {with_breaker.requests}；"
             "两组最终都失败（错误率不变），差异只在「是否空转」。\n"
         )
-    return f"""# 韧性演示（T24：指数退避 + 熔断）
+    return f"""# 韧性演示（D25：指数退避 + 熔断）
 
 > 生成于本地；模型端点模拟为"每次请求耗时 {latency_s * 1000:.0f}ms 后返回 429"，
 > 重试 2 次（退避 0.5s / 1.0s，无抖动），熔断阈值 3 次 / 冷却 60s。数字为**模拟值**，

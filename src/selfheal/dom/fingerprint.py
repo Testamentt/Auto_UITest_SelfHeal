@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """确定性指纹子模块——DOM / 页面 / repair_key 三个哈希。
 
 原 agent/dom.py 按职责拆分而来（见 dom/__init__.py 导出）。

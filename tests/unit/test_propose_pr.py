@@ -1,4 +1,6 @@
-"""单元测试：修复建议自动开草稿 PR（T22）——body 组装 / 产物加载 / 查重与降级。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：修复建议自动开草稿 PR —— body 组装 / 产物加载 / 查重与降级。"""
 
 import json
 import sys
@@ -60,7 +62,7 @@ def test_pr_body_has_checklist_and_table_row():
 def test_pr_body_marks_flaky_and_escapes_pipe():
     body = propose_pr.build_pr_body([_proposal(verified=False, original_selector="a|b")])
     assert "⚠️ flaky" in body
-    assert "a\\|b" in body  # 表格竖线转义（T15 同款约定）
+    assert "a\\|b" in body  # 表格竖线转义（与 fix-proposals.md 同款约定）
 
 
 def test_pr_body_empty_list_still_valid():
@@ -128,11 +130,11 @@ def _completed(stdout: str) -> object:
     return CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
 
 
-# --- L13：best-effort 失败必须输出 GitHub 注解（退出码仍为 0） ---
+# --- best-effort 失败必须输出 GitHub 注解（退出码仍为 0） ---
 
 
 def test_main_create_failure_emits_github_annotation(monkeypatch, tmp_path, capsys):
-    """L13：gh 开草稿 PR 失败 → ::warning:: 注解可见，退出码保持 0。"""
+    """gh 开草稿 PR 失败 → ::warning:: 注解可见，退出码保持 0。"""
     (tmp_path / "p.json").write_text(json.dumps(_proposal()), encoding="utf-8")
     monkeypatch.setattr(propose_pr, "has_open_pr", lambda label: False)
     monkeypatch.setattr(propose_pr, "create_draft_pr", lambda *a, **k: False)

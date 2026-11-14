@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """OpenAI 兼容 LLM 客户端（决策 D2 落地）。
 
 一个实现通过 base_url + model 覆盖 OpenAI / DeepSeek / Qwen / 智谱 等全部

@@ -1,4 +1,6 @@
-"""单元测试：本地确定性 Embedding（Phase 5 A1，不触网）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：本地确定性 Embedding（不触网）。"""
 
 import numpy as np
 import pytest
@@ -53,11 +55,11 @@ def test_factory_returns_ngram_when_enabled():
     s = Settings()
     client = get_embedding_for_settings(s)
     assert isinstance(client, NgramEmbedding)
-    assert client.embedding_version == "v1-ngram-512"  # 版本号含 dim（审查 C3）
+    assert client.embedding_version == "v1-ngram-512"  # 版本号含 dim
 
 
 def test_embedding_version_includes_dim():
-    """审查 C3：版本号含维度，改 dim 后新旧向量不同版本（防 L3 维度崩溃）。"""
+    """版本号含维度，改 dim 后新旧向量不同版本（防 L3 维度崩溃）。"""
     assert NgramEmbedding(dim=512).embedding_version == "v1-ngram-512"
     assert NgramEmbedding(dim=256).embedding_version == "v1-ngram-256"
     assert NgramEmbedding(dim=512).embedding_version != NgramEmbedding(dim=256).embedding_version
@@ -69,11 +71,11 @@ def test_factory_disabled_returns_none():
     assert get_embedding_for_settings(s) is None
 
 
-# --- L6：零向量护栏（不可比较标记）+ to_vector 维度校验 ---
+# --- 零向量护栏（不可比较标记）+ to_vector 维度校验 ---
 
 
 def test_embed_empty_text_returns_uncomparable_marker():
-    """L6：空 / 纯空白 / 无词元文本返回空 bytes，**不再**产出全零向量（余弦 nan 的源头）。"""
+    """空 / 纯空白 / 无词元文本返回空 bytes，**不再**产出全零向量（余弦 nan 的源头）。"""
     emb = NgramEmbedding()
     for text in ("", "   ", "\t\n", "！！！", "，。、", "🙂🙂"):
         data = emb.embed(text)
@@ -82,18 +84,18 @@ def test_embed_empty_text_returns_uncomparable_marker():
 
 
 def test_zero_vector_cosine_is_nan_but_marker_short_circuits():
-    """L6 回归证据：零向量的**余弦**（含 0/0 归一化）是 nan —— 静默错误；空标记可在检索前判定。"""
+    """零向量的**余弦**（含 0/0 归一化）是 nan —— 静默错误；空标记可在检索前判定。"""
     emb = NgramEmbedding()
     zero = np.zeros(emb.dim, dtype=np.float32)
     real = np.frombuffer(emb.embed("登录"), dtype=np.float32)
     with np.errstate(invalid="ignore", divide="ignore"):
         nan_cosine = float(np.dot(zero, real) / (np.linalg.norm(zero) * np.linalg.norm(real)))
-    assert np.isnan(nan_cosine)  # 修复前 embed("") 就是这个输入（余弦未定义 → nan）
-    assert emb.is_comparable(emb.embed("")) is False  # 修复后调用方可据此短路
+    assert np.isnan(nan_cosine)  # 全零向量作输入时余弦未定义 → nan
+    assert emb.is_comparable(emb.embed("")) is False  # 调用方可据此在检索前短路
 
 
 def test_is_comparable_accepts_real_vector_and_rejects_dirty_data():
-    """L6：判定口径——非空且按 float32 对齐为可比较；空值 / 半截字节为不可比较。"""
+    """判定口径——非空且按 float32 对齐为可比较；空值 / 半截字节为不可比较。"""
     emb = NgramEmbedding()
     assert emb.is_comparable(emb.embed("登录按钮")) is True
     assert emb.is_comparable(b"") is False
@@ -102,7 +104,7 @@ def test_is_comparable_accepts_real_vector_and_rejects_dirty_data():
 
 
 def test_embed_vector_raises_on_uncomparable_text():
-    """L6：严格入口 embed_vector 对不可比较文本显式抛错（R4：不静默降级为 nan）。"""
+    """严格入口 embed_vector 对不可比较文本显式抛错（不静默降级为 nan）。"""
     emb = NgramEmbedding()
     vec = emb.embed_vector("登录按钮")
     assert vec.shape == (emb.dim,)
@@ -113,13 +115,13 @@ def test_embed_vector_raises_on_uncomparable_text():
 
 
 def test_to_vector_rejects_empty_payload():
-    """L6：空载荷（不可比较标记 / 空值）不再返回空数组，而是明确抛错。"""
+    """空载荷（不可比较标记 / 空值）不再返回空数组，而是明确抛错。"""
     with pytest.raises(ValueError, match="向量为空"):
         NgramEmbedding().to_vector(b"")
 
 
 def test_to_vector_rejects_wrong_dimension():
-    """L6：维度不符给出可定位的错误信息（期望字节数 + 实际字节数），而非下游矩阵乘法崩溃。"""
+    """维度不符给出可定位的错误信息（期望字节数 + 实际字节数），而非下游矩阵乘法崩溃。"""
     emb = NgramEmbedding(dim=8)
     with pytest.raises(ValueError, match="期望 32"):
         emb.to_vector(np.zeros(9, dtype=np.float32).tobytes())
@@ -128,14 +130,14 @@ def test_to_vector_rejects_wrong_dimension():
 
 
 def test_to_vector_rejects_unaligned_bytes():
-    """L6：字节数不是 float32 整数倍（脏数据）明确抛错，不静默截断。"""
+    """字节数不是 float32 整数倍（脏数据）明确抛错，不静默截断。"""
     emb = NgramEmbedding(dim=2)
     with pytest.raises(ValueError, match="实际 7"):
         emb.to_vector(b"\x00" * 7)
 
 
 def test_embedding_version_roundtrip_survives_dim_check():
-    """L6：正常往返不受新校验影响（既有 C3 契约：版本号含 dim）。"""
+    """正常往返不受新校验影响（既有契约：版本号含 dim）。"""
     emb = NgramEmbedding(dim=16)
     data = emb.embed("提交订单")
     vec = emb.to_vector(data)

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """知识库数据模型。
 
 `PopupFeature` 的定义位于中立契约层 `selfheal.contracts`（D19 分层倒置修复）：它的产出方是

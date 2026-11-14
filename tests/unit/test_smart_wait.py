@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """单元测试：智能等待稳定判定（fake locator，不依赖浏览器）。"""
 
 import pytest

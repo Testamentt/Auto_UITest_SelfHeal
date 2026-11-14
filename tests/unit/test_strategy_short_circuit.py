@@ -1,4 +1,6 @@
-"""单元测试：T1 策略短路（early_accept_threshold，不触网）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：策略短路（early_accept_threshold，不触网）。
 
 启发式高置信命中时短路，不再调用 semantic(LLM)/visual(VLM)；
 启发式置信不足时仍继续尝试后续策略。
@@ -54,7 +56,7 @@ def test_no_short_circuit_when_below_threshold():
     reply = json.dumps({"selector": '[data-testid="go-btn"]', "confidence": 0.9})
     fake_llm = FakeLLMClient(responses=[reply])
 
-    # 描述须为 R5 意图闸门提供依据（词元 go），又不能构成 _score 的强子串信号
+    # 描述须为意图闸门提供依据（词元 go），又不能构成 _score 的强子串信号
     # （`Go`/`go-btn` 会命中 0.85+ 强信号把启发式短路打开，就测不到"未短路"分支）
     best = _orch(llm=fake_llm)._best_candidate(scene, "#totally-unrelated-xyz", "go 按钮")
 
@@ -73,7 +75,7 @@ class _BoomStrategy:
 
 
 def test_strategy_exception_does_not_break_chain(monkeypatch):
-    """审查 C4 回归：首个策略抛异常 → 不中断策略链，后续策略继续执行并可用。"""
+    """首个策略抛异常 → 不中断策略链，后续策略继续执行并可用。"""
     settings = Settings()
     settings.healing.strategy_order = ["boom", "heuristic"]
     monkeypatch.setitem(orch_mod._STRATEGY_REGISTRY, "boom", _BoomStrategy)

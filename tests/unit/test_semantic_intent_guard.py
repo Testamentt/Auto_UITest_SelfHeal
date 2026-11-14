@@ -1,9 +1,10 @@
-"""R5 回归：语义 LLM 段的「意图依据闸门」（描述与页面候选的交叉校验）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""语义 LLM 段的「意图依据闸门」（描述与页面候选的交叉校验）回归覆盖。
 
-来源：docs/archive/backlog/low-priority.md §三 R5 —— 视觉段有 C4 融合降权（`visual.py` 用
-`score_selector` 的 L2 分做交叉校验），语义 LLM 段此前没有，导致真实模型对**与页面完全无关
-的描述**（`#ghost-btn-old` + `zzz_不存在的描述`）也高置信采纳一个候选（点到 `#ghost-btn`），
-使"故意不可自愈 → 走兜底"的场景失效。
+视觉段有融合降权（`visual.py` 用 `score_selector` 的 L2 分做交叉校验），语义 LLM 段此前没有，
+导致真实模型对**与页面完全无关的描述**（`#ghost-btn-old` + `zzz_不存在的描述`）也高置信采纳
+一个候选（点到 `#ghost-btn`），使"故意不可自愈 → 走兜底"的场景失效。
 
 本闸门（`semantic._description_has_basis`）**只做布尔下限**：描述与页面任一候选的词元/子串
 都无交集 → 拒绝（返回 None，交下一策略/人审）；有交集则放行、**不改动**采纳置信度。
@@ -58,14 +59,14 @@ def _run(selector: str, confidence: float, description: str | None):
     return fake, cand
 
 
-# --- ① R5 复现：无关描述 + 高自报置信 → 拒绝 ---
+# --- ① 无关描述 + 高自报置信 → 拒绝 ---
 
 
 def test_unrelated_description_rejects_high_confidence_candidate():
-    """复现 R5 的 ghost 场景：描述与页面无任何交集 → 即便模型自报 0.99 也不采纳。
+    """ghost 场景：描述与页面无任何交集 → 即便模型自报 0.99 也不采纳。
 
     夹具里同时把"陷阱"显式化：原选择器 `#ghost-btn-old` 与候选 `#ghost-btn` 共享 ghost/btn
-    字面重叠（这正是当初误采纳的来源），因此闸门必须**只看描述**才能拦住它。
+    字面重叠（这正是误采纳的成因），因此闸门必须**只看描述**才能拦住它。
     """
     from selfheal.agent.strategies.heuristic import _tokenize
 
@@ -77,7 +78,7 @@ def test_unrelated_description_rejects_high_confidence_candidate():
 def test_unrelated_description_is_rejected_before_calling_model(caplog):
     """闸门放在模型调用**之前**：既然"无依据"必然不采纳，就不该为它付一次模型调用。
 
-    拒绝原因必须可见（R4：不允许静默失败）——记 debug 说明被拒理由。
+    拒绝原因必须可见（不允许静默失败）——记 debug 说明被拒理由。
     """
     import logging
 
@@ -112,20 +113,20 @@ def test_high_confidence_is_not_fused_with_l2():
     assert cand is not None and cand.confidence == 0.4
 
 
-# --- ③ description 缺失：行为与改动前逐字节一致（基线对照） ---
+# --- ③ description 缺失：走既有入口护栏，行为保持不变（基线对照） ---
 
 
 @pytest.mark.parametrize(
     ("description", "baseline"),
     [
-        (None, None),  # 基线（commit 2aa26d0 实测）：入口护栏直接返回 None，模型零调用
+        (None, None),  # 基线：入口护栏直接返回 None，模型零调用
         ("", None),
     ],
 )
 def test_missing_description_matches_pre_change_baseline(description, baseline, caplog):
-    """description 为空 → 闸门**不参与**（走既有入口护栏），结果与改动前一致。
+    """description 为空 → 闸门**不参与**（走既有入口护栏），结果与引入闸门前一致。
 
-    基线值取自改动前实测（`_llm_semantic` 入口 `not description` → None，fake.calls == []）。
+    基线值取自 `_llm_semantic` 入口 `not description` → None（fake.calls == []）。
     """
     import logging
 
@@ -175,7 +176,7 @@ def _elements() -> list[Element]:
         ("secondary", True),  # 非选中候选的 data-testid（页面级依据）
         ("备用入口", True),  # 另一候选的 aria-label
         ("ghost", True),  # id 词元命中的是 ghost-btn，但闸门只看"本页有没有落点"
-        ("zzz_不存在的描述", False),  # R5 缺陷描述
+        ("zzz_不存在的描述", False),  # 与页面无关的描述
         ("用户名", True),  # input 的 name/aria-label/placeholder
         ("完全无关的一段话", False),
         ("登", False),  # 单字符子串 → 噪声
@@ -187,7 +188,7 @@ def test_description_has_basis_matrix(description, expected):
 
 
 def test_description_has_basis_ignores_original_selector():
-    """函数签名里没有原选择器——结构性保证依据只看描述（防 R5 缺陷复活）。"""
+    """函数签名里没有原选择器——结构性保证依据只看描述（防缺陷复活）。"""
     import inspect
 
     params = list(inspect.signature(_description_has_basis).parameters)

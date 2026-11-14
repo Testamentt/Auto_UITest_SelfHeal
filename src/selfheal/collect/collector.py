@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """现场采集器。
 
 把一次失败的多维现场打包成 Scene，供 diagnose 与 strategies 消费。

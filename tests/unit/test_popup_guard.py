@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """单元测试：PopupGuard 纯函数（签名归一化 / 关闭按钮识别 / 稳定定位器投影，不依赖浏览器）。"""
 
 import pytest
@@ -47,7 +49,7 @@ def test_is_close_hint_case_insensitive():
     assert _is_close_hint("", "Popup-CLOSE", "") is True
 
 
-# --- _stable_selector：弹窗特征沉淀的定位器投影（审查 M2） ---
+# --- _stable_selector：弹窗特征沉淀的定位器投影 ---
 
 
 def test_stable_selector_text_button():

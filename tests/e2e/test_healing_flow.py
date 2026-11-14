@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """集成 / 端到端测试：自愈闭环三场景（需浏览器内核，-m e2e）。
 
-三场景对应 roadmap.md 的验收点：
+三场景分别验证：
 1. 自愈成功：失效定位器经 HealingPage 自动修复并完成操作。
 2. 兜底触发：无法自愈时退回人工备用定位器（D6）。
 3. 关闭=原生：禁用自愈后，失效定位器直接抛超时（验证插件可开关、不影响框架）。
@@ -8,10 +10,10 @@
 
 import pytest
 
-from selfheal.plugin.healing_page import HealingPage  # M10-②：装配层在 plugin/
+from selfheal.plugin.healing_page import HealingPage  # 惰性导入（装配层在 plugin/）
 from tests.e2e.pages.demo_page import DemoPage
 
-pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # L16：Allure feature 落「AI 自愈」分组
+pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # Allure feature 落「AI 自愈」分组
 
 
 def test_heal_success(healing_page):
@@ -34,7 +36,7 @@ def test_fallback_when_unhealable(offline_healing_page):
 
     用 offline_healing_page 而不是 healing_page：真实模型可用时，LLM/VLM 仍可能为
     "zzz_不存在的描述"给出高置信候选（自报置信度、无 L2 交叉校验），让"不可自愈"不再成立，
-    用例会变成模型非确定性驱动的抖动（2026-10-08 全量跑实测到该抖动）。
+    用例会变成模型非确定性驱动的抖动。
     """
     page = offline_healing_page
     page.set_default_timeout(8_000)  # 缩短等待，避免"不可自愈"用例长时间阻塞

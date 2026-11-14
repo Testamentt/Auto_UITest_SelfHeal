@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """单元测试：不依赖浏览器与网络。"""
 
 import pytest

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """模型 provider 注册表。
 
 通过名字注册/获取 LLMClient 与 VisionClient 实现，实现业务与具体 SDK 解耦。

@@ -1,12 +1,14 @@
-"""架构守卫测试 —— 分层倒置护栏（2026-09-03 独立复核 V5/m1 立项；2026-10-10 M10-③ 扩展）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""架构守卫测试 —— 分层倒置护栏（源码级 AST 静态扫描）。
 
 **不变量**（源码级静态扫描；判定走 AST，注释 / docstring / 字符串里的路径名不算）：
 
-- `llm/`、`knowledge/`：不得反向 import `selfheal.agent`（V5 m1：`llm/io.py` 曾反向依赖
-  `agent.dom` 构建精简 DOM）。
+- `llm/`、`knowledge/`：不得反向 import `selfheal.agent`（`llm/io.py` 反向依赖
+  `agent.dom` 构建精简 DOM 即属此类）。
 - `engine/`（能力建设层）、`collect/`（数据采集层）：不得 import 上层
-  `selfheal.agent` / `selfheal.knowledge` / `selfheal.reporting`（M10：DTO 与装配点曾落在
-  引擎层，导致 `import selfheal.engine.*` 在 import 期拉起整个 Agent 层）。
+  `selfheal.agent` / `selfheal.knowledge` / `selfheal.reporting`（DTO 与装配点若落在
+  引擎层，`import selfheal.engine.*` 会在 import 期拉起整个 Agent 层）。
 - `dom/`（中立 DOM 工具包）：不得 import 任何业务层（agent / knowledge / reporting /
   engine / collect）——否则 engine 与 collect 会经由 dom 被动拉起上层，护栏被绕过。
 

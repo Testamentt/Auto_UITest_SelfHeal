@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """OpenAI 兼容视觉模型（VLM）客户端。
 
 qwen3-vl-flash 等多模态模型走 OpenAI 兼容端点；analyze_image 把 base64 图片经

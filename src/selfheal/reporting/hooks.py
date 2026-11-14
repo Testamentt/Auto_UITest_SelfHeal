@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """报告钩子：把自愈事件记录到 Allure / HTML，并聚合指标。
 
 record() 逐条记录并附 Allure；metrics() 聚合自愈指标（供看板渲染）；
@@ -45,9 +47,9 @@ class HealingReporter:
         return compute_metrics(self.records)
 
     def cost_summary(self) -> dict:
-        """按**真实尝试次数**估算费用（重试也计费），并附带重试/熔断计数（T24）。
+        """按**真实尝试次数**估算费用（重试也计费），并附带重试/熔断计数（D25）。
 
-        计数口径（T24）：
+        计数口径（D25）：
         - `llm_calls` / `vlm_calls`：逻辑调用次数（counting_proxy 记；策略短路省下的调用不计）；
         - `llm_attempts` / `vlm_attempts`：真实请求次数（韧性层记，含重试）；
         - 费用按 attempts 估算，缺失时回退 calls——兼容注入的原生 client（未接韧性层）。
@@ -57,7 +59,7 @@ class HealingReporter:
         llm_calls = self.stats.get("llm_attempts", self.stats.get("llm_calls", 0))
         vlm_calls = self.stats.get("vlm_attempts", self.stats.get("vlm_calls", 0))
         cost = estimate_cost(llm_calls, vlm_calls)
-        # T24：附带回溯信息（estimate_cost 既有字段不变，新增键对旧消费方无影响）
+        # D25：附带回溯信息（estimate_cost 既有字段不变，新增键对旧消费方无影响）
         cost["llm_retries"] = self.stats.get("llm_retries", 0)
         cost["vlm_retries"] = self.stats.get("vlm_retries", 0)
         cost["circuit_open"] = self.stats.get("llm_circuit_open", 0) + self.stats.get(

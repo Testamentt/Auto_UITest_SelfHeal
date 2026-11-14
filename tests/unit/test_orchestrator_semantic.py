@@ -1,4 +1,6 @@
-"""单元测试：A3 orchestrator 接线 —— L1 硬短路 / L3 语义采纳 / 上下文提取 / persist 富化（不触网）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：orchestrator 接线 —— L1 硬短路 / L3 语义采纳 / 上下文提取 / persist 富化（不触网）。"""
 
 import pytest
 
@@ -143,7 +145,7 @@ def test_semantic_suggest_stale_unverified(monkeypatch, tmp_path):
         embedding=EMB,
         page_fingerprint="pg1",
         element_context=_ctx("登录"),
-        review_writer=append_review_proposal,  # B6：注入收敛出口（策略不再直连 reporting）
+        review_writer=append_review_proposal,  # 注入收敛出口（策略不再直连 reporting）
     )
     cand = strat.repair(Scene(url=""), "#old", "登录按钮")
     assert cand is None  # 不采纳 → 继续 L4
@@ -163,7 +165,7 @@ def test_semantic_low_sim_no_hit():
 
 
 def test_semantic_stale_cached_selector_not_used(monkeypatch, tmp_path):
-    """审查 M1 回归：L3 命中的 new_selector 已失效（页面不存在）→ 不采纳、写人审清单（与 L1 护栏对称）。"""
+    """L3 命中的 new_selector 已失效（页面不存在）→ 不采纳、写人审清单（与 L1 护栏对称）。"""
     from selfheal.reporting import fix_proposals
     from selfheal.reporting.fix_proposals import append_review_proposal
 
@@ -258,7 +260,7 @@ def test_persist_without_embedding_context_leaves_optional_none():
     assert case.embedding is None and case.repair_key is None
 
 
-# --- 上下文缓存：URL 维度键 + 上限（审查 M4） ---
+# --- 上下文缓存：URL 维度键 + 上限 ---
 
 
 def test_failure_context_cache_keyed_by_url():

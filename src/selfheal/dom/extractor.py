@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """失败元素上下文提取子模块——live → snapshot → static 三级回退。
 
 原 agent/dom.py 按职责拆分而来（见 dom/__init__.py 导出）。

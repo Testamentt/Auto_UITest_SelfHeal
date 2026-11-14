@@ -1,4 +1,6 @@
-"""单元测试：自愈看板渲染（指标摘要 + 审计表，T3，不依赖浏览器）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：自愈看板渲染（指标摘要 + 审计表，不依赖浏览器）。"""
 
 import pytest
 
@@ -45,7 +47,7 @@ def test_render_empty():
 
 
 def test_render_failed_record_not_labeled_flaky():
-    """H6 口径对齐：success=False（豁免/dry_run）不显示为 flaky 侥幸通过，也不算进卡片。"""
+    """success=False（豁免/dry_run）不显示为 flaky 侥幸通过，也不算进卡片。"""
     rec = HealingRecord("#pay", None, None, 0.0, "high_risk_page_excluded", False, False)
     html = render_dashboard([rec])
     row = next(line for line in html.splitlines() if "#pay" in line)
@@ -60,11 +62,11 @@ def test_write_dashboard(tmp_path):
     assert "AI 自愈看板" in out.read_text(encoding="utf-8")
 
 
-# --- L5：成本卡片容错（外部 JSON 的 null 不得让整张看板渲染失败） ---
+# --- 成本卡片容错（外部 JSON 的 null 不得让整张看板渲染失败） ---
 
 
 def test_l5_cost_card_renders_when_all_fields_null():
-    """L5：cost 全字段为 null（外部 JSON）→ 归一为 0，整张看板（含审计表）仍渲染成功。"""
+    """cost 全字段为 null（外部 JSON）→ 归一为 0，整张看板（含审计表）仍渲染成功。"""
     cost = {
         "llm_calls": None,
         "vlm_calls": None,
@@ -72,7 +74,7 @@ def test_l5_cost_card_renders_when_all_fields_null():
         "vlm_cost": None,
         "total_cost": None,
     }
-    html = render_dashboard([_rec()], cost)  # 修复前：total_cost 为 None → TypeError
+    html = render_dashboard([_rec()], cost)  # 不做归一化时 total_cost=None → TypeError
     assert "#old" in html  # 审计表未被成本字段拖垮
     assert "LLM 调用次数" in html and "估算费用" in html
     assert html.count("¥0.0000") == 3  # LLM / VLM / 合计 三项费用均为 0
@@ -80,7 +82,7 @@ def test_l5_cost_card_renders_when_all_fields_null():
 
 
 def test_l5_cost_card_tolerates_bad_values_and_missing_keys():
-    """L5：缺键 / 空串 / 非数值 / nan / inf 一律回 0（不抛 TypeError/ValueError）。"""
+    """缺键 / 空串 / 非数值 / nan / inf 一律回 0（不抛 TypeError/ValueError）。"""
     cost = {
         "llm_calls": "",
         "vlm_calls": "abc",
@@ -95,7 +97,7 @@ def test_l5_cost_card_tolerates_bad_values_and_missing_keys():
 
 
 def test_l5_cost_card_still_renders_contract_values():
-    """L5：正常数值（含 estimate_cost 契约产出）不被归一化误伤，精度保留。"""
+    """正常数值（含 estimate_cost 契约产出）不被归一化误伤，精度保留。"""
     html = render_dashboard([_rec()], estimate_cost(2, 1))
     assert "¥0.0400" in html  # LLM 2 × 0.02
     assert "¥0.0500" in html  # VLM 1 × 0.05
@@ -104,7 +106,7 @@ def test_l5_cost_card_still_renders_contract_values():
 
 
 def test_l5_cost_card_accepts_numeric_strings_and_ignores_na():
-    """L5：数值字符串可解析；"N/A" 之类不可解析值回 0（外部汇总来源常见形态）。"""
+    """数值字符串可解析；"N/A" 之类不可解析值回 0（外部汇总来源常见形态）。"""
     html = render_dashboard([], {"llm_calls": "3", "total_cost": "N/A"})
     assert '<div class="num">3</div><div class="label">LLM 调用次数</div>' in html
     assert "¥0.0000" in html

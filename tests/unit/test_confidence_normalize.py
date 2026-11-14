@@ -1,4 +1,6 @@
-"""单元测试：T5 置信度归一化 / 按策略阈值（不触网）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：置信度归一化 / 按策略阈值（不触网）。
 
 覆盖四层：
 1. agent/confidence.py 归一化层：默认恒等、自报收缩开关、注册表可扩展、越界钳制；
@@ -89,7 +91,7 @@ def _persister(settings: Settings) -> PersistenceHandler:
 
 
 def test_calibrate_identity_by_default():
-    """所有策略键默认恒等（含边界 0/1 与精度），保证 T4 后行为零变化。"""
+    """所有策略键默认恒等（含边界 0/1 与精度），保证接入标定层后行为零变化。"""
     for key in (KEY_HEURISTIC, KEY_SEMANTIC_L3, KEY_SEMANTIC_LLM, KEY_VISUAL):
         assert calibrate(key, 0.935) == 0.935
         assert calibrate(key, 0.0) == 0.0
@@ -195,7 +197,7 @@ def test_semantic_llm_strategy_shrink_wired():
     shrunk = SemanticStrategy(client=FakeLLMClient([reply]), shrink_self_reported=True)
     raw = SemanticStrategy(client=FakeLLMClient([reply]), shrink_self_reported=False)
     # 描述须与夹具候选有词元/子串交集（_DOM_CANDIDATE 的 aria-label），否则会先被
-    # R5 意图依据闸门拒绝（semantic._description_has_basis），测不到 shrink 接线本身。
+    # 意图依据闸门会直接拒绝（semantic._description_has_basis），测不到 shrink 接线本身。
     assert shrunk.repair(scene, "#old", "登录按钮").confidence == 0.81
     assert raw.repair(scene, "#old", "登录按钮").confidence == 0.9
 
@@ -210,7 +212,7 @@ def test_heuristic_strategy_identity_wired():
 
 
 def test_visual_strategy_identity_wired():
-    """visual 产出经统一标尺出口：C4 融合结果恒等（不二次收缩）。"""
+    """visual 产出经统一标尺出口：视觉融合结果恒等（不二次收缩）。"""
     scene = Scene(url="x", screenshot=b"fake-png", dom_snapshot=_DOM_CANDIDATE)
     reply = json.dumps({"selector": '[data-testid="submit-btn"]', "confidence": 0.9})
     cand = VisualStrategy(client=FakeVisionClient([reply])).repair(
@@ -260,7 +262,7 @@ def test_resolve_rejects_when_strategy_threshold_high(monkeypatch):
 
 
 def test_best_candidate_short_circuit_default():
-    """默认 early_accept 0.85：heuristic 0.95 达阈值 → 短路，不调 semantic（回归 T1）。"""
+    """默认 early_accept 0.85：heuristic 0.95 达阈值 → 短路，不调 semantic（省掉一次 LLM 调用）。"""
     scene = Scene(url="x", dom_snapshot=_DOM_STRONG)
     fake_llm = FakeLLMClient(['{"selector":"x","confidence":0.9}'])
     ctx = HealingContext(
@@ -327,7 +329,7 @@ def test_lookup_knowledge_uses_source_strategy_threshold():
     assert out.confidence == 0.65
 
 
-# --- 7. L12：阈值段未登记策略名 warning（行为不变） ---
+# --- 7. 阈值段未登记策略名 warning（行为不变） ---
 
 
 def _candidate_ctx() -> HealingContext:
@@ -341,9 +343,9 @@ def _candidate_ctx() -> HealingContext:
 
 
 def test_unknown_threshold_keys_log_warning_once(caplog):
-    """L12：strategy_thresholds / strategy_early_accept 的未登记策略名各记一次 warning。
+    """strategy_thresholds / strategy_early_accept 的未登记策略名各记一次 warning。
 
-    与 strategy_order 的未知名处理（#8）对称；重复调度不刷屏（实例级去重）。
+    与 strategy_order 的未知名处理对称；重复调度不刷屏（实例级去重）。
     """
     s = Settings()
     s.healing.strategy_thresholds = {"heuristic_strategy": 0.7}
@@ -359,7 +361,7 @@ def test_unknown_threshold_keys_log_warning_once(caplog):
 
 
 def test_unknown_threshold_keys_keep_fallback_behavior(caplog):
-    """L12 行为不变：未知名键仍宽待 → 该策略回退全局阈值，采纳判定与未配置时完全一致。"""
+    """行为不变：未知名键仍宽待 → 该策略回退全局阈值，采纳判定与未配置时完全一致。"""
     baseline = _fix_gen(Settings()).best_candidate(_candidate_ctx())
 
     s = Settings()
@@ -380,7 +382,7 @@ def test_unknown_threshold_keys_keep_fallback_behavior(caplog):
 
 
 def test_registered_threshold_keys_do_not_warn(caplog):
-    """L12：已登记策略名不产生噪声 warning（避免"告警常态化"掩盖真实笔误）。"""
+    """已登记策略名不产生噪声 warning（避免"告警常态化"掩盖真实笔误）。"""
     s = Settings()
     s.healing.strategy_thresholds = {"heuristic": 0.7}
     s.healing.strategy_early_accept = {"heuristic": 0.9}
@@ -390,7 +392,7 @@ def test_registered_threshold_keys_do_not_warn(caplog):
 
 
 def test_unknown_threshold_key_warns_through_generate(caplog):
-    """L12：warning 经由真实入口 generate() 也能看到（不是只有直接调 best_candidate 才触发）。"""
+    """warning 经由真实入口 generate() 也能看到（不是只有直接调 best_candidate 才触发）。"""
     s = Settings()
     s.healing.strategy_thresholds = {"heuristic_strategy": 0.7}
     with caplog.at_level(logging.WARNING, logger="selfheal.agent.fix_generator"):

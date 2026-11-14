@@ -1,4 +1,6 @@
-"""单元测试：D2 风险控制 —— T15 修复写回人审清单 / T16 verified flaky / T17 成本看板（不触网）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：D2 风险控制 —— 修复写回人审清单 / verified flaky / 成本看板（不触网）。"""
 
 import pytest
 
@@ -54,11 +56,11 @@ class _FakePage:
         return _Loc()
 
 
-# --- T16：verified / flaky 指标 ---
+# --- verified / flaky 指标 ---
 
 
 def test_metrics_verified_stats():
-    """H6 口径：verified / flaky 只在**成功**记录里统计（分母 = 成功数）。"""
+    """verified / flaky 只在**成功**记录里统计（分母 = 成功数）。"""
     records = [
         HealingRecord("#a", "#an", "heuristic", 0.9, "not_found", True, True),
         HealingRecord("#b", "#bn", "semantic", 0.8, "covered", True, False),
@@ -73,7 +75,7 @@ def test_metrics_verified_stats():
 
 
 def test_metrics_unsuccessful_record_excluded_from_flaky():
-    """H6：success=False 的记录（高风险页豁免 / dry_run / on_uncertain=fail）不计入 flaky。"""
+    """success=False 的记录（高风险页豁免 / dry_run / on_uncertain=fail）不计入 flaky。"""
     records = [
         HealingRecord("#a", "#an", "heuristic", 0.9, "not_found", True, True),
         HealingRecord("#pay", None, None, 0.0, "high_risk_page_excluded", False, False),
@@ -120,7 +122,7 @@ def test_dashboard_shows_verified_and_cost():
     assert "VLM 调用次数" in html
 
 
-# --- T17：成本统计 ---
+# --- 成本统计 ---
 
 
 def test_estimate_cost_defaults():
@@ -155,7 +157,7 @@ def test_counting_client_increments_stats():
     assert orch._reporter.stats["llm_calls"] == 1
 
 
-# --- T15：修复写回人审清单 ---
+# --- 修复写回人审清单 ---
 
 
 def test_fix_proposal_written_on_heal(monkeypatch, tmp_path):
@@ -170,7 +172,7 @@ def test_fix_proposal_written_on_heal(monkeypatch, tmp_path):
     orch._assembler._collector = _FakeCollector("https://x/login", LOGIN_DOM)
     out = orch.run("#old", description="登录")
     assert out.success
-    orch.commit_pending(out.attempt_id)  # B1：引擎层重试成功后提交
+    orch.commit_pending(out.attempt_id)  # 引擎层重试成功后提交
     assert store.count_repairs() == 1
     assert (tmp_path / "fix-proposals.md").exists()
     assert len(list((tmp_path / "fp").glob("*.json"))) == 1
@@ -187,5 +189,5 @@ def test_fix_proposal_disabled_by_default():
     orch._assembler._collector = _FakeCollector("https://x/login", LOGIN_DOM)
     out = orch.run("#old", description="登录")
     assert out.success
-    orch.commit_pending(out.attempt_id)  # B1：引擎层重试成功后提交
+    orch.commit_pending(out.attempt_id)  # 引擎层重试成功后提交
     assert store.count_repairs() == 1

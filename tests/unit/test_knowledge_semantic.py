@@ -1,4 +1,6 @@
-"""单元测试：知识语义化 A2——repair_key、find_semantic、防污染（不触网）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：知识语义化 —— repair_key、find_semantic、防污染（不触网）。"""
 
 import pytest
 
@@ -10,7 +12,7 @@ from selfheal.llm.embedding import NgramEmbedding
 
 pytestmark = pytest.mark.unit
 
-# 版本号动态获取（含 dim，见审查 C3）；硬编码会在调整默认 dim 时静默失配
+# 版本号动态获取（含 dim）；硬编码会在调整默认 dim 时静默失配
 VER = NgramEmbedding().embedding_version
 
 
@@ -59,7 +61,7 @@ def test_repair_key_sibling_index_distinguishes():
 
 
 def test_query_facade_l1_then_legacy(tmp_path):
-    """A3 门面：query 按 L1 精确 → 旧式检索优先级返回候选；同一案例不重复。"""
+    """query 门面：按 L1 精确 → 旧式检索优先级返回候选；同一案例不重复。"""
     store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
     store.add_repair(_case(original="#a", new="#l1-new"))
     q = RepairQuery(
@@ -134,7 +136,7 @@ def test_semantic_threshold(tmp_path):
 
 
 def test_semantic_dim_mismatch_skipped_not_crash(tmp_path):
-    """审查 C3 回归：库中混入异维向量（旧库/手改）→ 跳过该行，不崩溃、不误命中。"""
+    """库中混入异维向量（旧库/手改）→ 跳过该行，不崩溃、不误命中。"""
     store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
     store.add_repair(_case(text="登录", new="#login"))  # 正常 512 维
     # 手工注入一条同版本但异维（256 维）的脏向量
@@ -148,7 +150,7 @@ def test_semantic_dim_mismatch_skipped_not_crash(tmp_path):
             (b"\x00" * 256 * 4, VER),
         )
     results = store.find_semantic(_vec("登录"), "pg1", VER, k=5, threshold=0.7)
-    # 只命中正常向量，脏向量被跳过（修复前 np.stack 会 ValueError 崩溃）
+    # 只命中正常向量，脏向量被跳过（否则 np.stack 会因异维 ValueError）
     assert [c.new_selector for c, _ in results] == ["#login"]
 
 

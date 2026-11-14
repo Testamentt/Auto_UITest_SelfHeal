@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """AutoAiSelfHeal —— 带 AI 自愈能力的 UI 自动化测试框架。
 
 四层架构：

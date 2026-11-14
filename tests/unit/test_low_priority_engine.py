@@ -1,8 +1,10 @@
-"""单元测试：低优先级清单（docs/archive/backlog/low-priority.md §一）engine 层修复。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：engine 层代理对象与自愈边界。
 
-用例命名对应清单条目（L1/L2…），便于"条目 ↔ 用例"双向检索：
-- L1：代理对象（HealingLocator / HealingPage）在内部字段未初始化时不递归，按属性缺失处理；
-- L2：HealingPage 自愈边界——行为（page.get_by_* / page.click(sel) 原样透传不自愈）
+覆盖两类易错点：
+- 代理对象（HealingLocator / HealingPage）在内部字段未初始化时不递归，按属性缺失处理；
+- HealingPage 自愈边界——行为（page.get_by_* / page.click(sel) 原样透传不自愈）
   与 docstring 契约（边界必须写在类与 locator() 的 docstring 里）。
 
 纯逻辑用例，不依赖浏览器与网络。
@@ -15,7 +17,7 @@ import pytest
 from selfheal.config import HealingConfig, Settings
 from selfheal.engine.healing_locator import HealingLocator
 from selfheal.knowledge.store import KnowledgeStore
-from selfheal.plugin.healing_page import HealingPage  # M10-②：装配层在 plugin/
+from selfheal.plugin.healing_page import HealingPage  # 装配层在 plugin/
 from selfheal.reporting.hooks import HealingReporter
 
 pytestmark = pytest.mark.unit
@@ -74,24 +76,24 @@ def _healing_locator(locator=None, page=None, selector="#old") -> HealingLocator
         page or _FakePage(),
         selector,
         HealingConfig(),
-        None,  # M10-②：orchestrator 形参为 HealRunner | None；本组用例只走透传/拷贝路径
+        None,  # orchestrator 形参为 HealRunner | None；本组用例只走透传/拷贝路径
     )
 
 
-# --- L1：代理对象 __getattr__ 递归风险 ---
+# --- 代理对象 __getattr__ 递归风险 ---
 
 
 def test_l1_copy_and_deepcopy_do_not_recurse():
-    """L1：copy/deepcopy 探测 `__setstate__`/`__deepcopy__` 时不得无限递归（原为 RecursionError）。"""
+    """copy/deepcopy 探测 `__setstate__`/`__deepcopy__` 时不得无限递归（透传会 RecursionError）。"""
     hl = _healing_locator()
     for copier in (copy.copy, copy.deepcopy):
-        clone = copier(hl)  # 修复前：RecursionError（__getattr__("_enabled") 自递归）
+        clone = copier(hl)  # 直接透传会 RecursionError（__getattr__("_enabled") 自递归）
         assert object.__getattribute__(clone, "_selector") == "#old"
         assert object.__getattribute__(clone, "_enabled") is True
 
 
 def test_l1_getattr_before_init_raises_attribute_error():
-    """L1：构造中途取属性（属性表未就绪）→ 抛 AttributeError，而非递归崩溃。"""
+    """构造中途取属性（属性表未就绪）→ 抛 AttributeError，而非递归崩溃。"""
     hl = HealingLocator.__new__(HealingLocator)  # 跳过 __init__，模拟反序列化中途
     with pytest.raises(AttributeError):
         hl._enabled  # noqa: B018 - 断言点：取未初始化内部字段必须抛 AttributeError
@@ -102,7 +104,7 @@ def test_l1_getattr_before_init_raises_attribute_error():
 
 
 def test_l1_getattr_missing_locator_field_raises_attribute_error():
-    """L1：只有 _enabled、_locator 缺失（半初始化）时同样按属性缺失处理，不递归。"""
+    """只有 _enabled、_locator 缺失（半初始化）时同样按属性缺失处理，不递归。"""
     hl = HealingLocator.__new__(HealingLocator)
     object.__setattr__(hl, "_enabled", True)
     with pytest.raises(AttributeError):
@@ -110,14 +112,14 @@ def test_l1_getattr_missing_locator_field_raises_attribute_error():
 
 
 def test_l1_healing_page_getattr_before_init_raises_attribute_error():
-    """L1：HealingPage 是同源的代理对象，内部字段未就绪时同样不得递归。"""
+    """HealingPage 是同源的代理对象，内部字段未就绪时同样不得递归。"""
     hp = HealingPage.__new__(HealingPage)
     with pytest.raises(AttributeError):
         hp.click  # noqa: B018 - 断言点：_page 未就绪
     assert hasattr(hp, "_page") is False
 
 
-# --- L2：自愈边界（行为 + docstring 契约） ---
+# --- 自愈边界（行为 + docstring 契约） ---
 
 
 def _enabled_healing_page() -> tuple[HealingPage, _FakePage]:
@@ -128,7 +130,7 @@ def _enabled_healing_page() -> tuple[HealingPage, _FakePage]:
 
 
 def test_l2_page_get_by_and_click_selector_are_not_healed():
-    """L2：HealingPage 只代理 locator()；page.get_by_*(...) / page.click(sel) 原样透传不自愈。"""
+    """HealingPage 只代理 locator()；page.get_by_*(...) / page.click(sel) 原样透传不自愈。"""
     hp, page = _enabled_healing_page()
     try:
         assert hp.healing_enabled is True
@@ -141,7 +143,7 @@ def test_l2_page_get_by_and_click_selector_are_not_healed():
 
 
 def test_l2_healing_locator_get_by_is_chain_healed():
-    """L2（边界另一侧）：自愈入口内的 get_by_* 会作为链环被包裹，与 page.get_by_* 不同。"""
+    """边界另一侧：自愈入口内的 get_by_* 会作为链环被包裹，与 page.get_by_* 不同。"""
     hp, _page = _enabled_healing_page()
     try:
         derived = hp.locator("#panel").get_by_role("button", name="提交")
@@ -152,7 +154,7 @@ def test_l2_healing_locator_get_by_is_chain_healed():
 
 
 def test_l2_boundary_documented_in_docstrings():
-    """L2：边界写入 HealingPage 类 docstring 与 locator() docstring（防止再被读成"全 API 自愈"）。"""
+    """边界写入 HealingPage 类 docstring 与 locator() docstring（防止再被读成"全 API 自愈"）。"""
     class_doc = HealingPage.__doc__ or ""
     method_doc = HealingPage.locator.__doc__ or ""
     for keyword in ("get_by_", "page.click", "expect", "不自愈"):

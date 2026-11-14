@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """DOM 精简：把完整 DOM 快照压缩为"逐行的可交互元素索引"，控制给 LLM 的 token 量。
 
 归属理由：本模块依赖 agent/dom 的解析（parse_interactive_elements）与稳定定位器

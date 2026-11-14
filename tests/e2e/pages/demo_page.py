@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """演示页的页面对象（POM，继承 BasePage）。
 
 关键设计：本 POM 只依赖 Page 接口。注入 HealingPage（开）或

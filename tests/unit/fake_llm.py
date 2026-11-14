@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """单元测试辅助：可注入响应的 Fake LLM 客户端（不触网）。"""
 
 from __future__ import annotations

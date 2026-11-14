@@ -1,9 +1,11 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """人工审核入口：把知识库里的修复案例标记为 `is_verified`（L3 防污染自动采纳的信任开关）。
 
-**为什么需要它**（2026-10-08 审查 M3）：`KnowledgeBackend.set_verified()` 在内存与 SQLite 两端
+**为什么需要它**：`KnowledgeBackend.set_verified()` 在内存与 SQLite 两端
 都已实现，但框架内**没有任何调用入口**——而 `agent/strategies/semantic.py` 的 L3 采纳规则
 "sim > 0.92 且 is_verified → 自动采纳"依赖这个标记。缺入口 = 该规则只能靠人工直连数据库，
-防污染闭环缺一环。本脚本只改 `is_verified` 标记，**不自动改代码、不改定位器**（守 T15 人审边界）。
+防污染闭环缺一环。本脚本只改 `is_verified` 标记，**不自动改代码、不改定位器**（守人审边界）。
 
 用法：
     python scripts/verify_case.py --list                       # 列出最近案例（含 repair_key/置信度/标记）

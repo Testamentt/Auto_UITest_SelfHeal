@@ -1,13 +1,15 @@
-"""单元测试：L3 / L4 接线的真实链路（M10 收口轮）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：生命周期接线的真实链路。
 
-覆盖**接线本身**（能力由队列第 10/13 条在 `collect/collector.py` 实现，行为细节由其
-`test_collector.py` 的 L3/L4 用例覆盖；本模块只证明"调用方真的把它接上了"）：
+覆盖**接线本身**（trace provider 与监听摘除的实现都在 `collect/collector.py`，行为细节
+由 `test_collector.py` 覆盖；本模块只证明"调用方真的把它接上了"）：
 
-- L4：`ContextAssembler(trace_active=…)` → `SceneCollector(trace_active=…)`；
+- trace provider：`ContextAssembler(trace_active=…)` → `SceneCollector(trace_active=…)`；
   `SelfHealOrchestrator(trace_active=…)` 透传；`HealingPage(trace_active=…)` 透传；
   conftest 的 provider 取 CLI 覆盖优先、否则配置。False 时不触碰 tracing（且 provider
   确实被求值，不是"沉默忽略"）；True 时落盘现场 trace 并恢复外层录制。
-- L3：`HealingPage.close()` → `SelfHealOrchestrator.close()` → `ContextAssembler.close()`
+- 监听摘除：`HealingPage.close()` → `SelfHealOrchestrator.close()` → `ContextAssembler.close()`
   → `SceneCollector.detach()`——页面上的 request/response 监听被真正摘除，且幂等。
 
 纯逻辑用例：不依赖浏览器与网络（页面为最小 fake）。
@@ -89,7 +91,7 @@ class _FakePage:
         raise RuntimeError("无活体页面")  # 元素上下文降级快照/静态提取（不炸采集）
 
 
-# --- L4：trace 状态 provider 的接线 ---
+# --- trace 状态 provider 的接线 ---
 
 
 def test_l4_assembler_skips_tracing_when_provider_false(tmp_path):
@@ -127,7 +129,7 @@ def test_l4_assembler_saves_inline_trace_when_provider_true(tmp_path):
 
 
 def test_l4_orchestrator_forwards_provider_and_closes_assembler(monkeypatch):
-    """编排器把 provider 原样转交组装器，且 close() 级联收口组装器（L3 入口）。"""
+    """编排器把 provider 原样转交组装器，且 close() 级联关闭组装器。"""
     captured: dict = {}
 
     class _RecorderAssembler:
@@ -192,7 +194,7 @@ def test_l4_conftest_provider_prefers_cli_over_settings():
     assert _trace_active_provider(_Config(None), settings)() is True  # 无 CLI → 取配置
 
 
-# --- L3：采集器监听的生命周期收口 ---
+# --- 采集器监听的生命周期关闭 ---
 
 
 def test_l3_healing_page_close_detaches_network_listeners():
@@ -203,7 +205,7 @@ def test_l3_healing_page_close_detaches_network_listeners():
 
     healing.close()
 
-    assert page.handlers == {}, "close() 后监听必须已摘除（此前监听仍挂在页面上）"
+    assert page.handlers == {}, "close() 后监听必须已摘除（否则仍挂在页面上）"
     assert [event for event, _ in page.removed] == ["request", "response"]
     assert dict(page.removed) == page.attached, "摘除的必须是挂载时同一绑定方法（collector 契约）"
 
@@ -212,7 +214,7 @@ def test_l3_healing_page_close_detaches_network_listeners():
 
 
 def test_l3_orchestrator_close_detaches_and_is_idempotent():
-    """编排器 close() 直接收口采集器监听（不依赖 HealingPage），且幂等。"""
+    """编排器 close() 直接关闭采集器监听（不依赖 HealingPage），且幂等。"""
     page = _FakePage()
     orch = SelfHealOrchestrator(page, _settings(), knowledge=KnowledgeStore())
     assert set(page.handlers) == {"request", "response"}
@@ -225,7 +227,7 @@ def test_l3_orchestrator_close_detaches_and_is_idempotent():
 
 
 def test_l3_close_without_page_is_safe():
-    """无 page（纯逻辑环境）时收口不得抛错：assemble/close 全链路 best-effort。"""
+    """无 page（纯逻辑环境）时关闭不得抛错：assemble/close 全链路 best-effort。"""
     assembler = ContextAssembler(None, _settings())
     assembler.close()
     assembler.close()

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """Playwright 浏览器封装。
 
 统一管理浏览器 / 上下文 / 页面的生命周期。BrowserConfig（headless/channel/slow_mo/viewport）已接入。

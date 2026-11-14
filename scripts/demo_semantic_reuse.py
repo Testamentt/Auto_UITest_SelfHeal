@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """Phase 5 知识库语义化「越用越聪明」独立演示（无真实浏览器）。
 
 用可控 fake page + 临时 SQLite 纯逻辑、确定性演示三类命中：
@@ -102,7 +104,7 @@ def _demo(db_path: str) -> None:
     out1 = orch1.run("#submit-btn-old", description="登录按钮", failure=_timeout())
     _print_outcome("首次自愈", out1)
     if out1.success and out1.attempt_id:
-        orch1.commit_pending(out1.attempt_id)  # B1：验证后沉淀（demo 直连 run，模拟引擎层提交）
+        orch1.commit_pending(out1.attempt_id)  # 验证后沉淀（demo 直连 run，模拟引擎层提交）
     kb = orch1._knowledge
     # 静态兜底上下文（元素已从 DOM 移除）不产生 L1 键，故沉淀含 page_fingerprint / embedding
     print(f"  已沉淀 {kb.count_repairs()} 条修复案例（含 page_fingerprint / embedding）")
@@ -131,7 +133,7 @@ def _demo(db_path: str) -> None:
             page_fingerprint=page_fp,
             repair_key=compute_repair_key(page_fp, "html>body>div>button"),
             embedding=NgramEmbedding().embed(seed_ctx.query_text),
-            embedding_version=NgramEmbedding().embedding_version,  # 动态取版本（含 dim，见审查 C3）
+            embedding_version=NgramEmbedding().embedding_version,  # 动态取版本（含 dim）
             created_at=datetime.now(timezone.utc).isoformat(),  # 新鲜窗口 → sim>0.80 自动采纳
         )
     )

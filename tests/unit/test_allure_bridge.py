@@ -1,4 +1,6 @@
-"""单元测试：Allure 报告桥（T18）——环境页 / 标签优先级 / 证据附件与降级（不依赖浏览器）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：Allure 报告桥 —— 环境页 / 标签优先级 / 证据附件与降级（不依赖浏览器）。"""
 
 import json
 import types
@@ -38,7 +40,7 @@ def test_feature_priority_order():
     assert bridge.feature_label_for(_item("unit", "healing")) == "AI 自愈"
     assert bridge.feature_label_for(_item("unit", "e2e", "healing")) == "AI 自愈"
     assert bridge.feature_label_for(_item("unit", "e2e")) == "端到端"
-    # T23：erp（被测系统维度）优先于能力维度（healing/e2e）
+    # erp（被测系统维度）优先于能力维度（healing/e2e）
     assert bridge.feature_label_for(_item("unit", "e2e", "erp")) == "ERP 被测系统"
     assert bridge.feature_label_for(_item("e2e", "erp", "healing")) == "ERP 被测系统"
 
@@ -131,7 +133,7 @@ def test_attach_file_requires_existing_file(tmp_path, monkeypatch):
     assert bridge.attach_file(tmp_path / "missing.zip", name="x") is False  # 文件缺失 → False
 
 
-# --- L20：attach_file 的类型弱校验（字符串 getattr 拼错静默 False） ---
+# --- attach_file 的类型弱校验（字符串 getattr 拼错静默 False） ---
 
 
 def _capture_attachment_type(monkeypatch):
@@ -163,7 +165,7 @@ def test_attach_file_accepts_whitelisted_type_name(tmp_path, monkeypatch):
 
 
 def test_attach_file_accepts_attachment_type_constant(tmp_path, monkeypatch):
-    """L20 建议的另一条路：直接传 allure.attachment_type 常量（原样使用，不做白名单换算）。"""
+    """另一条路：直接传 allure.attachment_type 常量（原样使用，不做白名单换算）。"""
     captured = _capture_attachment_type(monkeypatch)
     real = tmp_path / "result.json"
     real.write_text("{}", encoding="utf-8")
@@ -174,7 +176,7 @@ def test_attach_file_accepts_attachment_type_constant(tmp_path, monkeypatch):
 
 
 def test_attach_file_typo_warns_instead_of_silent_false(tmp_path, monkeypatch, caplog):
-    """L20：拼错类型名 → 显式 warning（含非法值与可选值），且绝不调用 allure（不再静默）。"""
+    """拼错类型名 → 显式 warning（含非法值与可选值），且绝不调用 allure（不再静默）。"""
     calls = []
     monkeypatch.setattr(bridge.allure.attach, "file", lambda **kwargs: calls.append(kwargs))
     real = tmp_path / "trace.zip"
@@ -187,7 +189,7 @@ def test_attach_file_typo_warns_instead_of_silent_false(tmp_path, monkeypatch, c
 
 
 def test_attach_file_typo_warns_even_without_allure(tmp_path, monkeypatch, caplog):
-    """L20：无 allure 环境同样先做白名单校验——拼写错误不因环境而降级为静默 False。"""
+    """无 allure 环境同样先做白名单校验——拼写错误不因环境而降级为静默 False。"""
     monkeypatch.setattr(bridge, "_HAS_ALLURE", False)
     real = tmp_path / "trace.zip"
     real.write_bytes(b"PK\x03\x04")
@@ -197,7 +199,7 @@ def test_attach_file_typo_warns_even_without_allure(tmp_path, monkeypatch, caplo
 
 
 def test_attachment_type_whitelist_matches_installed_allure():
-    """L20：白名单必须是已安装 allure 成员的子集（防"白名单写了 allure 没有的名字"）。"""
+    """白名单必须是已安装 allure 成员的子集（防"白名单写了 allure 没有的名字"）。"""
     available = {name for name in dir(bridge.allure.attachment_type) if not name.startswith("_")}
     assert set(bridge.ATTACHMENT_TYPE_NAMES) <= available
     assert "ZIP" in bridge.ATTACHMENT_TYPE_NAMES  # 默认值必须在白名单里

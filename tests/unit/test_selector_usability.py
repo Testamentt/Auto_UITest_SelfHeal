@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """单元测试：修复候选定位器的唯一性 / 可交互性校验（不触网 / 无浏览器）。
 
-回归的缺陷（审计复现）：`selector_exists` 只判 `count() > 0`。两个同名按钮时启发式产出的
+回归的缺陷：`selector_exists` 只判 `count() > 0`。两个同名按钮时启发式产出的
 `text="提交"`（0.95）会被当成"可用的修复"采纳 → 引擎重试 `click()` 抛 Playwright
 strict-mode violation（**不是 TimeoutError**，不触发自愈，直接冒泡）→ 且该脏案例会经
 stage → commit 落库，供后续 L1/L3 复用（一次假修复变成长期污染源）。
@@ -10,7 +12,7 @@ stage → commit 落库，供后续 L1/L3 复用（一次假修复变成长期�
   verified 判定共用）；
 - `selector_actionable` = 唯一命中 + 可见 + enabled——**择优信号**，不淘汰候选：它取决于动作
   （`set_input_files` 对隐藏 input 同样可用）且 Playwright 会自动等待，硬拒会误杀
-  "暂不可见但稍后可见"与隐藏上传框（验证者用真 Chrome 复现过该回归）。
+  "暂不可见但稍后可见"与隐藏上传框（该回归曾用真 Chrome 复现）。
 """
 
 from __future__ import annotations
@@ -244,7 +246,7 @@ def test_unique_heuristic_candidate_is_still_adopted():
 
 
 def test_hidden_file_input_candidate_is_adopted_for_set_input_files():
-    """回归（验证者用真 Chrome 复现）：隐藏 `<input type=file>` 是标准上传写法，不得被拒。"""
+    """回归：隐藏 `<input type=file>` 是标准上传写法，不得被拒（该场景曾在真 Chrome 上复现）。"""
     page = _Page({"#file": _Loc(count=1, visible=False)})
     gen = _fix_gen(Settings(), page=page)
     context = _ctx(description="上传附件", original_selector="#file-old", dom="<html></html>")

@@ -1,4 +1,6 @@
-"""集成测试：T5 按策略阈值端到端生效（需浏览器内核，-m e2e）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""集成测试：按策略阈值端到端生效（需浏览器内核，-m e2e）。
 
 验证配置 `healing.strategy_thresholds` 会真实改变端到端行为：
 1. heuristic 阈值抬高（0.99 > 演示页 heuristic 实际命中的 ~0.95）→ 修复被拒 →
@@ -11,10 +13,10 @@ import pytest
 from selfheal.config import Settings
 from selfheal.engine.healing_locator import HealingFailedError
 from selfheal.knowledge.store import KnowledgeStore
-from selfheal.plugin.healing_page import HealingPage  # M10-②：装配层在 plugin/
+from selfheal.plugin.healing_page import HealingPage  # 惰性导入（装配层在 plugin/）
 from tests.e2e.pages.demo_page import DemoPage
 
-pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # L16：Allure feature 落「AI 自愈」分组
+pytestmark = [pytest.mark.e2e, pytest.mark.healing]  # Allure feature 落「AI 自愈」分组
 
 
 def _strict_settings() -> Settings:

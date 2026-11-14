@@ -1,4 +1,6 @@
-"""管伊佳 ERP 页面对象（T23 迁移）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""管伊佳 ERP 页面对象。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,6 @@
-"""单元测试：自愈回归通知（T19）——payload 组装 / 摘要统计 / 发送与降级（不触网）。"""
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：自愈回归通知——payload 组装 / 摘要统计 / 发送与降级（不触网）。"""
 
 import json
 import sys
@@ -173,11 +175,11 @@ def test_main_reads_summary_file(monkeypatch, tmp_path):
     assert captured["payload"]["markdown"]["title"].startswith("⛔")
 
 
-# --- L13：best-effort 失败必须输出 GitHub 注解（退出码仍为 0） ---
+# --- best-effort 失败必须输出 GitHub 注解（退出码仍为 0） ---
 
 
 def test_main_send_failure_emits_github_annotation(monkeypatch, tmp_path, capsys):
-    """L13：webhook 推送失败 → ::warning:: 注解可见，退出码保持 0（不炸流水线）。"""
+    """webhook 推送失败 → ::warning:: 注解可见，退出码保持 0（不炸流水线）。"""
     monkeypatch.setenv("WEBHOOK_URL", "https://hook.example/x")
     monkeypatch.setattr(notify, "send", lambda url, payload: False)
     assert notify.main(["--summary-file", str(tmp_path / "nope.json")]) == 0
@@ -198,7 +200,7 @@ def test_main_success_has_no_annotation(monkeypatch, tmp_path, capsys):
 
 
 def test_main_broken_summary_emits_github_annotation(monkeypatch, tmp_path, capsys):
-    """L13：摘要解析失败降级为空摘要 → 同样冒泡注解（否则告警口径静默失真）。"""
+    """摘要解析失败降级为空摘要 → 同样冒泡注解（否则告警口径静默失真）。"""
     monkeypatch.setenv("WEBHOOK_URL", "https://hook.example/x")
     monkeypatch.setattr(notify, "send", lambda url, payload: True)
     broken = tmp_path / "broken.json"

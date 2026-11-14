@@ -1,7 +1,9 @@
-"""单元测试：H3 知识库沉淀→复用闭环 + 沉淀失败容忍（不依赖浏览器）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：知识库沉淀→复用闭环 + 沉淀失败容忍（不依赖浏览器）。
 
 覆盖：run() 策略命中→_persist 真实写入→二次 run() 命中知识短路（写→读闭环）；
-以及 add_repair 抛异常时 run() 仍返回 success（沉淀失败被容忍，R4 记日志不静默）。
+以及 add_repair 抛异常时 run() 仍返回 success（沉淀失败被容忍，记日志不静默）。
 """
 
 import pytest
@@ -57,7 +59,7 @@ class _ThrowingStore(KnowledgeBackend):
         return None
 
     def query(self, q):
-        """A3 门面：委托 find_repair（此 fake 无 L1 命中）。"""
+        """知识库门面：委托 find_repair（此 fake 无 L1 命中）。"""
         case = self.find_repair(q.original_selector, q.dom_fingerprint)
         return [(case, "legacy")] if case else []
 
@@ -80,7 +82,7 @@ def test_persist_then_reuse_closed_loop():
     first = orch.run("#submit-btn-old", "登录按钮")
     assert first.success
     assert first.strategy == "heuristic"  # 首次走策略
-    # B1：run() 仅暂存，引擎层重试成功后 commit（单测直连 run，手动模拟引擎提交）
+    # run() 仅暂存，引擎层重试成功后 commit（单测直连 run，手动模拟引擎提交）
     orch.commit_pending(first.attempt_id)
 
     # 写侧：真实沉淀出的案例字段正确

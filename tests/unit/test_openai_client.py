@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """单元测试：OpenAI 兼容客户端（不触网，openai 缺失时验证降级）。"""
 
 import pytest
@@ -42,7 +44,7 @@ def _inject_fake_openai(monkeypatch, create_fn):
 
 
 def test_chat_normalizes_sdk_exception(monkeypatch):
-    """#11：SDK 异常（网络/鉴权）应归一化为 UnavailableError，而非原生异常穿透。"""
+    """SDK 异常（网络/鉴权）应归一化为 UnavailableError，而非原生异常穿透。"""
 
     def _create(**kw):
         raise ConnectionError("network down")
@@ -55,7 +57,7 @@ def test_chat_normalizes_sdk_exception(monkeypatch):
 
 
 def test_chat_raises_on_empty_choices(monkeypatch):
-    """#11：API 返回空 choices 抛 UnavailableError 而非 IndexError。"""
+    """API 返回空 choices 抛 UnavailableError 而非 IndexError。"""
     import types
 
     def _create(**kw):
@@ -74,11 +76,11 @@ def test_factory_registered():
     assert isinstance(client, OpenAICompatibleLLM)
 
 
-# --- M1（2026-10-08 审查）：异常分级 + 显式重试 ---
+# --- 异常分级 + 显式重试 ---
 
 
 def test_client_passes_explicit_max_retries(monkeypatch):
-    """M1：重试次数显式传给 SDK，不再静默继承默认值。"""
+    """重试次数显式传给 SDK，不再静默继承默认值。"""
     captured = {}
 
     class _FakeOpenAI:
@@ -95,7 +97,7 @@ def test_client_passes_explicit_max_retries(monkeypatch):
 
 
 def test_auth_error_is_fatal_and_reports_where(monkeypatch):
-    """M1：401 归为 Fatal（重试无用），信息带 provider/model/端点主机且不含密钥。"""
+    """401 归为 Fatal（重试无用），信息带 provider/model/端点主机且不含密钥。"""
     from selfheal.llm._exceptions import FatalUnavailableError
 
     class AuthenticationError(Exception):
@@ -135,11 +137,11 @@ def test_unknown_error_stays_base_class(monkeypatch):
         client.chat([ChatMessage("user", "hi")])
 
 
-# --- L8：未知调用期参数显式拒绝（不再静默丢弃） ---
+# --- 未知调用期参数显式拒绝（不再静默丢弃） ---
 
 
 def test_chat_rejects_unknown_kwargs(monkeypatch):
-    """L8：`chat(..., 未知参数)` 抛 TypeError（编程错误语义），不静默丢弃也不误报不可用。"""
+    """`chat(..., 未知参数)` 抛 TypeError（编程错误语义），不静默丢弃也不误报不可用。"""
     called = {"n": 0}
 
     def _create(**kw):
@@ -162,13 +164,13 @@ def test_chat_rejects_unknown_kwargs(monkeypatch):
 
 
 def test_chat_without_kwargs_still_works(monkeypatch):
-    """L8：不传 kwargs 的正常路径不受影响（拒绝逻辑只在有未支持键时触发）。"""
+    """不传 kwargs 的正常路径不受影响（拒绝逻辑只在有未支持键时触发）。"""
     _inject_fake_openai(monkeypatch, lambda **kw: _reply_dict("ok"))
     client = OpenAICompatibleLLM(api_key="sk-test", model="m")
     assert client.chat([ChatMessage("user", "hi")]) == "ok"
 
 
-# --- L9：输出上限字段名（max_tokens / max_completion_tokens 互斥 + temperature 兼容性） ---
+# --- 输出上限字段名（max_tokens / max_completion_tokens 互斥 + temperature 兼容性） ---
 
 
 def _reply_dict(content="ok"):
@@ -180,7 +182,7 @@ def _reply_dict(content="ok"):
 
 
 def test_wire_payload_default_uses_max_tokens_with_temperature(monkeypatch):
-    """L9：默认字段族只发 `max_tokens`（与 `max_completion_tokens` 互斥），temperature 照发。"""
+    """默认字段族只发 `max_tokens`（与 `max_completion_tokens` 互斥），temperature 照发。"""
     seen: dict = {}
 
     def _create(**kw):
@@ -198,7 +200,7 @@ def test_wire_payload_default_uses_max_tokens_with_temperature(monkeypatch):
 
 
 def test_wire_payload_max_completion_tokens_omits_temperature(monkeypatch):
-    """L9：切到新模型族字段时**省略** temperature（该族只接受默认温度，发 0 会 400）。"""
+    """切到新模型族字段时**省略** temperature（该族只接受默认温度，发 0 会 400）。"""
     seen: dict = {}
 
     def _create(**kw):
@@ -220,7 +222,7 @@ def test_wire_payload_max_completion_tokens_omits_temperature(monkeypatch):
 
 
 def test_max_completion_tokens_warns_once_when_temperature_ignored(monkeypatch, caplog):
-    """L9：配置的 temperature 被省略时记一次 warning（不静默丢弃用户意图）。"""
+    """配置的 temperature 被省略时记一次 warning（不静默丢弃用户意图）。"""
     _inject_fake_openai(monkeypatch, lambda **kw: _reply_dict())
     client = OpenAICompatibleLLM(
         api_key="sk-test", model="m", temperature=0.3, max_tokens_field="max_completion_tokens"
@@ -233,7 +235,7 @@ def test_max_completion_tokens_warns_once_when_temperature_ignored(monkeypatch, 
 
 
 def test_max_completion_tokens_no_warning_when_temperature_is_default(monkeypatch, caplog):
-    """L9：temperature 本就等于该族默认值 1.0 时无需告警（没有"被忽略的意图"）。"""
+    """temperature 本就等于该族默认值 1.0 时无需告警（没有"被忽略的意图"）。"""
     _inject_fake_openai(monkeypatch, lambda **kw: _reply_dict())
     client = OpenAICompatibleLLM(
         api_key="sk-test", model="m", temperature=1.0, max_tokens_field="max_completion_tokens"
@@ -244,7 +246,7 @@ def test_max_completion_tokens_no_warning_when_temperature_is_default(monkeypatc
 
 
 def test_factory_forwards_max_tokens_field(monkeypatch):
-    """L9：provider 工厂透传字段名（配置 → 构造函数不漏字段）；未知字段名报 TypeError。"""
+    """provider 工厂透传字段名（配置 → 构造函数不漏字段）；未知字段名报 TypeError。"""
     from selfheal.llm.registry import get_llm
 
     client = get_llm(

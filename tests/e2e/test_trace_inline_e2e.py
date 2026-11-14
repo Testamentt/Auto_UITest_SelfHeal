@@ -1,4 +1,6 @@
-"""端到端测试：T11 现场内联 trace（需浏览器内核，-m e2e）。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""端到端测试：现场内联 trace（需浏览器内核，-m e2e）。
 
 验证 SceneCollector.capture() 对 `Scene.trace_path` 的真实落盘语义：
 1. context.tracing 录制中（模拟 --trace-healing / browser.trace）→ capture 导出现场
@@ -19,7 +21,7 @@ pytestmark = pytest.mark.e2e
 
 
 def _reset_tracing(context) -> None:
-    """清除可能的外层录制（全量运行带 --trace-healing 时 conftest 已 start，T11 用例
+    """清除可能的外层录制（全量运行带 --trace-healing 时 conftest 已 start，本用例
     需在受控录制状态下验证语义）；未录制时 stop 抛错被吞（幂等，二次 start 不炸）。"""
     with contextlib.suppress(Exception):
         context.tracing.stop()

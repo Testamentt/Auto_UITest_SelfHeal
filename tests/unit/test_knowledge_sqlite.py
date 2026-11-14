@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """单元测试：知识库 SQLite 持久化 + DOM 指纹 + 工厂（不依赖浏览器）。"""
 
 import logging
@@ -70,7 +72,7 @@ def test_find_repair_prefers_matching_fingerprint(tmp_path):
 
 
 def test_add_repair_upsert_dedup(tmp_path):
-    """#10：同 (原,新,指纹) 重复沉淀 → upsert 更新，不产生重复行。"""
+    """同 (原,新,指纹) 重复沉淀 → upsert 更新，不产生重复行。"""
     store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
     case = _case(fingerprint="fp")
     store.add_repair(case)
@@ -81,11 +83,11 @@ def test_add_repair_upsert_dedup(tmp_path):
 
 
 def test_add_repair_upsert_dedup_with_none_fingerprint(tmp_path):
-    """审查 C2 回归：dom_fingerprint=None 时同样去重（SQLite UNIQUE 对 NULL 不生效的坑）。"""
+    """dom_fingerprint=None 时同样去重（SQLite UNIQUE 对 NULL 不生效的坑）。"""
     store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
     case = _case(fingerprint=None)
     store.add_repair(case)
-    store.add_repair(case)  # 重复写入（修复前会绕过冲突检测产生 2 行）
+    store.add_repair(case)  # 重复写入（NULL 不参与 UNIQUE 冲突，会多出 2 行）
     store.add_repair(case)
     assert store.count_repairs() == 1  # 去重生效
     # 读取侧语义不变：dom_fingerprint 还原为 None
@@ -95,7 +97,7 @@ def test_add_repair_upsert_dedup_with_none_fingerprint(tmp_path):
 
 
 def test_close_idempotent(tmp_path):
-    """审查 M3：close 幂等（重复关闭安全，供生命周期收口复用）。"""
+    """close 幂等（重复关闭安全，供生命周期关闭复用）。"""
     store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
     store.add_repair(_case())
     store.close()
@@ -124,11 +126,11 @@ def test_dom_fingerprint_stable_and_distinct():
     assert dom_fingerprint("<html><body><div>text</div></body></html>") is None
 
 
-# --- 2026-09-03 独立复核（V5）修复点回归 ---
+# --- 迁移与 upsert 语义回归 ---
 
 
 def test_add_repair_preserves_verified_on_upsert(tmp_path):
-    """V5 复核：再次沉淀同一 (原,新,指纹) 不覆盖人工审核标记 is_verified。"""
+    """再次沉淀同一 (原,新,指纹) 不覆盖人工审核标记 is_verified。"""
     store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
     case = RepairCase(
         original_selector="#old",
@@ -148,7 +150,7 @@ def test_add_repair_preserves_verified_on_upsert(tmp_path):
 
 
 def test_legacy_db_missing_columns_migrated(tmp_path):
-    """V5 复核：Phase 5 A 前的旧库（缺语义化列）打开时自动补列，不炸、旧数据保留。"""
+    """旧库（缺语义化列）打开时自动补列，不炸、旧数据保留。"""
     db = tmp_path / "legacy.db"
     conn = sqlite3.connect(db)
     conn.execute(
@@ -175,7 +177,7 @@ def test_legacy_db_missing_columns_migrated(tmp_path):
 
 
 def test_legacy_duplicate_rows_deduped_on_migrate(tmp_path):
-    """V5 复核：旧库历史重复行在建唯一索引前清除（repairs 同键、popups 同签名）。"""
+    """旧库历史重复行在建唯一索引前清除（repairs 同键、popups 同签名）。"""
     db = tmp_path / "dup.db"
     conn = sqlite3.connect(db)
     conn.execute(
@@ -210,7 +212,7 @@ def test_legacy_duplicate_rows_deduped_on_migrate(tmp_path):
 
 
 def test_add_popup_upsert_latest_wins(tmp_path):
-    """V5 复核：同 signature 弹窗 upsert（最新观察胜出），复现弹窗不再无界追加。"""
+    """同 signature 弹窗 upsert（最新观察胜出），复现弹窗不再无界追加。"""
     store = SqliteKnowledgeStore(str(tmp_path / "kb.db"))
     store.add_popup(PopupFeature(signature="cookie", dismiss_selector="#c1"))
     store.add_popup(PopupFeature(signature="cookie", dismiss_selector="#c2"))
@@ -220,7 +222,7 @@ def test_add_popup_upsert_latest_wins(tmp_path):
 
 
 def test_factory_degrades_to_memory_when_sqlite_broken(tmp_path, caplog):
-    """V5/M4：sqlite 库文件损坏 → error 级日志写明"已降级 memory、持久化不可用"，不炸 fixture。"""
+    """sqlite 库文件损坏 → error 级日志写明"已降级 memory、持久化不可用"，不炸 fixture。"""
     bad = tmp_path / "bad.db"
     bad.write_bytes(b"not a sqlite database at all")
     settings = Settings()
@@ -229,18 +231,18 @@ def test_factory_degrades_to_memory_when_sqlite_broken(tmp_path, caplog):
     with caplog.at_level(logging.ERROR):
         store = build_knowledge_store(settings)
     assert isinstance(store, KnowledgeStore)
-    # M4：降级丢的是"跨重启持久化"这一核心能力，必须 error 级且消息自解释（此前只有 warning）
+    # 降级丢的是"跨重启持久化"这一核心能力，必须 error 级且消息自解释（不能只 warning）
     assert [r.levelno for r in caplog.records if r.name.endswith("knowledge.factory")] == [
         logging.ERROR
     ]
     assert "降级 memory" in caplog.text and "持久化不可用" in caplog.text
 
 
-# --- 2026-10-09 修复任务 M5：打开期成本与迁移竞态 ---
+# --- 打开期成本与迁移竞态 ---
 
 
 def test_new_db_open_executes_no_delete(tmp_path, monkeypatch):
-    """M5：新库（无重复行）打开不执行 DELETE——去重改为先探测后删除，避免每次构造拿写锁。"""
+    """新库（无重复行）打开不执行 DELETE——去重改为先探测后删除，避免每次构造拿写锁。"""
     import selfheal.knowledge.sqlite_store as sqlite_store_module
 
     statements: list[str] = []
@@ -262,7 +264,7 @@ def test_new_db_open_executes_no_delete(tmp_path, monkeypatch):
 
 
 def test_duplicate_rows_still_deleted_on_migrate(tmp_path, monkeypatch):
-    """M5 正向对照：确有历史重复行时仍执行 DELETE 并清掉多余行（去重语义未退化）。"""
+    """正向对照：确有历史重复行时仍执行 DELETE 并清掉多余行（去重语义未退化）。"""
     import selfheal.knowledge.sqlite_store as sqlite_store_module
 
     db = tmp_path / "dup-trace.db"
@@ -300,7 +302,7 @@ def test_duplicate_rows_still_deleted_on_migrate(tmp_path, monkeypatch):
 
 
 def test_migrate_ignores_duplicate_column_race(tmp_path, monkeypatch):
-    """M5：迁移竞态（另一进程已补列）→ duplicate column name 被忽略，不炸整个会话。"""
+    """迁移竞态（另一进程已补列）→ duplicate column name 被忽略，不炸整个会话。"""
     import selfheal.knowledge.sqlite_store as sqlite_store_module
 
     conn = sqlite3.connect(str(tmp_path / "race.db"))
@@ -314,9 +316,9 @@ def test_migrate_ignores_duplicate_column_race(tmp_path, monkeypatch):
 
 
 def test_migrate_ignored_columns_are_auditable(tmp_path, monkeypatch, caplog):
-    """R4（K4）：竞态忽略的列进 ``ignored`` 并有 info 日志——不再"只有 added 一个出口"。
+    """竞态忽略的列进 ``ignored`` 并有 info 日志——不再"只有 added 一个出口"。
 
-    修复前返回值只有 ``added``（本进程补的列），竞态场景与"旧库无缺列"无法区分，
+    返回值只有 ``added`` 时（本进程补的列），竞态场景与"旧库无缺列"无法区分，
     仅靠 info 日志留痕；审计/排查拿不到结构化的"忽略项"。
     """
     import selfheal.knowledge.sqlite_store as sqlite_store_module
@@ -342,7 +344,7 @@ def test_migrate_ignored_columns_are_auditable(tmp_path, monkeypatch, caplog):
 
 
 def test_migrate_report_partitions_added_and_ignored(tmp_path, monkeypatch):
-    """R4：``added`` / ``ignored`` 是互补的两个出口（真实补列与竞态忽略各归其位）。"""
+    """``added`` / ``ignored`` 是互补的两个出口（真实补列与竞态忽略各归其位）。"""
     import selfheal.knowledge.sqlite_store as sqlite_store_module
 
     conn = sqlite3.connect(str(tmp_path / "mixed.db"))
@@ -371,7 +373,7 @@ def test_migrate_report_partitions_added_and_ignored(tmp_path, monkeypatch):
 
 
 def test_store_exposes_migration_report(tmp_path, caplog):
-    """R4：store 打开后暴露 ``last_migration_report``，并在 warning 日志里带上忽略项。"""
+    """store 打开后暴露 ``last_migration_report``，并在 warning 日志里带上忽略项。"""
     db = tmp_path / "legacy-report.db"
     conn = sqlite3.connect(db)
     conn.execute(
@@ -396,7 +398,7 @@ def test_store_exposes_migration_report(tmp_path, caplog):
 
 
 def test_store_ignored_only_case_logs_info_not_warning(tmp_path, monkeypatch, caplog):
-    """R4：仅竞态忽略（本进程无补列、无去重）时只记 info，不误报 warning。"""
+    """仅竞态忽略（本进程无补列、无去重）时只记 info，不误报 warning。"""
     import selfheal.knowledge.sqlite_store as sqlite_store_module
 
     monkeypatch.setattr(sqlite_store_module, "_existing_columns", lambda c, t: set())
@@ -413,7 +415,7 @@ def test_store_ignored_only_case_logs_info_not_warning(tmp_path, monkeypatch, ca
 
 
 def test_migrate_other_operational_error_propagates(tmp_path, monkeypatch):
-    """M5：非竞态的 OperationalError 原样上抛（真实迁移故障不得被静默吞掉，R4）。"""
+    """非竞态的 OperationalError 原样上抛（真实迁移故障不得被静默吞掉）。"""
     import selfheal.knowledge.sqlite_store as sqlite_store_module
 
     conn = sqlite3.connect(str(tmp_path / "view.db"))
@@ -427,7 +429,7 @@ def test_migrate_other_operational_error_propagates(tmp_path, monkeypatch):
 
 
 def test_legacy_null_confidence_and_hit_count_read_as_zero(tmp_path):
-    """M5：旧库 ALTER 补列 / 手改库留下的 NULL confidence / hit_count 读出为 0.0 / 0。"""
+    """旧库 ALTER 补列 / 手改库留下的 NULL confidence / hit_count 读出为 0.0 / 0。"""
     db = tmp_path / "legacy-null.db"
     conn = sqlite3.connect(db)
     conn.execute(

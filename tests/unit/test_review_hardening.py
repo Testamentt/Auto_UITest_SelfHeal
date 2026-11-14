@@ -1,4 +1,6 @@
-"""单元测试：2026-09-03 独立复核（V4/V5）修复点回归覆盖。
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
+"""单元测试：orchestrator 资源清理与失败可观测性回归覆盖。
 
 覆盖：orchestrator 构造失败清理 / 豁免记录 verified=False / _safe_close 日志、
 VLM close() 生命周期对齐、semantic._bump 非静默吞错。
@@ -37,7 +39,7 @@ def _boom(*args, **kwargs):
     raise RuntimeError("collaborator init failed")
 
 
-# --- V4：orchestrator 构造失败清理 ---
+# --- orchestrator 构造失败清理 ---
 
 
 def test_init_failure_closes_owned_resources(monkeypatch):
@@ -59,7 +61,7 @@ def test_init_failure_keeps_injected_resources(monkeypatch):
     assert store.closed is False
 
 
-# --- V4：豁免记录 verified 语义 ---
+# --- 豁免记录 verified 语义 ---
 
 
 def test_exemption_record_not_counted_as_verified():
@@ -81,11 +83,11 @@ def test_exemption_record_not_counted_as_verified():
     assert rec.verified is False
 
 
-# --- V4：_safe_close 可观测性 ---
+# --- _safe_close 可观测性 ---
 
 
 def test_safe_close_logs_warning(caplog):
-    """_safe_close 关闭失败记 warning（不再静默），且不上抛阻断业务收口。"""
+    """_safe_close 关闭失败记 warning（不再静默），且不上抛阻断主流程。"""
 
     class _Bad:
         def close(self):
@@ -101,7 +103,7 @@ def test_safe_close_none_and_plain_objects():
     _safe_close(object())
 
 
-# --- V5：VLM close() 生命周期对齐 ---
+# --- VLM close() 生命周期对齐 ---
 
 
 def test_vlm_close_releases_underlying_client():
@@ -120,11 +122,11 @@ def test_vlm_close_releases_underlying_client():
     assert vlm._client is None
 
 
-# --- V5：semantic._bump 非静默吞错 ---
+# --- semantic._bump 非静默吞错 ---
 
 
 def test_semantic_bump_logs_instead_of_silently_swallowing(caplog):
-    """知识热度更新失败记 warning（R4 不静默吞错），且不阻塞采纳路径。"""
+    """知识热度更新失败记 warning（不静默吞错），且不阻塞采纳路径。"""
 
     class _RaisingKB:
         def bump_hit(self, repair_key):
