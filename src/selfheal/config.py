@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 本项目统一使用 UTF-8（无 BOM）编码。
 """集中式配置加载与校验。
 
 所有运行时配置统一由本模块用 pydantic 从 config/settings.yaml 加载，
@@ -104,7 +106,7 @@ class BrowserConfig(_StrictModel):
 
 
 class RetryConfig(_StrictModel):
-    """模型调用的指数退避重试参数（T24）。
+    """模型调用的指数退避重试参数（D25）。
 
     重试**次数**由同段落的 `max_retries` 控制（0 = 不重试）；本模型只承载退避节奏。
     仅瞬态故障（429 / 超时 / 连接失败 / 5xx）会重试，Fatal（401/403/400/404）直接抛。
@@ -130,7 +132,7 @@ class RetryConfig(_StrictModel):
 
 
 class CircuitBreakerConfig(_StrictModel):
-    """模型调用的熔断器参数（T24）。
+    """模型调用的熔断器参数（D25）。
 
     连续 `failure_threshold` 次**逻辑调用**最终失败（仅瞬态）后打开；冷却 `cooldown_s`
     内直接抛 `CircuitOpenError` 走既有降级链；冷却后放单个半开探针。
@@ -154,7 +156,7 @@ class LLMConfig(_StrictModel):
     - timeout_s / max_tokens / max_retries: 此前写死在客户端签名里，
       且本模型 `extra='forbid'` 使用户无法在 `llm:` 段配置它们。VLM 侧已因同类问题
       （曾用 20s/500 导致超时/截断）放宽过，LLM 侧对齐配置入口。
-    - retry / circuit_breaker（T24）: 自研退避重试与熔断参数。`max_retries`
+    - retry / circuit_breaker（D25）: 自研退避重试与熔断参数。`max_retries`
       语义明确为"自研重试次数"（openai SDK 自带重试固定关闭，避免双层重试放大付费调用）；
       仅瞬态故障重试，Fatal 直接抛；熔断打开后由既有降级链接管。详见 `llm/resilience.py`。
     - max_tokens_field: 输出上限**字段名**，`max_tokens`（默认，兼容 DeepSeek/Qwen 等
@@ -173,9 +175,31 @@ class LLMConfig(_StrictModel):
     max_tokens: int = Field(default=2000, gt=0)
     max_tokens_field: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
     max_retries: int = Field(default=2, ge=0)
-    # T24：退避重试节奏与熔断参数（与 vision 各自独立，端点故障互不影响）
+    # D25：退避重试节奏与熔断参数（与 vision 各自独立，端点故障互不影响）
     retry: RetryConfig = RetryConfig()
     circuit_breaker: CircuitBreakerConfig = CircuitBreakerConfig()
+
+
+class ProbeConfig(_StrictModel):
+    """自愈触发前的快速探测（2026-11-12）。
+
+    **为什么需要**：开启自愈时，定位失败要先等满 Playwright 默认超时（30s）才进入自愈闭环，
+    单条失效步骤因此 +30s（用例内实测 30.63s → 0.63s），CI 场景不可接受。快速探测先以
+    `timeout_ms` 的短超时判断目标是否"当下可用"：不可用即**立刻**进入自愈，不必等满默认超时。
+
+    **为什么不改变语义**：探测只决定"多快到达同一个结论"，不改变结论本身——
+    - 探测通过 → 走原生动作（与未开启本功能完全一致）；
+    - 探测超时 → 走自愈闭环（与等满 30s 超时后的路径一致）。
+    探测本身是 best-effort：任何异常只记 debug 并回退原生等待，不引入新的失败源。
+
+    - enabled: 总开关，默认 True；置 False 恢复"等满默认超时"的旧行为（零回归）。
+    - timeout_ms: 探测超时（毫秒）。默认 2500：足够覆盖正常慢加载，又远小于 30s 默认超时。
+      **注意**：配得比页面正常加载还短，会让"慢但最终会出现"的元素提前触发自愈
+      （不会直接失败——自愈无果仍按 `on_uncertain` 兜底），团队应按被测系统调优。
+    """
+
+    enabled: bool = True
+    timeout_ms: int = Field(default=2500, gt=0)
 
 
 class ActionWaitConfig(_StrictModel):
@@ -221,6 +245,9 @@ class HealingConfig(_StrictModel):
     - shrink_self_reported: 置信度归一化的可选保守收缩。开启后对自报型策略
       （LLM 语义自报段）做 raw² 收缩，缓解自报虚高被直接采纳；默认关闭（保持既有采纳行为
       不变），待真实模型校准数据沉淀后再启用（见 agent/confidence.py）。
+    - probe: 自愈触发前的快速探测（`ProbeConfig`）。默认开启——定位失败不必等满 Playwright
+      默认超时（30s）才进自愈，改为先以短超时（默认 2.5s）探测；探测不改变"是否自愈"的
+      判断口径，只缩短到达结论的时间。见 `ProbeConfig` 与 engine/healing_locator.py。
     """
 
     enabled: bool = True
@@ -237,6 +264,7 @@ class HealingConfig(_StrictModel):
     dry_run: bool = False
     fix_proposals: bool = False
     action_wait: ActionWaitConfig = ActionWaitConfig()  # 动作前置智能等待（默认关闭）
+    probe: ProbeConfig = ProbeConfig()  # 自愈触发前的快速探测（默认开启）
 
     def accept_threshold(self, strategy: str) -> float:
         """该策略的采纳阈值：strategy_thresholds 命中则用之，否则回退全局。"""
@@ -275,15 +303,53 @@ class HealingConfig(_StrictModel):
         return self
 
 
+class SemanticKnowledgeConfig(_StrictModel):
+    """知识库语义检索（L3）的阈值配置（2026-11-12）。
+
+    此前这 4 个阈值是 `agent/strategies/semantic.py` 里的模块级常量，调一次要改代码。
+    外置为配置后可按被测系统的真实分布标定，不必发版。
+
+    - min_sim: 进入检索的最低相似度。低于它的案例根本不参与（省一次人审清单写入）。
+    - fresh_sim / fresh_days: 「新鲜窗口」内的自动采纳阈值与窗口天数。冷启动阶段放宽
+      （未人审的案例也能复用），窗口期外必须已人审才采纳。
+    - verified_sim: 已人审案例的自动采纳阈值（人审过的可以放宽，但仍要求较高相似度）。
+
+    **层级约束**：`0 <= min_sim <= fresh_sim <= verified_sim <= 1`。倒挂（如 verified 比
+    fresh 还低）意味着"更严的信任条件反而更容易采纳"，属配置错误，加载期直接报错。
+    """
+
+    min_sim: float = Field(default=0.75, ge=0.0, le=1.0)
+    verified_sim: float = Field(default=0.92, ge=0.0, le=1.0)
+    fresh_sim: float = Field(default=0.80, ge=0.0, le=1.0)
+    fresh_days: int = Field(default=7, ge=0)
+
+    @model_validator(mode="after")
+    def _validate_ordering(self) -> SemanticKnowledgeConfig:
+        """阈值不得倒挂：min_sim <= fresh_sim <= verified_sim。"""
+        if self.min_sim > self.fresh_sim:
+            raise ValueError(
+                f"knowledge.semantic.min_sim ({self.min_sim}) 应 <= fresh_sim ({self.fresh_sim})："
+                "否则「进入检索」的门槛高于「自动采纳」门槛，后者永远不可达"
+            )
+        if self.fresh_sim > self.verified_sim:
+            raise ValueError(
+                f"knowledge.semantic.fresh_sim ({self.fresh_sim}) 应 <= verified_sim "
+                f"({self.verified_sim})：未人审的案例不应比已人审的更容易被采纳"
+            )
+        return self
+
+
 class KnowledgeConfig(_StrictModel):
     """知识库配置。
 
     - backend: memory=进程内（测试/临时）；sqlite=持久化（默认，重启后仍可命中复用）。
     - path: sqlite 数据库文件路径（.cache/ 已 gitignore）。
+    - semantic: L3 语义检索阈值（`SemanticKnowledgeConfig`）。
     """
 
     backend: Literal["memory", "sqlite"] = "sqlite"
     path: str = ".cache/knowledge.db"
+    semantic: SemanticKnowledgeConfig = SemanticKnowledgeConfig()
 
 
 class VisionConfig(_StrictModel):
@@ -311,7 +377,7 @@ class VisionConfig(_StrictModel):
     max_tokens: int = Field(default=1000, gt=0)
     max_retries: int = Field(default=2, ge=0)
     max_image_bytes: int = Field(default=1_500_000, gt=0)
-    # T24：VLM 独立退避/熔断（与 LLM 端点隔离：一方故障不影响另一方）
+    # D25：VLM 独立退避/熔断（与 LLM 端点隔离：一方故障不影响另一方）
     retry: RetryConfig = RetryConfig()
     circuit_breaker: CircuitBreakerConfig = CircuitBreakerConfig()
 

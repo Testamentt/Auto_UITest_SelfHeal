@@ -1,3 +1,4 @@
+# 本项目统一使用 UTF-8（无 BOM）编码。
 # 运行时配置示例。复制为 config/settings.yaml 后填写真实值（settings.yaml 已被 .gitignore 忽略）。
 # 所有配置经由 src/selfheal/config.py 用 pydantic 加载校验，请勿在代码中直接读取环境变量。
 
@@ -22,12 +23,12 @@ llm:
   timeout_s: 15.0           # 单次调用超时（秒）；推理型模型响应慢时可放宽
   max_tokens: 2000          # 单次输出上限（token）
   max_retries: 2            # 瞬态故障重试次数（0=不重试；仅 429/超时/5xx，401 等 Fatal 不重试）
-  # T24 退避节奏：第 n 次重试等待 min(max_delay_s, base_delay_s * 2^n)；jitter 在 [0, 等待] 内随机
+  # D25 退避节奏：第 n 次重试等待 min(max_delay_s, base_delay_s * 2^n)；jitter 在 [0, 等待] 内随机
   retry:
     base_delay_s: 0.5
     max_delay_s: 8.0
     jitter: true
-  # T24 熔断：连续 failure_threshold 次逻辑调用瞬态失败后打开，cooldown_s 内直接降级；
+  # D25 熔断：连续 failure_threshold 次逻辑调用瞬态失败后打开，cooldown_s 内直接降级；
   # 熔断状态为单进程（xdist 各 worker 独立），可在本段关闭
   circuit_breaker:
     enabled: true
@@ -47,7 +48,7 @@ vision:
   timeout_s: 60.0           # plus 级模型响应慢，默认放宽（20s 曾导致 ERP 场景超时）；推理型 VLM 可用时建议 120
   max_tokens: 1000
   max_retries: 2
-  # T24：VLM 独立的退避与熔断（与 LLM 端点隔离：一方故障不影响另一方）
+  # D25：VLM 独立的退避与熔断（与 LLM 端点隔离：一方故障不影响另一方）
   retry:
     base_delay_s: 0.5
     max_delay_s: 8.0
@@ -64,32 +65,46 @@ healing:
   strategy_order: [heuristic, semantic, visual]
   knowledge_first: true    # 调用 LLM 前先查知识库
   confidence_threshold: 0.6
-  early_accept_threshold: 0.85   # T1 策略短路：达此置信度即采纳，不再试更贵策略（应 > confidence_threshold）
-  llm_diagnose_threshold: 0.75   # C7：成功修复置信度低于此值补一次 LLM 归因（应 > confidence_threshold）
-  # T5 按策略阈值：键为策略名，缺省回退上方全局阈值；同一策略 early 须 > accept
+  early_accept_threshold: 0.85   # 策略短路：达此置信度即采纳，不再试更贵策略（应 > confidence_threshold）
+  llm_diagnose_threshold: 0.75   # 成功修复置信度低于此值补一次 LLM 归因（应 > confidence_threshold）
+  # 按策略阈值：键为策略名，缺省回退上方全局阈值；同一策略 early 须 > accept
   strategy_thresholds: {}        # 例: {heuristic: 0.6, semantic: 0.65, visual: 0.7}
   strategy_early_accept: {}      # 例: {heuristic: 0.85, visual: 0.9}
-  # T5 置信度归一化：对自报型（LLM 语义自报段）做保守收缩（raw²），默认关闭——
+  # 置信度归一化：对自报型（LLM 语义自报段）做保守收缩（raw²），默认关闭——
   # 待真实模型标定数据沉淀后再启用（见 src/selfheal/agent/confidence.py）
   shrink_self_reported: false
   on_uncertain: use_fallback   # use_fallback | pause | fail（见 docs/decisions.md 决策 D6）
-  # T13 高风险页豁免：URL 匹配任一 glob 则不触发自愈（支付/强授权/审计类页面误改代价高）
+  # 高风险页豁免：URL 匹配任一 glob 则不触发自愈（支付/强授权/审计类页面误改代价高）
   exclude_url_patterns: []   # 例: ["*://*/pay*", "*://*/admin/*"]
-  # T14 dry-run：仅报告不执行——只生成修复建议，不换定位器重试、不持久化知识
+  # dry-run：仅报告不执行——只生成修复建议，不换定位器重试、不持久化知识
   dry_run: false
-  # T15 修复写回人审清单：成功后输出「原→新」PR 化建议（不自动改库），人确认后合入
+  # 修复写回人审清单：成功后输出「原→新」PR 化建议（不自动改库），人确认后合入
   fix_proposals: false
-  # T6 动作前置智能等待（healing.action_wait 子配置）：动作（click/fill 等）执行前先做一次短稳等待，
+  # 动作前置智能等待（healing.action_wait 子配置）：动作（click/fill 等）执行前先做一次短稳等待，
   # 缓解"元素正在加载/抖动就执行动作"的误报超时。默认关闭=保持 POM 显式调用
   # wait_until_stable 的既有行为（决策 D12）；best-effort，等待失败不阻塞动作。
   action_wait:
     enabled: false
     timeout_ms: 2000           # 短稳等待总超时（毫秒）
     stable_ms: 300             # 元素 bounding_box 需保持不变的时长（毫秒）
+  # 自愈触发前的快速探测（默认开启）：定位失败不必等满 Playwright 默认超时（30s），
+  # 先以 timeout_ms 短探测；不就绪直接进自愈。探测不改变"是否自愈"的判断，只缩短到达结论的时间。
+  # 实测：单条失效步骤 30.6s → 0.6s，e2e 全量 492s → 106s。
+  # 注意：配得比页面正常加载还短会让"慢但最终会出现"的元素提前触发自愈（不会直接失败，有兜底）。
+  probe:
+    enabled: true
+    timeout_ms: 2500
 
 knowledge:
   backend: sqlite          # sqlite=持久化（默认）/ memory=进程内
   path: .cache/knowledge.db
+  # L3 语义检索阈值（可按被测系统标定，不必改代码）。
+  # 层级约束：min_sim <= fresh_sim <= verified_sim（倒挂在加载期报错）。
+  semantic:
+    min_sim: 0.75          # 进入检索的最低相似度
+    fresh_sim: 0.80        # 新鲜窗口内的自动采纳阈值（未人审案例）
+    verified_sim: 0.92     # 已人审案例的自动采纳阈值
+    fresh_days: 7          # 新鲜窗口天数
 
 # 本地确定性 Embedding（知识库语义化 A）：n-gram，零网络/零费用/<10ms；v2 fastembed 见文档
 embedding:
@@ -97,7 +112,7 @@ embedding:
   method: ngram             # 仅 ngram / fastembed 两个合法值；fastembed 为 v2 预留，写了会在加载期报错（避免静默失效）
   dim: 512
 
-# T23 被测系统（管伊佳 ERP）：UI 测试目标为前端；后端 API 仅用于测试数据造数/清理（非被测对象）。
+# 被测系统（管伊佳 ERP）：UI 测试目标为前端；后端 API 仅用于测试数据造数/清理（非被测对象）。
 # 凭证经 *_env 指定的环境变量读取（.env 配 ERP_USERNAME/ERP_PASSWORD = 租户账号，
 # 明文绝不入库）；被测环境需关闭登录验证码。
 # 角色语义：租户 = 业务数据管理员（UI 测试与 API 造数共用其凭证，如测试租户 jsh）；
@@ -109,5 +124,5 @@ sut:
   username_env: ERP_USERNAME                 # 租户账号（UI 登录 + API 造数共用）
   password_env: ERP_PASSWORD
 
-# execution / reporting 段：经 T9 决策不建模（无对应运行时需求），Settings 已设 extra='forbid'，
+# execution / reporting 段：不建模（无对应运行时需求），Settings 已设 extra='forbid'，
 # 在此添加未建模键会导致加载报错——请勿添加。
