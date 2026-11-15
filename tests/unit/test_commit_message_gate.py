@@ -186,7 +186,50 @@ def test_comment_lines_are_ignored():
 
 
 # ---------------------------------------------------------------------------
-# 4. 命令行入口
+# 4. 区间基线失效的降级（force push / 历史改写）
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_range_keeps_resolvable_range(repo):
+    """正常区间的两端都能解析时必须原样返回，不得误降级。"""
+    _commit(repo, "feat: 第一条")
+    _commit(repo, "feat: 第二条")
+    assert ccm.normalize_range("HEAD~1..HEAD", cwd=str(repo)) == "HEAD~1..HEAD"
+
+
+def test_normalize_range_falls_back_when_baseline_missing(repo, capsys):
+    """force push 后 `event.before` 不在克隆里：降级为 -1 并给出可见警告。
+
+    否则 `git log` 直接 fatal、脚本抛 SystemExit，整条 unit 门禁会因一次历史改写
+    变红——被拒的并不是提交内容，门禁本身在误伤正常操作。
+    """
+    _commit(repo, "feat: 干净提交")
+    missing = "0" * 40
+    assert ccm.normalize_range(f"{missing}..HEAD", cwd=str(repo)) == "-1"
+    assert "无法解析" in capsys.readouterr().err
+
+
+def test_normalize_range_keeps_non_range_argument(repo):
+    """`-1` 这类非区间参数原样返回（它本来就不依赖基线）。"""
+    assert ccm.normalize_range("-1", cwd=str(repo)) == "-1"
+
+
+def test_normalize_range_falls_back_when_head_side_missing(repo):
+    """右侧无法解析同样降级（例如空克隆或错写的 ref）。"""
+    _commit(repo, "feat: 干净提交")
+    assert ccm.normalize_range("HEAD..not-a-ref", cwd=str(repo)) == "-1"
+
+
+def test_fallback_still_checks_tip(repo):
+    """降级后必须仍检查最新一条：不合规的 tip 不得因为降级被放过。"""
+    _commit(repo, "feat: 含 T19 的提交")
+    rng = ccm.normalize_range(f"{'0' * 40}..HEAD", cwd=str(repo))
+    problems = ccm.check_commits(rng, cwd=str(repo))
+    assert any("T19" in p for p in problems), problems
+
+
+# ---------------------------------------------------------------------------
+# 5. 命令行入口
 # ---------------------------------------------------------------------------
 
 

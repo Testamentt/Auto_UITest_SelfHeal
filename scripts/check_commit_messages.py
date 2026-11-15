@@ -19,6 +19,9 @@ python scripts/check_commit_messages.py origin/main..HEAD
 python scripts/check_commit_messages.py --file .git/COMMIT_EDITMSG
 ```
 
+CI 的 push 门禁使用 `event.before..HEAD`；force push 后该基线可能已不存在，此时
+区间降级为只检查最新一条提交（见 `normalize_range`），不让历史改写把门禁本身弄红。
+
 退出码：0 = 全部通过；1 = 发现问题（打印 `文件:行` 或 `commit:问题` 形式的清单）。
 """
 
@@ -87,6 +90,35 @@ def check_file(path: str) -> list[str]:
         return check_text(fh.read(), path)
 
 
+def normalize_range(rev_range: str, cwd: str | None = None) -> str:
+    """把无法解析的区间降级为最新一条提交（`-1`），返回实际要检查的区间。
+
+    **为什么需要降级**：CI 的 push 门禁用 `github.event.before..HEAD` 界定"本次推送的
+    提交"。force push / 历史改写后，推送前的基线提交已不在克隆里（GitHub 只给新历史），
+    `git log` 会直接 fatal —— 硬失败会让整条 unit 门禁变红，但被拒的并不是提交内容。
+    这里退化为只查最新一条（tip 仍受检），既不误伤 force push，也不放宽正常推送。
+
+    区间两端任一无法解析即视为失效；`-1` 这类非区间参数原样返回（它本来就不需要基线）。
+    """
+    left, separator, right = rev_range.partition("..")
+    if not separator:
+        return rev_range
+    for rev in (left, right or "HEAD"):
+        resolved = subprocess.run(
+            ["git", "cat-file", "-e", f"{rev}^{{commit}}"],
+            cwd=cwd,
+            capture_output=True,
+        )
+        if resolved.returncode != 0:
+            print(
+                f"⚠️  区间 {rev_range!r} 的基线 {rev!r} 无法解析（force push 后旧提交不在"
+                "克隆中时会出现），降级为只检查最新一条提交",
+                file=sys.stderr,
+            )
+            return "-1"
+    return rev_range
+
+
 def check_commits(rev_range: str, cwd: str | None = None) -> list[str]:
     """逐个提交检查 subject + body。
 
@@ -147,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.last:
         problems = check_commits("-1")
     else:
-        problems = check_commits(args.rev_range)
+        problems = check_commits(normalize_range(args.rev_range))
 
     if problems:
         print(

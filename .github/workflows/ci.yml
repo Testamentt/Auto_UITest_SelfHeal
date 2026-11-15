@@ -67,6 +67,8 @@ jobs:
       # - PR：用 base_ref 取 PR 的**全部**提交（而不是只看 merge commit，squash 前的编号照样会被看见）；
       # - push：本仓以直推 main 为主（近 50 次运行 push 32 / PR 2），只挂 PR 等于只覆盖 ~6%，
       #   故 push 也跑，用 event.before..HEAD 检查本次推送的提交。
+      #   注意 force push / 历史改写后 event.before 可能已不在克隆里：脚本会降级为只查
+      #   最新一条提交（normalize_range），否则门禁会因基线不可解析而误红。
       - name: Commit message hygiene
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
