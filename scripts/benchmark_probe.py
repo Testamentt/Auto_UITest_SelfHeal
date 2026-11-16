@@ -45,7 +45,7 @@ def build_cmd(target: str | None = TARGET) -> list[str]:
     """
     args = [sys.executable, "-m", "pytest"]
     if target is None:
-        args += ["-m", "e2e and not erp and not live"]
+        args += ["-m", "e2e and not booking and not live"]
     else:
         args.append(target)
     return args + ["-q", "--no-header", "-p", "no:cacheprovider"]
@@ -83,7 +83,7 @@ def render(results: dict[str, float], *, full: bool = False) -> str:
         cut = (1 - on / off) * 100
         conclusion = f"\n> 结论：探测把耗时从 **{off:.2f}s 降到 {on:.2f}s（-{cut:.0f}%）**。\n"
     scope = (
-        '整个 e2e 套件（`-m "e2e and not erp and not live"`）'
+        '整个 e2e 套件（`-m "e2e and not booking and not live"`）'
         if full
         else f"单条「失效定位器 → 自愈」用例 `{TARGET}`"
     )
@@ -110,6 +110,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="跑整个 e2e 套件（核验全量耗时口径，约数分钟）；默认只跑单条用例",
     )
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="报告输出路径（默认 reports/probe-benchmark.md；--full 时 probe-benchmark-full.md）",
+    )
     args = parser.parse_args(argv)
 
     if args.skip_run:
@@ -130,7 +135,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     report = render(results, full=args.full)
-    out = OUTPUT if not args.full else OUTPUT.with_name("probe-benchmark-full.md")
+    if args.out:
+        out = Path(args.out)
+    else:
+        out = OUTPUT if not args.full else OUTPUT.with_name("probe-benchmark-full.md")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report, encoding="utf-8")
     print("\n" + report)

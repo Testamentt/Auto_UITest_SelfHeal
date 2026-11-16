@@ -92,6 +92,18 @@ def test_build_round_cmd_targets_variant():
     assert "-k disabled" in joined and "--junitxml" in joined and "test_ab_scenarios" in joined
 
 
+def test_build_round_cmd_supports_custom_scenario_file():
+    """真实 SUT 场景文件（票多星）可通过 --scenario-file 指定。"""
+    cmd = ab_compare.build_round_cmd(
+        "healing",
+        ab_compare.ROOT / "reports" / "x.xml",
+        "tests/e2e/test_ab_booking_scenarios.py",
+    )
+    joined = " ".join(cmd)
+    assert "test_ab_booking_scenarios.py" in joined
+    assert "-k healing" in joined
+
+
 # --- A 组守卫 +「未运行」告警行（作废对比不得静默产出） ---
 
 
@@ -108,6 +120,132 @@ def test_build_rows_counts_not_run_rows():
 
     rows, summary = ab_compare.build_rows(only_a, {})  # B 组缺
     assert rows[0]["with_heal"] == "未运行" and summary["not_run"] == "1"
+
+
+# --- 多轮稳定性口径（--rounds > 1） ---
+
+
+def _junit(passed: bool, name: str) -> dict:
+    """构造单轮 junit 解析结果：passed / failed。"""
+    return {name: {"result": "passed" if passed else "failed", "time": 1.0}}
+
+
+def test_build_rows_multi_separates_stable_from_unstable():
+    """2 轮：全轮通过=稳定修复；只过一半=不稳定（flaky 场景单列，不并入成功）。"""
+    disabled = [
+        {
+            "test_ab_s1_login_button[disabled]": {"result": "failed", "time": 1.0},
+            "test_ab_s2_username_input[disabled]": {"result": "xfail", "time": 1.0},
+        },
+        {
+            "test_ab_s1_login_button[disabled]": {"result": "failed", "time": 1.0},
+            "test_ab_s2_username_input[disabled]": {"result": "xfail", "time": 1.0},
+        },
+    ]
+    healing = [
+        {
+            "test_ab_s1_login_button[healing]": {"result": "passed", "time": 1.0},
+            "test_ab_s2_username_input[healing]": {"result": "passed", "time": 1.0},
+        },
+        {
+            "test_ab_s1_login_button[healing]": {"result": "passed", "time": 1.0},
+            "test_ab_s2_username_input[healing]": {"result": "failed", "time": 1.0},
+        },
+    ]
+    rows, summary = ab_compare.build_rows_multi(disabled, healing)
+    by_scenario = {r["scenario"]: r for r in rows}
+    assert by_scenario["s1_login_button"]["value"] == "自愈修复 ✓"
+    assert by_scenario["s1_login_button"]["with_heal"] == "2/2"
+    assert by_scenario["s2_username_input"]["value"] == "不稳定（1/2 轮通过）"
+    assert summary["pass_rate"] == "3/4"
+    assert summary["unstable"] == "1"
+    assert summary["auto_healed"] == "1"
+
+
+def test_build_rows_multi_marks_missing_round():
+    disabled = [{}, _junit(False, "test_ab_s1_login_button[disabled]")]
+    healing = [_junit(True, "test_ab_s1_login_button[healing]"), {}]
+    rows, summary = ab_compare.build_rows_multi(disabled, healing)
+    assert rows[0]["value"] == "—（未运行）"
+    assert summary["not_run"] == "1"
+
+
+def test_render_stability_report():
+    disabled = [_junit(False, "test_ab_s1_login_button[disabled]")]
+    healing = [_junit(True, "test_ab_s1_login_button[healing]")]
+    rows, summary = ab_compare.build_rows_multi(disabled, healing)
+    md = ab_compare.render_markdown(rows, summary, None, rounds=2)
+    assert "自愈稳定性 A/B 报告（2 轮）" in md
+    assert "开启自愈通过率（轮次口径）" in md
+    assert "不稳定场景（部分轮次通过）" in md
+    assert "--rounds 2" in md
+
+
+def test_round_path_only_changes_for_multi_round():
+    base = Path("reports") / "ab-junit-disabled.xml"
+    assert ab_compare._round_path(base, 1, 1) == base
+    assert ab_compare._round_path(base, 2, 2).name == "ab-junit-disabled-r2.xml"
+
+
+def test_main_out_and_rounds_skip_run(tmp_path):
+    """--skip-run + --rounds 2：读每轮 junitxml，写入 --out 指定路径。"""
+    for r in (1, 2):
+        (tmp_path / f"ab-junit-disabled-r{r}.xml").write_text(
+            '<?xml version="1.0"?><testsuite><testcase name="test_ab_s1_login_button[disabled]"/>'
+            "</testsuite>",
+            encoding="utf-8",
+        )
+        (tmp_path / f"ab-junit-healing-r{r}.xml").write_text(
+            '<?xml version="1.0"?><testsuite><testcase name="test_ab_s1_login_button[healing]"/>'
+            "</testsuite>",
+            encoding="utf-8",
+        )
+    out = tmp_path / "stability.md"
+    code = ab_compare.main(
+        [
+            "--skip-run",
+            "--rounds",
+            "2",
+            "--junit-disabled",
+            str(tmp_path / "ab-junit-disabled.xml"),
+            "--junit-healing",
+            str(tmp_path / "ab-junit-healing.xml"),
+            "--out",
+            str(out),
+        ]
+    )
+    assert code == 0
+    text = out.read_text(encoding="utf-8")
+    assert "自愈稳定性 A/B 报告（2 轮）" in text
+
+
+def test_main_single_round_out_override(tmp_path):
+    (tmp_path / "a.xml").write_text(
+        '<?xml version="1.0"?><testsuite><testcase name="test_ab_s1_login_button[disabled]">'
+        "<failure/></testcase></testsuite>",
+        encoding="utf-8",
+    )
+    (tmp_path / "b.xml").write_text(
+        '<?xml version="1.0"?><testsuite><testcase name="test_ab_s1_login_button[healing]"/>'
+        "</testsuite>",
+        encoding="utf-8",
+    )
+    out = tmp_path / "ab.md"
+    assert (
+        ab_compare.main(
+            [
+                "--skip-run",
+                "--junit-disabled",
+                str(tmp_path / "a.xml"),
+                "--junit-healing",
+                str(tmp_path / "b.xml"),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    assert "自愈价值 A/B 对比报告" in out.read_text(encoding="utf-8")
 
 
 def test_render_markdown_warns_when_rows_not_run():

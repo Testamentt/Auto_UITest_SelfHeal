@@ -129,12 +129,17 @@ def _render(results: list[ScenarioResult], *, latency_s: float) -> str:
 """
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="退避重试 + 熔断的耗时对比演示")
     parser.add_argument("--calls", type=int, default=15, help="逻辑调用次数（默认 15）")
     parser.add_argument("--latency", type=float, default=0.2, help="单次请求模拟耗时秒（默认 0.2）")
     parser.add_argument("--failure-threshold", type=int, default=3, help="熔断阈值（默认 3）")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--out",
+        default=str(OUTPUT),
+        help="报告输出路径（默认 reports/resilience-demo.md；可指向 docs/evidence/ 归档）",
+    )
+    args = parser.parse_args(argv)
 
     results = [
         _run_scenario(
@@ -152,10 +157,11 @@ def main() -> int:
         ),
     ]
     report = _render(results, latency_s=args.latency)
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(report, encoding="utf-8")
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report, encoding="utf-8")
     print(report)
-    print(f"报告已写入 {OUTPUT}")
+    print(f"报告已写入 {out}")
     return 0
 
 

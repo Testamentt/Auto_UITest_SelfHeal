@@ -37,13 +37,13 @@ HEALING_RECORDS = ROOT / "reports" / "healing-records.json"
 VARIANTS: dict[str, str] = {"disabled": "无自愈", "healing": "开启自愈"}
 
 
-def build_round_cmd(variant: str, junitxml: Path) -> list[str]:
+def build_round_cmd(variant: str, junitxml: Path, scenario_file: str = SCENARIO_FILE) -> list[str]:
     """组装单轮 pytest 命令（-k 定向变体 + junitxml 收集）。"""
     return [
         sys.executable,
         "-m",
         "pytest",
-        SCENARIO_FILE,
+        scenario_file,
         "-m",
         "e2e",
         "-k",
@@ -54,10 +54,10 @@ def build_round_cmd(variant: str, junitxml: Path) -> list[str]:
     ]
 
 
-def run_round(variant: str, junitxml: Path) -> int:
+def run_round(variant: str, junitxml: Path, scenario_file: str = SCENARIO_FILE) -> int:
     """运行单轮（A 组预期有失败/xfail，不据此判定脚本失败）。"""
     print(f"\n>>> 运行 {VARIANTS[variant]} 组（-k {variant}）...")
-    return subprocess.call(build_round_cmd(variant, junitxml), cwd=str(ROOT))
+    return subprocess.call(build_round_cmd(variant, junitxml, scenario_file), cwd=str(ROOT))
 
 
 def parse_junit(path: str | Path) -> dict[str, dict[str, float | str]]:
@@ -152,8 +152,80 @@ def build_rows(
     return rows, summary
 
 
-def render_markdown(rows: list[dict], summary: dict[str, str], cost: dict | None) -> str:
-    """对比结果 → Markdown 报告（纯函数；cost 存在时附自愈成本行）。"""
+def build_rows_multi(
+    disabled_runs: list[dict], healing_runs: list[dict]
+) -> tuple[list[dict], dict[str, str]]:
+    """多轮（`--rounds N`）聚合：每场景统计 N 轮里各有几轮通过（纯函数）。
+
+    单轮口径（build_rows）回答"能不能修"；多轮口径回答"修得稳不稳"——
+    同一个构造场景跑 N 轮，开启自愈不是每轮都过 = 不稳定（flaky 场景），
+    这类数据比单轮 3/3 更接近真实稳定性叙事。
+    """
+    rounds = max(len(disabled_runs), len(healing_runs)) or 1
+    bases = sorted(
+        {_base_name(n) for run in disabled_runs for n in run}
+        | {_base_name(n) for run in healing_runs for n in run}
+    )
+    rows: list[dict] = []
+    for base in bases:
+        a_pass = b_pass = 0
+        missing = False
+        for run in disabled_runs:
+            item = run.get(f"{base}[disabled]")
+            if item is None:
+                missing = True
+            elif item["result"] == "passed":
+                a_pass += 1
+        for run in healing_runs:
+            item = run.get(f"{base}[healing]")
+            if item is None:
+                missing = True
+            elif item["result"] == "passed":
+                b_pass += 1
+        if missing:
+            value = "—（未运行）"
+        elif a_pass == 0 and b_pass == rounds:
+            value = "自愈修复 ✓"
+        elif b_pass == 0:
+            value = "自愈未救回（需人工）"
+        elif 0 < b_pass < rounds:
+            value = f"不稳定（{b_pass}/{rounds} 轮通过）"
+        else:
+            value = "原定位器仍有效（非失效场景）"
+        rows.append(
+            {
+                "scenario": base.replace("test_ab_", ""),
+                "no_heal": f"{a_pass}/{rounds}",
+                "with_heal": f"{b_pass}/{rounds}",
+                "no_heal_pass": a_pass,
+                "with_heal_pass": b_pass,
+                "value": value,
+            }
+        )
+    total_heal = rounds * len(rows) or 1
+    summary = {
+        "rounds": str(rounds),
+        "no_heal_pass": str(sum(r["no_heal_pass"] for r in rows)),
+        "with_heal_pass": str(sum(r["with_heal_pass"] for r in rows)),
+        "pass_rate": f"{sum(r['with_heal_pass'] for r in rows)}/{total_heal}",
+        "manual_fixes": str(sum(1 for r in rows if r["no_heal_pass"] == 0)),
+        "auto_healed": str(sum(1 for r in rows if r["value"] == "自愈修复 ✓")),
+        "unstable": str(sum(1 for r in rows if r["value"].startswith("不稳定"))),
+        "not_run": str(sum(1 for r in rows if r["value"].startswith("—"))),
+    }
+    return rows, summary
+
+
+def render_markdown(
+    rows: list[dict], summary: dict[str, str], cost: dict | None, *, rounds: int = 1
+) -> str:
+    """对比结果 → Markdown 报告（纯函数；cost 存在时附自愈成本行）。
+
+    rounds > 1 时渲染"稳定性口径"：每场景展示 N 轮里通过几轮，并把
+    "部分轮次通过"单列为不稳定——单轮 3/3 不能回答"稳不稳"。
+    """
+    if rounds > 1:
+        return _render_stability(rows, summary, cost, rounds)
     total = len(rows) or 1
     lines = [
         "# 自愈价值 A/B 对比报告",
@@ -196,6 +268,51 @@ def render_markdown(rows: list[dict], summary: dict[str, str], cost: dict | None
     return "\n".join(lines) + "\n"
 
 
+def _render_stability(
+    rows: list[dict], summary: dict[str, str], cost: dict | None, rounds: int
+) -> str:
+    """多轮稳定性报告（rounds > 1）。"""
+    lines = [
+        f"# 自愈稳定性 A/B 报告（{rounds} 轮）",
+        "",
+        f"> 同一组失效场景 ×（关闭/开启自愈）× {rounds} 轮 · 数据源：junitxml",
+        "",
+        "| 场景 | 关闭自愈（通过轮次） | 开启自愈（通过轮次） | 结论 |",
+        "| --- | --- | --- | --- |",
+    ]
+    for r in rows:
+        lines.append(f"| {r['scenario']} | {r['no_heal']} | {r['with_heal']} | {r['value']} |")
+    not_run = int(summary.get("not_run", 0) or 0)
+    if not_run:
+        lines += [
+            "",
+            f"> ⚠️ **告警**：{not_run} 行「未运行」——至少一轮缺少该场景结果，"
+            "这些行不参与结论，本报告**不完整**。",
+        ]
+    lines += [
+        "",
+        "| 指标 | 值 |",
+        "| --- | --- |",
+        f"| 轮次 | {rounds} |",
+        f"| 开启自愈通过率（轮次口径） | {summary['pass_rate']} |",
+        f"| 全轮稳定修复场景 | {summary['auto_healed']} |",
+        f"| 不稳定场景（部分轮次通过） | **{summary['unstable']}** |",
+        f"| 需人工修复的失效场景 | {summary['manual_fixes']} |",
+        "",
+        "> ⚠️ **口径**：通过率 = 各场景各轮通过数之和 /（场景数 × 轮次）；"
+        "「不稳定」= 同一个构造场景 N 轮里时过时不过（模型/时序抖动），"
+        "这部分必须单列，不能并进「自愈成功」。",
+        "> 场景为**构造/半真实**时须在结论里注明来源，不能当生产指标。",
+    ]
+    if cost:
+        lines.append(
+            f"\n> 自愈成本：LLM {cost.get('llm_calls', 0)} 次 / VLM {cost.get('vlm_calls', 0)} 次，"
+            f"估算费用约 ¥{cost.get('total_cost', 0.0):.4f}（成本看板口径）"
+        )
+    lines.append(f"\n> 复现：`python scripts/ab_compare.py --rounds {rounds}`")
+    return "\n".join(lines) + "\n"
+
+
 def _load_cost() -> dict | None:
     """读 healing 轮自愈成本（healing-records.json）；缺失返回 None（不阻塞报告）。"""
     if not HEALING_RECORDS.exists():
@@ -206,40 +323,78 @@ def _load_cost() -> dict | None:
         return None
 
 
+def _round_path(base: Path, round_no: int, rounds: int) -> Path:
+    """多轮时为每轮生成独立 junitxml 路径；单轮沿用原路径（零回归）。"""
+    if rounds <= 1:
+        return base
+    return base.with_name(f"{base.stem}-r{round_no}{base.suffix}")
+
+
 def main(argv: list[str] | None = None) -> int:
     # Windows GBK 控制台无法编码 ¥/emoji：stdout 统一按 UTF-8 容错输出（报告文件本就是 UTF-8）
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="自愈价值 A/B 对比")
     parser.add_argument("--skip-run", action="store_true", help="跳过运行，仅重渲染既有 junitxml")
+    parser.add_argument(
+        "--scenario-file",
+        default=SCENARIO_FILE,
+        help="场景文件路径（默认自建 demo 页；真实 SUT 用 tests/e2e/test_ab_booking_scenarios.py）",
+    )
     parser.add_argument("--junit-disabled", default=str(ROOT / "reports" / "ab-junit-disabled.xml"))
     parser.add_argument("--junit-healing", default=str(ROOT / "reports" / "ab-junit-healing.xml"))
+    parser.add_argument(
+        "--rounds",
+        type=int,
+        default=1,
+        help="每组运行轮数（默认 1 = 单轮能不能修；>1 = 稳定性口径，观察 flaky 场景）",
+    )
+    parser.add_argument(
+        "--out",
+        default=str(REPORT_PATH),
+        help="报告输出路径（默认 reports/ab-compare.md；可指向 docs/evidence/ 归档）",
+    )
     args = parser.parse_args(argv)
+    if args.rounds < 1:
+        print("--rounds 必须 >= 1")
+        return 2
 
+    base_disabled = Path(args.junit_disabled)
+    base_healing = Path(args.junit_healing)
     exit_code = 0
     if not args.skip_run:
-        for variant, xml in (("disabled", args.junit_disabled), ("healing", args.junit_healing)):
-            code = run_round(variant, Path(xml))
-            exit_code = max(exit_code, code if variant == "healing" else 0)
-            # A 组预期失败（xfail 记绿），脚本退出码只看 B 组
+        for round_no in range(1, args.rounds + 1):
+            for variant, base in (("disabled", base_disabled), ("healing", base_healing)):
+                xml = _round_path(base, round_no, args.rounds)
+                code = run_round(variant, xml, args.scenario_file)
+                # A 组预期失败（xfail 记绿），脚本退出码只看 B 组
+                exit_code = max(exit_code, code if variant == "healing" else 0)
 
-    junit_disabled = parse_junit(args.junit_disabled)
-    junit_healing = parse_junit(args.junit_healing)
+    disabled_runs = [
+        parse_junit(_round_path(base_disabled, r, args.rounds)) for r in range(1, args.rounds + 1)
+    ]
+    healing_runs = [
+        parse_junit(_round_path(base_healing, r, args.rounds)) for r in range(1, args.rounds + 1)
+    ]
     # A 组为空同样中止（此前只守 B 组）——A 组空 = 没有"无自愈"基线，
     # 生成的表格全是「未运行」，任何"自愈提升"结论都不成立，属作废产物。
-    if not junit_disabled:
-        print(f"A 组结果为空（{args.junit_disabled} 无用例结果？），无对照基线，中止报告生成")
+    if not any(disabled_runs):
+        print(f"A 组结果为空（{base_disabled} 无用例结果？），无对照基线，中止报告生成")
         return 1
-    if not junit_healing:
-        print(f"B 组结果为空（{args.junit_healing} 无用例结果？），中止报告生成")
+    if not any(healing_runs):
+        print(f"B 组结果为空（{base_healing} 无用例结果？），中止报告生成")
         return 1
 
-    rows, summary = build_rows(junit_disabled, junit_healing)
-    report = render_markdown(rows, summary, _load_cost())
-    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text(report, encoding="utf-8")
+    if args.rounds > 1:
+        rows, summary = build_rows_multi(disabled_runs, healing_runs)
+    else:
+        rows, summary = build_rows(disabled_runs[0], healing_runs[0])
+    report = render_markdown(rows, summary, _load_cost(), rounds=args.rounds)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report, encoding="utf-8")
     print(report)
-    print(f"报告已写入 {REPORT_PATH}")
+    print(f"报告已写入 {out}")
     return exit_code
 
 

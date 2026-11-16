@@ -30,6 +30,8 @@
     <input data-testid="password" name="password" aria-label="密码" placeholder="密码" type="password" />
     <!-- 旧 id 已被替换为 submit-btn-v2；稳定属性仍在 -->
     <button type="button" id="submit-btn-v2" data-testid="submit-btn" aria-label="登录按钮">登录</button>
+    <!-- 属性重生成演示：构建工具生成的 hash class 每次部署都会变 -->
+    <button type="button" id="hash-btn" class="btn-a1b2c3" aria-label="哈希按钮">哈希按钮</button>
     <!-- 属性稀少的元素，用于兜底（fallback）测试 -->
     <button type="button" id="ghost-btn">Go</button>
     <button type="button" id="real-secondary" data-testid="secondary" aria-label="备用入口">备用入口</button>
@@ -55,6 +57,8 @@
       .addEventListener("click", function (e) { e.preventDefault(); setResult("ghost"); });
     document.getElementById("inner-btn-v2")
       .addEventListener("click", function (e) { e.preventDefault(); setResult("panel-clicked"); });
+    document.getElementById("hash-btn")
+      .addEventListener("click", function (e) { e.preventDefault(); setResult("hash-clicked"); });
   </script>
 </body>
 </html>
