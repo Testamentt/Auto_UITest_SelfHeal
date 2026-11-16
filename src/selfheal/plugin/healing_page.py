@@ -36,6 +36,10 @@ class HealingPage:
     仅扩展 locator()（增加 description / fallback 两个自愈增强参数），其余 API 全部透传。
     POM 面向 Page 接口编写，开关自愈都能跑；enabled=False 时行为与原生 Page 一致。
 
+    **能力标记**：`supports_healing_kwargs = True` 供 `BasePage` 做能力探测——
+    顶层类型探测不能用 `isinstance(HealingPage)`（engine 层禁止 import plugin，会被
+    `tests/unit/test_layering.py` 的分层护栏拦下），因此用鸭子类型标记。
+
     **自愈边界（请按此预期使用，勿把"POM 无缝切换"读成"全部 API 都自愈"）**：
     - **会自愈**：自愈入口只有 `HealingPage.locator(sel, description=…, fallback=…)`，
       以及它返回的 HealingLocator 上的：① HEALABLE 动作（click / fill / hover / press 等）；
@@ -49,7 +53,13 @@ class HealingPage:
       需要自愈请改写成 `page.locator(sel).<action>()` 形式（含 get_by_*：写
       `page.locator(root).get_by_role(...)` 即作为链环被自愈）。
     - **判定口径**：返回值不是 HealingLocator 的 API 一律视为未受自愈保护。
+    - **断言注意**：Playwright 模块级 `expect()` 只接受原生 Locator，传入 HealingLocator
+      会抛 `ValueError: Unsupported type`——断言请用 `locator(...).native`（`BasePage.expect_text`
+      已内置解包）。
     """
+
+    # BasePage 的能力探测标记（见类 docstring）：原生 Page 没有该属性。
+    supports_healing_kwargs = True
 
     def __init__(
         self,

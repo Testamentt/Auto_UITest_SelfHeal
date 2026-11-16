@@ -160,3 +160,26 @@ def test_l2_boundary_documented_in_docstrings():
     for keyword in ("get_by_", "page.click", "expect", "不自愈"):
         assert keyword in class_doc, f"类 docstring 缺少边界说明: {keyword}"
         assert keyword in method_doc, f"locator() docstring 缺少边界说明: {keyword}"
+
+
+# --- 断言逃生口：HealingLocator 不能被 Playwright expect() 接受 ---
+
+
+def test_native_returns_raw_locator():
+    """HealingLocator.native 返回底层原生 Locator（expect() 唯一可用入口）。"""
+    raw = _FakeLocator()
+    hl = _healing_locator(locator=raw)
+    assert hl.native is raw
+
+
+def test_playwright_expect_rejects_healing_locator():
+    """Playwright 模块级 expect() 对代理对象硬校验类型 → ValueError。
+
+    该行为是外部库的（`playwright/sync_api/__init__.py` 的 isinstance 分支），
+    本用例把"为什么必须走 .native"钉成可回归的事实，而不是只写在注释里。
+    """
+    from playwright.sync_api import expect
+
+    hl = _healing_locator()
+    with pytest.raises(ValueError, match="Unsupported type"):
+        expect(hl)

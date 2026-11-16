@@ -67,6 +67,12 @@ class HealRunner(Protocol):
         """显式丢弃一条不会被 commit 的暂存。"""
         ...
 
+    def record_escalation(
+        self, original_selector: str, description: str | None = None, round_no: int = 1
+    ) -> None:
+        """轮次耗尽时记录「需人工接手」（可选实现：单测替身可省略，engine 用 getattr 探测）。"""
+        ...
+
 
 # 运行期可选依赖 playwright：未安装时降级，使纯逻辑单测可导入本模块
 try:  # pragma: no cover - 取决于运行环境是否安装 playwright
@@ -271,6 +277,23 @@ class HealingLocator:
         # 最近一次自愈 outcome，供 _healing_action 重试成功后 commit_pending
         self._last_heal_outcome: HealOutcome | None = None
 
+    @property
+    def native(self) -> Locator:
+        """底层原生 Locator（逃生口）。
+
+        本类只代理了**一部分** Locator 能力（HEALABLE 动作 + 链式定位），其余原样透传。
+        但 Playwright 的模块级 `expect()` 用的是硬 `isinstance(actual, Locator)` 分支
+        （`playwright/sync_api/__init__.py`），代理对象会被判为 Unsupported type 直接
+        `ValueError` 抛出——断言因此必须拿原生对象：
+
+        ```python
+        expect(page.locator("#x").native).to_be_visible()
+        ```
+
+        `BasePage.expect_text()` 已内置该解包，POM 里一般不必手写。
+        """
+        return self._locator
+
     def __getattr__(self, name: str) -> Any:
         # 仅对实例上不存在的属性触发；__init__ 设置的属性不走这里。
         # 内部字段必须用 object.__getattribute__ 直接取。拷贝/序列化协议（copy.copy、
@@ -474,7 +497,12 @@ class HealingLocator:
             except Exception:  # noqa: BLE001 - 弹窗非根因，继续走自愈闭环
                 logger.debug("清弹窗后重试仍失败，继续走自愈闭环", exc_info=True)
         # 第一次自愈：修根（self._selector）+ 重放整条链，覆盖"根选择器断裂"
-        relocated = self._heal_and_resolve(trigger, action=name)
+        try:
+            relocated = self._heal_and_resolve(trigger, action=name, round_no=1)
+        except HealingFailedError:
+            # 首轮闭环就无法给出可用定位（无 fallback）→ 直接升级人工，无第二轮可言
+            self._record_escalation(round_no=1)
+            raise
         try:
             result = self._replay_chain(relocated, name, args, kwargs)
             self._commit_success()  # 重试成功 → 沉淀暂存的修复
@@ -489,16 +517,40 @@ class HealingLocator:
             # 覆盖"中段/叶子选择器断裂"；重试用修复后的叶子、不再重放链；
             # 上限一次、结果为裸调用不包裹，故不会死循环。
             stale_outcome = self._last_heal_outcome  # 下面会被第二次闭环覆盖
-            relocated2 = self._heal_and_resolve(
-                retry_exc, use_knowledge=False, leaf=True, action=name
-            )
+            try:
+                relocated2 = self._heal_and_resolve(
+                    retry_exc, use_knowledge=False, leaf=True, action=name, round_no=2
+                )
+            except HealingFailedError:
+                # 第二轮仍给不出可用定位（无 fallback）→ 轮次耗尽，升级人工
+                self._record_escalation(round_no=2)
+                raise
             # 第一次闭环的暂存不会再收到 commit（本次改用叶子修复），显式丢弃并记日志，
             # 否则它一直占着 _pending 额度、且"这次修复没沉淀"这件事完全不可见。
             if self._orch is not None and stale_outcome is not None and stale_outcome.attempt_id:
                 self._orch.discard_pending(stale_outcome.attempt_id)
-            result = getattr(relocated2, name)(*args, **kwargs)
+            try:
+                result = getattr(relocated2, name)(*args, **kwargs)
+            except Exception as action_exc:  # noqa: BLE001 - 修复后的定位器仍不可用
+                if _is_timeout_error(action_exc):
+                    self._record_escalation(round_no=2)
+                raise
             self._commit_success()  # 二次重试成功 → 沉淀暂存的修复
             return result
+
+    def _record_escalation(self, round_no: int) -> None:
+        """轮次耗尽：把「需人工接手」写进审计。
+
+        记录职责属 reporting 层，engine 不能 import（D19 分层）；编排器实现
+        `record_escalation`，fake runner 没有该方法时安全跳过（单测替身零改动）。
+        """
+        record = getattr(self._orch, "record_escalation", None)
+        if record is None:
+            return
+        try:
+            record(self._selector, self._description, round_no)
+        except Exception:  # noqa: BLE001 - 审计写入失败不改变"自愈失败"这一结论
+            logger.warning("自愈升级（需人工）记录写入失败", exc_info=True)
 
     def _replay_timeout_ms(self) -> int | None:
         """链重放的短超时：修根后重放若注定失败，不必等满默认超时。
@@ -535,12 +587,14 @@ class HealingLocator:
         use_knowledge: bool = True,
         leaf: bool = False,
         action: str | None = None,
+        round_no: int = 1,
     ) -> Locator:
         """运行闭环并决定用哪个定位器重试（含 D6 兜底）。
 
         leaf=True 时修叶子目标（self._leaf_selector），否则修根（self._selector）。
         use_knowledge=False 用于二次自愈（跳过缓存）。
         action 传给闭环：候选可交互性按动作取舍（如 set_input_files 不要求元素可见）。
+        round_no 标记第几轮尝试（1/2），写进 outcome 供审计记录使用。
         顶层兜底：闭环内部异常（采集/知识读取/策略等）不替换原始定位失败异常，
         而是转为"自愈内部失败"outcome 走 D6 兜底（fallback/pause/fail），保留触发自愈的语义。
         """
@@ -563,6 +617,7 @@ class HealingLocator:
             outcome = HealOutcome(
                 success=False, root_cause=f"heal_internal:{type(run_exc).__name__}"
             )
+        outcome.round = round_no  # 供 _record/_record_escalation 标注轮次
         self._last_heal_outcome = (
             outcome  # 闭环结果暂存：供重试成功后 commit_pending（无 attempt_id 则 no-op）
         )
