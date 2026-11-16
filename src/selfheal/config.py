@@ -360,7 +360,7 @@ class VisionConfig(_StrictModel):
     - base_url 默认为 **DashScope 公共 compatible-mode 端点**（可移植默认）；专属百炼 MaaS
       实例端点属环境特定配置，放 gitignore 的 `config/settings.yaml`（勿写进代码默认值）。
     - timeout_s / max_tokens: plus 级模型响应慢于 flash、视觉描述更长，默认放宽
-      （实测 20s/500 曾导致 ERP 场景 VLM 调用超时/截断而自愈失败）。
+      （实测 20s/500 曾导致被测系统场景 VLM 调用超时/截断而自愈失败）。
     - max_retries: 显式重试次数，0 表示不重试；此前静默继承
       openai SDK 默认值（2 → 一次失败最多 3 次付费调用）。
     - max_image_bytes: 单次请求图片体积护栏。`full_page` 长截图可达数 MB，
@@ -420,25 +420,29 @@ class EmbeddingConfig(_StrictModel):
 class SutConfig(_StrictModel):
     """被测系统（system under test）配置。
 
-    - base_url: 前端地址（UI 自动化打开的入口，jshERP 前端独立部署于 3001 端口）。
-    - api_base_url: 后端 API 地址——**非被测对象**，仅用于测试数据造数/清理。
-    - username_env / password_env: **租户账号**凭证的环境变量名（与 LLMConfig.api_key_env
-      同款参数化约定，明文绝不入库）。
+    - base_url: 前端地址（UI 自动化打开的入口；票多星管理端与客户端商城同一 SPA：
+      管理端登录 `/login`、客户端商城 `/shop` 与 `/shop/login`）。
+    - api_base_url: 后端 API 地址——**非被测对象**，仅用于测试数据造数/清理与落库校验。
+    - admin_username_env / admin_password_env: 管理端管理员凭证的环境变量名（与
+      LLMConfig.api_key_env 同款参数化约定，明文绝不入库）。
+    - customer_username / customer_password_env: 客户端商城用例账号——首次由 e2e
+      fixture 经 `POST /api/user/register` 注册，之后登录复用；用户名固定、密码走环境变量。
 
     角色语义：
-    - **租户 = 业务数据的管理员**（如测试租户 jsh）——UI 测试与 API 造数/清理都应使用
-      租户账号（业务数据的合法所有者）；
-    - **admin = 平台运维用户**——仅能配置平台菜单/创建租户，**不能编辑任何业务数据**，
-      测试基建不得使用。
+    - **admin = 平台管理员**（userLevel=10）——管理端登录后可管理票务/订单/用户，
+      UI 测试与 API 造数/清理都使用它；
+    - **客户 = 商城买家**（userLevel=1）——`/shop` 浏览与下单的角色，客户端用例使用。
     """
 
-    name: str = "jshERP"
+    name: str = "票多星"
     base_url: str = "http://localhost:3001"
-    # 占位默认（可移植）；实际后端地址（如内网 IP）属环境特定配置，放 gitignore 的
+    # 占位默认（可移植）；实际后端地址属环境特定配置，放 gitignore 的
     # `config/settings.yaml`——内网拓扑不应进代码默认值 / 提交 git。
-    api_base_url: str = "http://localhost:9999/jshERP-boot"
-    username_env: str = "ERP_USERNAME"
-    password_env: str = "ERP_PASSWORD"
+    api_base_url: str = "http://localhost:8088/api"
+    admin_username_env: str = "BOOKING_ADMIN_USERNAME"
+    admin_password_env: str = "BOOKING_ADMIN_PASSWORD"
+    customer_username: str = "selfheal_customer"
+    customer_password_env: str = "BOOKING_CUSTOMER_PASSWORD"
 
 
 class Settings(_StrictModel):
@@ -456,7 +460,7 @@ class Settings(_StrictModel):
     knowledge: KnowledgeConfig = KnowledgeConfig()
     vision: VisionConfig = VisionConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
-    sut: SutConfig = SutConfig()  # 被测系统（jshERP）
+    sut: SutConfig = SutConfig()  # 被测系统（票多星票务平台）
 
 
 def _resolve_relative(raw: str) -> str:

@@ -7,7 +7,7 @@ qwen3-vl-flash 能识别"登录按钮"并返回候选集中真实存在的定位
 无 key / 无 openai 时跳过，不影响 CI。
 
 本模块是**真实模型调用**（外呼付费 API），打 `live` marker——常规 e2e
-（`-m "e2e and not erp and not live"`）不会跑到它，显式 `-m live` 才跑。
+（`-m "e2e and not booking and not live"`）不会跑到它，显式 `-m live` 才跑。
 """
 
 import os

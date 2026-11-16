@@ -45,7 +45,7 @@ vision:
   model: qwen3-vl-plus      # 代码默认（可移植基线）；本项目当前值见本机 settings.yaml：deepseek/deepseek-v4.1-flash
   api_key_env: DASHSCOPE_API_KEY   # 代码默认变量名；本项目当前用 COMMANDCODE_API_KEY（与 LLM 共用）
   base_url: https://dashscope.aliyuncs.com/compatible-mode/v1   # 代码默认端点；本项目当前为 https://api.commandcode.ai/provider/v1
-  timeout_s: 60.0           # plus 级模型响应慢，默认放宽（20s 曾导致 ERP 场景超时）；推理型 VLM 可用时建议 120
+  timeout_s: 60.0           # plus 级模型响应慢，默认放宽（20s 曾导致被测系统场景超时）；推理型 VLM 可用时建议 120
   max_tokens: 1000
   max_retries: 2
   # D25：VLM 独立的退避与熔断（与 LLM 端点隔离：一方故障不影响另一方）
@@ -112,17 +112,20 @@ embedding:
   method: ngram             # 仅 ngram / fastembed 两个合法值；fastembed 为 v2 预留，写了会在加载期报错（避免静默失效）
   dim: 512
 
-# 被测系统（管伊佳 ERP）：UI 测试目标为前端；后端 API 仅用于测试数据造数/清理（非被测对象）。
-# 凭证经 *_env 指定的环境变量读取（.env 配 ERP_USERNAME/ERP_PASSWORD = 租户账号，
-# 明文绝不入库）；被测环境需关闭登录验证码。
-# 角色语义：租户 = 业务数据管理员（UI 测试与 API 造数共用其凭证，如测试租户 jsh）；
-# admin = 平台运维用户（仅平台菜单配置/创建租户，不能编辑业务数据，测试基建不使用）。
+# 被测系统（票多星票务平台）：UI 测试目标为前端；后端 API 仅用于测试数据造数/清理与
+# 落库校验（非被测对象）。管理端与客户端商城同源部署（/login 与 /shop）。
+# 凭证经 *_env 指定的环境变量读取（.env 配 BOOKING_ADMIN_USERNAME/BOOKING_ADMIN_PASSWORD、
+# BOOKING_CUSTOMER_PASSWORD，明文绝不入库）。
+# 角色语义：admin = 平台管理员（管理端登录 + API 造数共用）；客户 = 商城买家
+# （用户名固定 selfheal_customer，首次由 e2e fixture 注册，之后复用）。
 sut:
-  name: jshERP
-  base_url: http://localhost:3001            # 前端（Vue3 + Ant Design Vue）
-  api_base_url: http://localhost:9999/jshERP-boot   # 后端（Spring Boot）；实际内网地址写本机 settings.yaml
-  username_env: ERP_USERNAME                 # 租户账号（UI 登录 + API 造数共用）
-  password_env: ERP_PASSWORD
+  name: 票多星
+  base_url: http://localhost:3001           # 前端（React + Vite；管理端 /login、商城 /shop）
+  api_base_url: http://localhost:8088/api   # 后端（Spring Boot）；实际地址写本机 settings.yaml
+  admin_username_env: BOOKING_ADMIN_USERNAME   # 管理端账号（UI 登录 + API 造数共用）
+  admin_password_env: BOOKING_ADMIN_PASSWORD
+  customer_username: selfheal_customer      # 商城用例客户名（首次经 /api/user/register 注册）
+  customer_password_env: BOOKING_CUSTOMER_PASSWORD
 
 # execution / reporting 段：不建模（无对应运行时需求），Settings 已设 extra='forbid'，
 # 在此添加未建模键会导致加载报错——请勿添加。

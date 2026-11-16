@@ -8,7 +8,7 @@
   无需各自 try-import allure。
 - write_environment：`--alluredir` 启用时写 environment.properties（报告环境页）。
 - feature_label_for / apply_dynamic_labels：pytest marker → allure 标签映射
-  （优先级 erp > healing > e2e > unit，多 marker 只取最高一个，避免标签爆炸）。
+  （优先级 booking > healing > e2e > unit，多 marker 只取最高一个，避免标签爆炸）。
 - attach_json / attach_file：best-effort 证据附件（自愈记录 / Playwright trace）；
   attach_file 的 type_name 走 `ATTACHMENT_TYPE_NAMES` 白名单（或直接传常量），
   拼错显式 warning + False，不再静默丢附件。
@@ -66,9 +66,9 @@ AttachmentTypeName = Literal[
 ATTACHMENT_TYPE_NAMES: tuple[str, ...] = get_args(AttachmentTypeName)
 
 # marker → feature 映射；优先级从高到低（多 marker 只取最高，避免标签爆炸）
-_FEATURE_PRIORITY: tuple[str, ...] = ("erp", "healing", "e2e", "unit")
+_FEATURE_PRIORITY: tuple[str, ...] = ("booking", "healing", "e2e", "unit")
 _FEATURE_BY_MARKER: dict[str, str] = {
-    "erp": "ERP 被测系统",  # 管伊佳 ERP 用例（被测系统维度优先于能力维度）
+    "booking": "票多星票务平台",  # 被测系统用例（被测系统维度优先于能力维度）
     "healing": "AI 自愈",
     "e2e": "端到端",
     "unit": "单元测试",
@@ -76,7 +76,7 @@ _FEATURE_BY_MARKER: dict[str, str] = {
 
 
 def feature_label_for(item: Any) -> str | None:
-    """按优先级（erp > healing > e2e > unit）返回该测试的唯一 feature 名；无匹配返回 None。"""
+    """按优先级（booking > healing > e2e > unit）返回该测试的唯一 feature 名；无匹配返回 None。"""
     markers = {marker.name for marker in item.iter_markers()}
     for name in _FEATURE_PRIORITY:
         if name in markers:

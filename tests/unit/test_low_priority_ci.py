@@ -270,11 +270,11 @@ def test_e2e_baseline_guard_passes_with_cli_override():
         assert guard(request) is None
 
 
-def test_e2e_baseline_guard_covers_erp_items():
-    """erp 用例（e2e + erp）同样受守卫保护。"""
+def test_e2e_baseline_guard_covers_booking_items():
+    """booking 用例（e2e + booking）同样受守卫保护。"""
     from tests import conftest
 
-    assert conftest.is_guarded_e2e_item(_fake_request(("e2e", "erp")).node) is True
+    assert conftest.is_guarded_e2e_item(_fake_request(("e2e", "booking")).node) is True
     assert conftest.is_guarded_e2e_item(_fake_request(("unit",)).node) is False
 
 
@@ -348,7 +348,7 @@ def test_live_marker_covers_smoke_cases_and_is_excluded_by_default():
     assert collected_nodeids(live.stdout) == every
 
     default = run_pytest(
-        "--collect-only", "-q", "-m", "e2e and not erp and not live", *LIVE_SMOKE_FILES
+        "--collect-only", "-q", "-m", "e2e and not booking and not live", *LIVE_SMOKE_FILES
     )
     assert default.returncode == 5, default.stdout + default.stderr  # 5 = 无测试被收集
     assert collected_nodeids(default.stdout) == set()

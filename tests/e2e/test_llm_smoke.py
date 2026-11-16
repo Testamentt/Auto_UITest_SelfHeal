@@ -11,7 +11,7 @@
 无 OPENAI_API_KEY 时自动跳过，不影响 CI。
 
 本模块是**真实模型调用**（外呼付费 API），打 `live` marker——常规 e2e
-（`-m "e2e and not erp and not live"`）不会跑到它，显式 `-m live` 才跑。
+（`-m "e2e and not booking and not live"`）不会跑到它，显式 `-m live` 才跑。
 """
 
 import os

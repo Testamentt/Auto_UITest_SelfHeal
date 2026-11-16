@@ -5,7 +5,7 @@
 - `-m unit`：单元测试，不依赖浏览器 / 网络（不请求下方浏览器 fixture）。
 - `-m e2e`：集成 / 端到端测试，使用 healing_page / disabled_page（需要浏览器内核）。
 - 自愈开关：CLI `--selfheal` / `--no-selfheal` 优先于 `settings.healing.enabled`。
-- e2e/erp 用例带基线守卫——本机配置开了 `healing.dry_run` / 关掉自愈会直接 fail
+- e2e/booking 用例带基线守卫——本机配置开了 `healing.dry_run` / 关掉自愈会直接 fail
   并提示"本机配置会污染 e2e"，而不是让 e2e 集体失败后靠猜。
 - trace 开关：CLI `--trace-healing` / `--no-trace-healing` 优先于 `settings.browser.trace`；
   同一取值以 provider 形式注入 `HealingPage`，使采集器的"是否在录制"判定显式化。
@@ -95,8 +95,8 @@ def settings() -> Settings:
 
 # --- e2e 基线守卫（本机 gitignored 配置不得污染 e2e 结果） ---
 
-# 受守卫的 marker：e2e 与 erp（erp 用例同样是端到端自愈链路）
-_GUARDED_MARKERS = ("e2e", "erp")
+# 受守卫的 marker：e2e 与 booking（booking 用例同样是端到端自愈链路）
+_GUARDED_MARKERS = ("e2e", "booking")
 
 
 def e2e_baseline_violation(settings: Settings, cli_selfheal: bool | None = None) -> str | None:
@@ -127,7 +127,7 @@ def e2e_baseline_violation(settings: Settings, cli_selfheal: bool | None = None)
 
 
 def is_guarded_e2e_item(node) -> bool:
-    """该用例是否属于 e2e/erp 层（守卫只对端到端用例生效，unit 零影响）。"""
+    """该用例是否属于 e2e/booking 层（守卫只对端到端用例生效，unit 零影响）。"""
     return any(marker.name in _GUARDED_MARKERS for marker in node.iter_markers())
 
 
@@ -135,7 +135,7 @@ def is_guarded_e2e_item(node) -> bool:
 def _e2e_baseline_guard(request):
     """e2e 层基线断言（判定逻辑见 e2e_baseline_violation）。
 
-    - 只对 e2e/erp 用例生效；
+    - 只对 e2e/booking 用例生效；
     - `settings` 惰性获取：unit 用例不读本机 `config/settings.yaml`（零开销、零误伤）；
     - 失败发生在**任何浏览器 fixture 之前**（autouse + 同 scope 优先），
       报错直接指向"本机配置"，而不是半小时后某个定位器超时。
@@ -294,51 +294,46 @@ def offline_healing_page(settings, context, request):
         page.close()
 
 
-# --- 管伊佳 ERP 被测系统（marker erp；需本地 ERP 环境，CI 不跑） ---
-# 角色语义（专家确认）：租户 = 业务数据管理员（UI 测试与 API 造数共用其凭证）；
-# admin = 平台运维用户（不能编辑业务数据），测试基建不使用。
+# --- 票多星票务平台被测系统（marker booking；需本地票多星环境，CI 不跑） ---
+# 角色语义：admin = 平台管理员（管理端 UI 登录与 API 造数/清理共用其凭证）；
+# 客户 = 商城买家（用户名固定 selfheal_customer，首次经 /api/user/register 注册后复用）。
 
 
 @pytest.fixture(scope="session")
-def erp_api(settings):
-    """ERP 租户 API 客户端（测试数据造数/清理；凭证缺失或服务未启动时 skip 整组用例）。
+def booking_api(settings):
+    """票多星管理端 API 客户端（造数/清理与落库校验；凭证缺失或后端未启动时 skip）。
 
-    只在"凭证缺失"时 skip，**凭证已配置但 ERP 服务未启动**时
-    直接 ERROR（外部依赖缺失应 skip）——实测 ERP 未启动即让 `pytest -m e2e` 必然红。
+    与既有被测系统 fixture 同款取舍：凭证缺失 → skip；凭证已配置但后端不可用同样 skip
+    （外部依赖缺失不该让 `pytest -m e2e` 必然红）。
     """
     import pytest as _pytest
 
-    from tests.e2e.api.erp_client import ErpApiError, ErpClient, ErpCredentials
+    from tests.e2e.api.booking_client import (
+        BookingAdminCredentials,
+        BookingApiClient,
+        BookingApiError,
+    )
 
     sut = settings.sut
     try:
-        credentials = ErpCredentials.from_env(sut.username_env, sut.password_env)
-    except ErpApiError as exc:
-        _pytest.skip(f"ERP 租户凭证未配置：{exc}")
-    client = ErpClient(sut.api_base_url, credentials)
+        credentials = BookingAdminCredentials.from_env(
+            sut.admin_username_env, sut.admin_password_env
+        )
+    except BookingApiError as exc:
+        _pytest.skip(f"票多星管理员凭证未配置：{exc}")
+    client = BookingApiClient(sut.api_base_url, credentials)
     try:
-        client.login()
-    except ErpApiError as exc:
-        _pytest.skip(f"ERP 后端不可用（{sut.name} 未启动？）：{exc}")
+        client.login_admin()
+    except BookingApiError as exc:
+        client.close()
+        _pytest.skip(f"票多星后端不可用（{sut.name} 未启动？）：{exc}")
     yield client
+    client.close()
 
 
-@pytest.fixture
-def erp_page(settings, knowledge, context, request):
-    """ERP 被测页面：HealingPage（自愈开）+ UI 登录态（租户账号，.env 凭证）。"""
-    import os
-
-    import pytest as _pytest
-
+def _open_booking_page(settings, knowledge, context, request):
+    """构建开启自愈的 HealingPage 并登记 reporter（票多星各 fixture 共用装配）。"""
     from selfheal.plugin.healing_page import HealingPage  # 惰性导入（装配层在 plugin/）
-    from tests.e2e.pages.erp.home_page import ErpHomePage
-    from tests.e2e.pages.erp.login_page import ErpLoginPage
-
-    sut = settings.sut
-    username = os.getenv(sut.username_env, "")
-    password = os.getenv(sut.password_env, "")
-    if not username or not password:
-        _pytest.skip(f"ERP 租户凭证未配置（{sut.username_env}/{sut.password_env}）")
 
     page = HealingPage(
         context.new_page(),
@@ -346,27 +341,92 @@ def erp_page(settings, knowledge, context, request):
         knowledge=knowledge,
         trace_active=_trace_active_provider(request.config, settings),  # trace 状态显式注入
     )
-    # 与 healing_page 同款——ERP 用例自愈记录进会话聚合
-    # （dashboard / healing-records.json / 通知摘要），否则审计看板缺 ERP 数据。
+    # 与 healing_page 同款：被测系统用例的自愈记录必须进会话聚合
+    # （dashboard / healing-records.json / 通知摘要），否则审计看板缺这类数据。
     _session_reporters.append(page.reporter)
     page.set_default_timeout(8_000)  # 失效定位器较快进入自愈（默认 30s 过长）
-    try:
-        login = ErpLoginPage(page, sut.base_url).open_login()
-        login.login(username, password)
-    except Exception as exc:  # noqa: BLE001 - ERP 前端未启动/不可达：外部依赖缺失 → skip
-        page.close()
-        _pytest.skip(f"ERP 前端不可用（{sut.name} 未启动？）：{type(exc).__name__}: {exc}")
-    from tests.e2e.pages.erp import (
-        dismiss_intro,  # intro.js 引导层遮挡操作，登录后先清一次
-    )
+    return page
 
-    dismiss_intro(page)
-    home = ErpHomePage(page, sut.base_url)
-    assert home.is_logged_in(), f"ERP UI 登录未成功（url={page.url}）"
+
+@pytest.fixture
+def booking_healing_page(settings, knowledge, context, request):
+    """票多星匿名自愈页面（未登录）——供「登录页改版注入 → 自愈重定位」用例使用。"""
+    page = _open_booking_page(settings, knowledge, context, request)
     try:
         yield page
     finally:
-        page.close()  # 与 healing_page 对齐，释放自建 LLM/VLM 客户端与知识库
+        page.close()
+
+
+@pytest.fixture
+def booking_admin_page(settings, knowledge, context, request):
+    """票多星管理端页面：HealingPage（自愈开）+ 管理员 UI 登录态。"""
+    import os
+
+    import pytest as _pytest
+
+    from tests.e2e.pages.booking.admin_home_page import BookingAdminHomePage
+    from tests.e2e.pages.booking.admin_login_page import BookingAdminLoginPage
+
+    sut = settings.sut
+    username = os.getenv(sut.admin_username_env, "")
+    password = os.getenv(sut.admin_password_env, "")
+    if not username or not password:
+        _pytest.skip(f"票多星管理员凭证未配置（{sut.admin_username_env}/{sut.admin_password_env}）")
+
+    page = _open_booking_page(settings, knowledge, context, request)
+    try:
+        try:
+            login = BookingAdminLoginPage(page, sut.base_url).open_login()
+            login.fill_username(username)
+            login.fill_password(password)
+            login.submit()
+        except Exception as exc:  # noqa: BLE001 - 前端未启动/不可达：外部依赖缺失 → skip
+            _pytest.skip(f"票多星前端不可用（{sut.name} 未启动？）：{type(exc).__name__}: {exc}")
+        home = BookingAdminHomePage(page, sut.base_url)
+        assert home.is_logged_in(), f"票多星管理端 UI 登录未成功（url={page.url}）"
+        yield page
+    finally:
+        page.close()
+
+
+@pytest.fixture
+def booking_shop_page(settings, knowledge, context, request, booking_api):
+    """票多星客户端商城页面：确保客户账号存在（API 注册/复用）+ 商城 UI 登录态。"""
+    import os
+
+    import pytest as _pytest
+
+    from tests.e2e.pages.booking.shop_login_page import BookingShopLoginPage
+    from tests.e2e.pages.booking.shop_page import BookingShopPage
+
+    sut = settings.sut
+    password = os.getenv(sut.customer_password_env, "")
+    if not password:
+        _pytest.skip(f"票多星客户密码未配置（{sut.customer_password_env}）")
+    try:
+        booking_api.ensure_customer(sut.customer_username, password)
+    except Exception as exc:  # noqa: BLE001 - 造数接口异常属外部依赖问题 → skip
+        _pytest.skip(f"票多星客户账号准备失败：{type(exc).__name__}: {exc}")
+
+    page = _open_booking_page(settings, knowledge, context, request)
+    try:
+        try:
+            login = BookingShopLoginPage(page, sut.base_url).open_login()
+            login.fill_username(sut.customer_username)
+            login.fill_password(password)
+            login.submit()
+        except Exception as exc:  # noqa: BLE001 - 前端未启动/不可达：外部依赖缺失 → skip
+            _pytest.skip(
+                f"票多星商城前端不可用（{sut.name} 未启动？）：{type(exc).__name__}: {exc}"
+            )
+        shop = BookingShopPage(page, sut.base_url)
+        assert shop.is_logged_in(sut.customer_username), (
+            f"票多星商城 UI 登录未成功（url={page.url}）"
+        )
+        yield page
+    finally:
+        page.close()
 
 
 def is_xdist_worker(config) -> bool:
