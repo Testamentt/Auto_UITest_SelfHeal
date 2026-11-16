@@ -25,24 +25,30 @@
 
 > **定位**：项目对外展示页（GitHub 首页）。
 > **状态**：技术文档（事实源，与实现同步）
-> **最后更新**：2026-11-12 · 关联：[docs/architecture.md](docs/architecture.md) 架构 · [docs/decisions.md](docs/decisions.md) 决策记录
+> **最后更新**：2026-11-17 · 关联：[docs/architecture.md](docs/architecture.md) 架构 · [docs/decisions.md](docs/decisions.md) 决策记录
 
 ## 项目预览
 
-| 真实被测系统（管伊佳 ERP，商品新增表单） | 自愈审计报告 |
-| :---: | :---: |
-| ![真实被测系统](docs/evidence/erp-real-sut.png) | 见下方在线报告 |
+被测系统是 **票多星票务平台**：同一套前端的两个真实入口——管理端登录页 `/login`（登录成功后进入「数据概览」看板）与客户端商城 `/shop`、`/shop/login`，后端 `booking-api` 提供 `http://127.0.0.1:8088/api`。框架在真实登录页上演示「前端改版（`data-testid` 改名）→ 旧定位器失效 → 多策略自愈重定位 → 登录成功」，并覆盖管理端 / 商城登录冒烟。
 
-> 上图是被测系统 **jshERP** 的商品新增页实拍（Vue3 + Ant Design Vue），画面中的引导气泡正是
-> `docs/architecture.md` 记录的 intro.js 遮罩——它会拦截全页点击，测试基建以 `dismiss_intro` 处理。
-> **不是自建 demo 页**：框架迁移到真实系统后四层代码零改动，只改测试层。
+> **不是自建 demo 页**：框架接入真实系统后四层代码零改动，只改测试层（页面对象与 API 客户端）。报告内含每一步的截图、DOM 快照与 Trace 回放，自愈过程可逐帧审计。
+
+<div align="center">
+  <img src="docs/evidence/booking-admin-dashboard.png" alt="票多星管理端数据概览" width="49%">
+  <img src="docs/evidence/booking-shop.png" alt="票多星客户端商城" width="49%">
+  <p><sub>左：票多星管理端「数据概览」看板（登录后） · 右：客户端商城 `/shop`</sub></p>
+</div>
 
 **在线报告**（CI 每次成功运行后自动发布，含历史趋势）：
 
 - 自愈审计报告（Allure）：<https://testamentt.github.io/Auto_UITest_SelfHeal/>
-- 自愈看板（自研 HTML）：运行 `pytest -m "e2e and not erp"` 后打开 `reports/dashboard.html`
-- A/B 对比：运行 `python scripts/ab_compare.py` 生成 `reports/ab-compare.md`
+- 自愈看板（自研 HTML）：运行 `pytest -m "e2e and not booking and not live"` 后打开 `reports/dashboard.html`
+- A/B 对比：运行 `python scripts/ab_compare.py` 生成 `reports/ab-compare.md`（多轮稳定性加 `--rounds 2`；
+  真实票多星场景加 `--scenario-file tests/e2e/test_ab_booking_scenarios.py`）
 - 探测耗时基准：运行 `python scripts/benchmark_probe.py` 生成 `reports/probe-benchmark.md`
+
+> 上述产物在本地 `reports/`（已 gitignore）；**关键结论已归档到 [docs/evidence/](docs/evidence/)**，
+> 数字口径统一以 [docs/architecture.md](docs/architecture.md#可复现度量与口径唯一事实源) 的度量表为准。
 
 ## 核心功能
 
@@ -68,17 +74,23 @@ UI 自动化测试有两大顽疾：**脚本脆弱**——强依赖 ID/XPath 定
 - **失效防护** — 复用前先验证候选 selector **唯一命中**（多命中会被 Playwright strict mode 拒绝），失效即转人审清单，绝不白用过期缓存。
 - **阈值可标定** — L3 的 4 个检索阈值走配置（`knowledge.semantic`），按被测系统的真实分布调，不必改代码发版。
 - **运维入口** — `scripts/knowledge_admin.py` 支持统计 / 清理 / 去重 / 导出；写操作默认 dry-run，已人审与被复用过的案例永不自动删。
-- **可复现构造基线** — 同一组 3 个失效场景双轮对比：关闭自愈 0/3 通过（人工修复 3 次）vs 开启自愈 3/3 通过（0 干预）；
-  三场景全走确定性启发式，**0 次模型调用、0 API 成本**，结论不依赖模型随机性；规模小是为保证结论可复现，真实场景集是下一步。复现：`python scripts/ab_compare.py`。
+- **可复现 A/B 基线** — 同一组失效场景双变体对比：关闭自愈 **0/10**（人工修复 10 次）vs 开启自愈 **10/10**（0 干预）；
+  10 个构造场景覆盖 id 改版 / 链式断裂 / 属性重生成 / 文案微调 / DOM 结构变化，全走确定性启发式，**0 次模型调用、0 API 成本**；
+  多轮口径 `--rounds 2` 可看稳定性（20/20，不稳定 0）。另有 **2 个真实票多星登录页注入场景**（0/2 → 2/2）。
+  复现：`python scripts/ab_compare.py`。构造基线不是生产指标，真实场景集扩充是下一步。
 
-### 🧩 插件化零侵入
+### 🧩 零侵入接入（fixture + 接口代理）
 
-> 自愈以 pytest 插件形式存在，POM 代码一行不改，开 / 关自愈同一份代码都能跑。
+> 自愈以 pytest fixture 注入 + `HealingPage` 接口代理的方式接入，POM 代码一行不改，开 / 关自愈同一份代码都能跑。
+> 说明：目前是「fixture 级」接入，尚未打包成可安装的 pytest 插件（`pytest11` 入口）。
 
 - **接口兼容代理** — `HealingPage` 完全代理原生 Page；关闭自愈时就是原生 Page，零开销。
 - **fixture 注入** — `pom` / `healing_page` 双 fixture 按需注入，CLI `--selfheal` / `--no-selfheal` 优先于配置文件。
-- **增强参数按需透传** — `description`（语义描述）与 `fallback`（备用定位器）原生 Page 下不传即可。
-- **被测系统零成本迁移** — 从自建演示页迁移到真实 ERP（管伊佳，Vue3 + Ant Design Vue），框架四层零改动，只动测试层。
+- **增强参数按需透传** — `description`（语义描述）与 `fallback`（备用定位器）在 `healing_page` 下生效；
+  注入原生 Page 时自动忽略并首次告警（原生 Locator 不接受这两个参数）。
+- **断言逃生口** — `expect()` 只接受原生 Locator；写 `expect(page.locator(...))` 会报 `Unsupported type`，
+  请用 `locator(...).native` 或 `BasePage.expect_text()`（内置解包）。
+- **被测系统零成本迁移** — 从自建演示页迁移到真实全栈系统（票多星票务平台：React + Vite 前端、Spring Boot 后端），框架四层零改动，只动测试层。
 
 ### 🛡️ 风险控制与人审闸门
 
@@ -88,9 +100,11 @@ UI 自动化测试有两大顽疾：**脚本脆弱**——强依赖 ID/XPath 定
 - **dry-run** — 仅生成修复建议，不换定位器、不落库。
 - **修复写回人审** — 成功修复输出「原 → 新」PR 化建议清单；CI 自动开草稿 PR，只审不合。
 - **真自愈 vs flaky** — 修复后原定位器仍不可用（不存在 / 多命中）= 真修复，已恢复可用 = flaky 侥幸，看板分开统计不掺水。
+- **轮次上限与升级人工** — 闭环最多两轮（修根 → 修叶），记录实际轮次；两轮都修不回且无 fallback 时记「需人工」并抛错，
+  看板单列，不与"自愈失败"混计（D27）。
 - **成本看板** — LLM/VLM 调用次数与估算费用汇总，多模态花钱心里有数。
 - **模型端点韧性（D25）** — 瞬态故障（429 / 超时 / 5xx）按指数退避重试，连续失败自动熔断、毫秒级降级；
-  Fatal（401/403 等配置错误）不重试不熔断；模拟演示 15 次自愈等待 31.5s → 6.3s（`scripts/resilience_demo.py`）。
+  Fatal（401/403 等配置错误）不重试不熔断；模拟演示 15 次自愈等待 31.55s → 6.30s（`scripts/resilience_demo.py`）。
 - **自愈触发加速（D22）** — 动作前以 2.5s 快速探测替代等满 30s 默认超时，**不改变结论、只改变到达结论的速度**。
   探测本身不产生额外模型调用；代价是慢渲染页面（>2.5s 才就绪）会提前触发一次自愈尝试
   （有兜底、不会失败，但该次尝试可能调用模型）。可调 `healing.probe.timeout_ms` 或
@@ -99,10 +113,11 @@ UI 自动化测试有两大顽疾：**脚本脆弱**——强依赖 ID/XPath 定
 
   | 口径 | 关闭探测 | 开启探测 | 降幅 |
   | :--- | ---: | ---: | ---: |
-  | 单条「失效定位器 → 自愈」用例 | 34.89s | 7.17s | -79% |
-  | 整个 e2e 套件（`--full`） | 447.97s | 112.33s | -75% |
+  | 单条「失效定位器 → 自愈」用例 | 34.72s | 7.09s | -80% |
+  | 整个 e2e 套件（`--full`） | 726.53s | 169.94s | -77% |
 
   > 两种口径含不同固定开销（pytest / 浏览器启动），**不可互相换算**，各自与自己的闭合比才有效。
+  > 完整度量表（含 A/B、稳定性、韧性）见 [docs/architecture.md](docs/architecture.md#可复现度量与口径唯一事实源)。
 
 ### 📊 全链路证据与可观测
 
@@ -111,7 +126,8 @@ UI 自动化测试有两大顽疾：**脚本脆弱**——强依赖 ID/XPath 定
 - **四合一现场采集** — 截图、DOM 快照、网络日志、现场内联 trace 一次抓取。
 - **双 trace 体系** — 整用例 Trace 与失败现场内联 trace，`playwright show-trace` 交互式回放（DOM + 操作时间线）。
 - **Allure 报告** — 环境页、自愈标签分组、自愈记录 / trace 附件，CI 发布 GitHub Pages 含历史趋势。
-- **自研 HTML 看板** — 自愈记录、真自愈 vs flaky 区分、成本汇总一屏看清。
+- **自研 HTML 看板** — 自愈记录、真自愈 vs flaky 区分、轮次与"需人工"、成本汇总一屏看清。
+- **修复简报** — `scripts/heal_brief.py` 把 `reports/healing-records.json` 渲染成 10 字段人审简报（轮次 / 分类 / 复跑命令 / 残余风险）。
 - **CI 两阶段门禁** — unit（不依赖浏览器）先全绿，e2e 才运行；main 回归失败 webhook 告警（钉钉 / 企微 / Slack）。
 
 ## 系统流程
@@ -156,30 +172,6 @@ flowchart TD
 | 测试报告 | Allure、自研 HTML 看板 | 自愈审计、成本汇总与历史趋势 |
 | 质量与 CI | ruff、pytest-xdist、GitHub Actions | Lint 与格式化、并行执行、两阶段流水线与报告发布 |
 
-## 文件编码
-
-全仓源码与文档统一使用 **UTF-8（无 BOM）** 编码，每个文本文件首行带编码声明，避免 Windows 环境下中文注释与中文测试数据变成乱码。
-
-声明按文件类型分三种形态：`.py` 前两行是 `# -*- coding: utf-8 -*-` 与中文声明行；`.md` / `.html` 首行是 HTML 注释 `<!-- 本项目统一使用 UTF-8（无 BOM）编码。 -->`；其余文本文件（`.yml` / `.toml` / `.gitignore` 等）首行是 `# 本项目统一使用 UTF-8（无 BOM）编码。`
-
-本地编辑请保存为 UTF-8（不要用 GBK / ANSI），新增文件时一并写入对应形态的声明。
-
-## 提交规范
-
-提交信息只写「**改了什么 + 为什么**」，不写批次编号、协作过程叙述与 AI 署名。
-
-规则由三道同源检查强制（正则定义在 `scripts/check_commit_messages.py`，由 import 复用）：
-
-| 时机 | 检查 | 触发条件 |
-| :--- | :--- | :--- |
-| 本地提交前 | `.githooks/commit-msg` | 需一次性安装：`git config core.hooksPath .githooks` |
-| CI | `scripts/check_commit_messages.py` | push 与 PR 均跑 |
-| 单测门禁 | `tests/unit/test_comment_hygiene.py` | 扫描全仓 tracked 文件的注释 / 文档正文 |
-
-**允许的编号**：公开 ADR（`D1`–`D25`，见 [docs/decisions.md](docs/decisions.md)）与检索层级术语 `L1`–`L4`；其余工单号一律拒绝。
-
-> 本地 hook 未安装时不会阻断提交（CI 仍会拦），但建议安装以获得即时反馈。
-
 ## 快速开始
 
 ### 环境要求
@@ -194,34 +186,50 @@ flowchart TD
 ### 常见命令
 
 ```bash
-pytest -m unit                        # 单元测试（CI 门禁，不依赖浏览器）
-pytest -m "e2e and not erp"           # 端到端测试（自愈闭环 / 弹窗 / 智能等待等场景）
-pytest -m e2e                         # 含 erp 用例（需本地 ERP 环境，未启动会自动 skip）
-pytest -m e2e --selfheal              # 显式开启自愈（--no-selfheal 关闭）
-pytest -m e2e --trace-healing         # 运行并录制 Playwright Trace
-pytest --alluredir=allure-results     # 生成 Allure 结果
-python scripts/benchmark_probe.py     # 自愈触发耗时基准（探测开 / 关，产出 reports/probe-benchmark.md）
-python scripts/knowledge_admin.py --stats  # 知识库运维：统计 / 清理 / 去重 / 导出（写操作默认 dry-run）
-ruff check . && ruff format --check . # Lint + 格式检查（CI 两道门禁）
+pytest -m unit                                # 单元测试（CI 门禁，不依赖浏览器）
+pytest -m "e2e and not booking and not live"  # 端到端测试（自愈闭环 / 弹窗 / 智能等待等场景，CI 默认口径）
+pytest -m e2e                                 # 含 booking / live 用例（booking 需本地票多星环境，未启动会自动 skip）
+pytest -m booking                             # 票多星票务平台用例（需本地前端 3001 与后端 8088 已启动）
+pytest -m e2e --selfheal                      # 显式开启自愈（--no-selfheal 关闭）
+pytest -m e2e --trace-healing                 # 运行并录制 Playwright Trace
+pytest --alluredir=allure-results             # 生成 Allure 结果
+python scripts/ab_compare.py                  # A/B 对比（10 个构造场景，产出 reports/ab-compare.md）
+python scripts/ab_compare.py --rounds 2       # 多轮稳定性口径（不稳定场景单列）
+python scripts/ab_compare.py --scenario-file tests/e2e/test_ab_booking_scenarios.py   # 真实票多星场景
+python scripts/benchmark_probe.py             # 自愈触发耗时基准（探测开 / 关，产出 reports/probe-benchmark.md）
+python scripts/heal_brief.py                  # 修复简报（读 healing-records.json，产出 reports/heal-brief.md）
+python scripts/knowledge_admin.py --stats     # 知识库运维：统计 / 清理 / 去重 / 导出（写操作默认 dry-run）
+ruff check . && ruff format --check .         # Lint + 格式检查（CI 两道门禁）
 ```
 
+> Windows 上 pytest 收尾清理临时目录可能报 `PermissionError`（全绿也 exit 1）；
+> 本地运行请加 `--basetemp=.cache/pytest-tmp`。
+
 ### 1. 安装框架
+
+**推荐：一键 bootstrap（Windows PowerShell，幂等）**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1
+# 可选：-SkipDeps（跳过 pip）/ -SkipBrowser（系统已有 Chrome）/ -SkipHooks（跳过 git hooks）
+```
+
+脚本会建 `.venv`、装 `.[dev,llm]`、装 Chromium、复制配置、配置提交门禁钩子。
+
+<details>
+<summary>手动安装（等价步骤）</summary>
 
 ```bash
 git clone <your-repo-url>
 cd AutoAiSelfHeal
-python -m venv venv
-source venv/bin/activate            # Windows: venv\Scripts\activate
+python -m venv .venv
+source .venv/bin/activate           # Windows: .venv\Scripts\activate
 pip install -e ".[dev,llm]"
 ```
 
 默认使用系统已装 Chrome，无需下载浏览器内核；如需 Playwright 自带 Chromium：
-
-```bash
-playwright install chromium
-```
-
-并把 `config/settings.yaml` 的 `browser.channel` 改为 `chromium`。
+`playwright install chromium`，并把 `config/settings.yaml` 的 `browser.channel` 改为 `chromium`。
+</details>
 
 ### 2. 准备配置
 
@@ -235,6 +243,11 @@ cp config/settings.example.yaml config/settings.yaml
 COMMANDCODE_API_KEY=sk-xxx # CommandCode 网关：本项目当前 LLM + VLM 共用（key 必须与 base_url / model 同平台）
 OPENAI_API_KEY=sk-xxx      # 代码默认值指向的变量（LLM），未用 CommandCode 时填 DeepSeek 官方 key
 DASHSCOPE_API_KEY=sk-xxx   # 代码默认值指向的变量（VLM），未用 CommandCode 时填通义百炼 key
+
+# 被测系统（票多星）凭证：只在跑 -m booking 时需要
+BOOKING_ADMIN_USERNAME=admin
+BOOKING_ADMIN_PASSWORD=<票多星管理员密码>
+BOOKING_CUSTOMER_PASSWORD=<商城用例客户密码>
 ```
 
 > 只填实际使用的那个即可；本项目当前只填 `COMMANDCODE_API_KEY`（详见 `config/settings.yaml`）。
@@ -244,20 +257,20 @@ DASHSCOPE_API_KEY=sk-xxx   # 代码默认值指向的变量（VLM），未用 Co
 ### 3. 运行测试与自愈演示
 
 ```bash
-pytest -m unit                    # 单元测试，秒级完成
-pytest -m "e2e and not erp"       # 自愈闭环 / 弹窗 / 智能等待等场景（无需 ERP）
-python scripts/ab_compare.py      # A/B 实证：关闭 vs 开启自愈（产出 reports/ab-compare.md）
+pytest -m unit                                # 单元测试，秒级完成
+pytest -m "e2e and not booking and not live"  # 自愈闭环 / 弹窗 / 智能等待等场景（无需票多星环境）
+python scripts/ab_compare.py                  # A/B 实证：关闭 vs 开启自愈（产出 reports/ab-compare.md）
 ```
 
 e2e 自带自愈演示：`tests/e2e/pages/demo_page.html` 模拟"前端改版"（运行时改输入框 id）→ 旧定位器失效 → 多策略自愈重定位，覆盖自愈成功 / 兜底 / 关闭 = 原生三种场景。
 
-在真实 ERP 上体验自愈（可选，需本地被测环境）：
+在真实被测系统上体验自愈（可选，需本地票多星环境）：
 
 ```bash
-pytest tests/e2e/test_erp_healing.py -m erp -v
+pytest tests/e2e/test_booking_healing.py -m booking -v
 ```
 
-前置：`.env` 配置 `ERP_USERNAME` / `ERP_PASSWORD`（租户账号）、ERP 前后端已启动且登录验证码关闭；CI 自动排除 erp 用例。
+前置：本地启动票多星前端（<http://127.0.0.1:3001>）与后端（<http://127.0.0.1:8088/api>）；`.env` 配置 `BOOKING_ADMIN_PASSWORD`（管理端 `admin` 账号密码，首次启动由后端创建管理员）与 `BOOKING_CUSTOMER_PASSWORD`（客户端用例账号 `selfheal_customer` 的密码，首次由 e2e fixture 经 `POST /api/user/register` 注册后复用）；CI 自动排除 booking 用例。
 
 ### 4. 查看报告
 
@@ -280,9 +293,13 @@ class LoginPage(BasePage):
     url = "https://example.com/login"
 
     def login(self, user="tester", pwd="secret") -> None:
-        # description 让自愈凭语义重定位；fallback 提供人工备用定位器
+        # description 让自愈凭语义重定位（仅在 healing_page 下生效）；fallback 提供人工备用定位器
         self.locator('[data-testid="username"]', description="用户名输入框").fill(user)
         self.locator("#submit", description="登录按钮", fallback="#submit-v2").click()
+
+    def assert_logged_in(self) -> None:
+        # 断言走 expect_text（内部解包原生 Locator）；直接 expect(self.locator(...)) 会抛 Unsupported type
+        self.expect_text("登录成功")
 ```
 
 ```python
@@ -291,6 +308,9 @@ def test_login(healing_page):
     page.open()
     page.login()
 ```
+
+> 边界：自愈入口只有 `locator()` 及其链式派生对象；`page.get_by_role()` 直呼、`page.click(sel)`、
+> `page.expect_*` 均不拦截（需要自愈时写成 `page.locator(root).get_by_role(...)`）。
 
 ## 目录结构
 
@@ -309,7 +329,9 @@ AutoAiSelfHeal/
 │   └── reporting/               #   展示层：Allure 桥 / 自愈看板 / 修复建议
 ├── tests/
 │   ├── unit/                    # 单元测试（CI 门禁，不依赖浏览器）
-│   └── e2e/                     # 端到端测试（自愈闭环 / 弹窗 / ERP 等）
+│   └── e2e/                     # 端到端测试（自愈闭环 / 弹窗 / 票多星票务平台等）
+│       ├── pages/booking/       #   票多星页面对象（管理端登录 / 管理端首页 / 商城登录 / 商城）
+│       └── api/booking_client.py #   票多星 API 客户端（标准库 urllib，零第三方依赖）
 ├── scripts/                     # A/B 对比 / benchmark_probe 耗时基准 / knowledge_admin 知识库运维 / 韧性演示 / 人审标记 / 通知 / 草稿 PR
 ├── docs/                        # 主线文档：architecture（架构） / decisions（决策记录）
 └── .github/workflows/ci.yml     # CI：unit 门禁 → e2e → 报告发布 / 草稿 PR / 告警
@@ -331,7 +353,13 @@ AutoAiSelfHeal/
 | 知识库越跑越大 / 有失效案例 | `python scripts/knowledge_admin.py --stats` 看全貌；`--prune --older-than 30` 清理（默认 dry-run，加 `--apply` 才真删，已人审/被复用过的永不删）；`--dedupe` 去重 |
 | 自愈触发太快 / 太慢 | 调 `healing.probe.timeout_ms`（默认 2500ms）；配得比页面正常加载还短会让慢加载元素提前触发自愈（有兜底，不会直接失败）；`probe.enabled: false` 恢复"等满默认超时"的旧行为 |
 | Allure 报告打不开 | 本地需安装 allure CLI（依赖 Java）；或直接浏览器打开 `reports/dashboard.html` 自愈看板 |
-| ERP 用例如何运行 | 本地启动 ERP 前后端，`.env` 配 `ERP_USERNAME` / `ERP_PASSWORD`，被测环境关闭登录验证码；CI 不跑 erp 用例，未启动时本地自动 skip |
+| 票多星用例如何运行 | 本地启动票多星前端（3001）与后端（8088），`.env` 配 `BOOKING_ADMIN_PASSWORD` / `BOOKING_CUSTOMER_PASSWORD`；CI 不跑 booking 用例，未启动时本地自动 skip |
+| 后端启动报 `BOOKING_ADMIN_PASSWORD is required` | `.env` 缺管理端密码且 `user` 表没有 `admin` 记录；补上该变量即可（首次启动由后端创建管理员，之后可不再设置） |
+| 断言报 `ValueError: Unsupported type: HealingLocator` | `expect()` 只接受原生 Locator。用 `locator(...).native`，或直接用 `BasePage.expect_text()`（内部已解包） |
+| 原生 Page 下传 `description` / `fallback` 报 `TypeError` | 原生 Locator 不接受这两个参数；`BasePage.locator()` 会自动丢弃并首次告警。需要自愈请注入 `healing_page` |
+| Windows 上单测全绿但 exit code 是 1 | pytest 收尾清理临时目录 `PermissionError`；加 `--basetemp=.cache/pytest-tmp` |
+| 想快速搭环境 | `powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1`（幂等；可 `-SkipDeps` / `-SkipBrowser` / `-SkipHooks`） |
+| A/B 报告数字怎么复现 | 构造场景：`python scripts/ab_compare.py`；稳定性：加 `--rounds 2`；真实票多星：加 `--scenario-file tests/e2e/test_ab_booking_scenarios.py`（需本地 SUT） |
 
 ## 开源说明
 

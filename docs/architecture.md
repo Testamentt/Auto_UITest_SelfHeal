@@ -3,58 +3,71 @@
 
 > **定位**：AutoAiSelfHeal 的架构与**关键设计决策**（实现细节以 `src/selfheal/` 为准）。
 > **状态**：技术文档（事实源，与实现同步）
-> **最后更新**：2026-11-12 · 关联：[README.md](../README.md) 项目展示 · [decisions.md](decisions.md) 决策记录（D1–D24，含独立编号 D25）
+> **最后更新**：2026-11-17 · 关联：[README.md](../README.md) 项目展示 · [decisions.md](decisions.md) 决策记录（D1–D28） · [evidence/](evidence/) 度量证据
 
 AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」的智能自愈闭环，架设在 Playwright 执行引擎之上。
 
-## 被测系统（管伊佳 ERP，jshERP）
+## 被测系统（票多星票务平台）
 
-自愈框架的**正式被测对象**是 [jshERP](https://github.com/jishenghua/jshERP)（Vue3 + Ant Design Vue 前端 + Spring Boot 后端），
-早期自建静态演示页（`tests/e2e/pages/demo_page.html`）保留为最小演示与单测夹具。**框架四层零改动**——迁移只发生在测试层（验证 D5 插件化）。
+自愈框架的**正式被测对象**是**票多星票务平台**：一套前端同时承载**管理端**与**客户端商城**两个入口，后端为 Spring Boot 的 `booking-api`，前后端都可本地启动。早期自建静态演示页（`tests/e2e/pages/demo_page.html`）保留为最小演示与单测夹具。**框架四层零改动**——迁移只发生在测试层（验证 D5 插件化）。
 
-- **配置**：`src/selfheal/config.py` 的 `SutConfig`（前端 `sut.base_url` / 后端 `sut.api_base_url` / 凭证经 `*_env` 参数化，明文不入库）；marker `erp`（CI 排除，本地跑）。
-- **登录与数据**：`tests/e2e/api/erp_client.py` 标准库客户端（登录 password 需 MD5、鉴权头 `X-Access-Token`、商品 / 供应商造数与清理）；
-  UI 用例经 `erp_page` fixture（租户账号 UI 登录态 + `HealingPage` 自愈开启）取得被测页面。
-- **自愈演示**：商品管理真实页面上注入"前端改版"（运行时改输入框 id）→ 旧定位器失效 → 多策略自愈重定位 → 保存落库 → API 断言 + 数据清理。
-- **本地无 ERP 时**：`erp_api` / `erp_page` fixture 检测到凭证缺失或服务不可达即 `pytest.skip`（不再 ERROR）。
+- **配置**：`src/selfheal/config.py` 的 `SutConfig`（`name="票多星"`、前端 `sut.base_url` / 后端 `sut.api_base_url` / 凭证经 `*_env` 参数化，明文不入库）；marker `booking`（CI 排除，本地跑）。
+- **双入口**：管理端 <http://127.0.0.1:3001/login>（登录成功进入 `/` 的「数据概览」dashboard）；客户端商城 <http://127.0.0.1:3001/shop> 与 <http://127.0.0.1:3001/shop/login>。
+- **账号**：管理端 `admin`（密码走 `.env` 的 `BOOKING_ADMIN_PASSWORD`，首次启动由后端 `AdminAccountInitializer` 创建）；客户端用例账号 `selfheal_customer`（密码走 `.env` 的 `BOOKING_CUSTOMER_PASSWORD`，首次由 e2e fixture 经 `POST /api/user/register` 注册，之后登录复用）。
+- **登录与数据**：`tests/e2e/api/booking_client.py` 标准库 `urllib` 客户端（零第三方依赖）；管理端 `POST /admin/login` 取 JWT，后续请求带 `Authorization: Bearer <token>`；造数 / 清理与落库断言走管理端接口（`/admin/*`），公开查询走 `/tickets`、`/category` 等；后端统一响应 `{code:0,message,data}`，`code != 0` 即业务错误。
+- **页面对象**：`tests/e2e/pages/booking/`（`admin_login_page` / `admin_home_page` / `shop_login_page` / `shop_page`），登录页定位以 `data-testid` 为主。
+- **自愈演示**：`tests/e2e/test_booking_healing.py` 在真实登录页注入"前端改版"（运行时把**登录按钮**的 `data-testid` 改名；商城端同时移除表单容器 `data-testid` 以消除启发式同分歧义）→ 旧定位器失效 → 自愈凭按钮可见文本重定位 → 登录成功，管理端 / 商城各一条；`tests/e2e/test_booking_smoke.py` 覆盖管理端 / 商城登录冒烟。两条自愈用例实测均走确定性启发式（`strategy=heuristic`，`confidence=0.95`，零 LLM/VLM 调用）。
 
-### 实测勘测结论（真实系统踩坑，2026-08-31 ~ 09-01）
+### 接入要点（事实来源：票多星本地部署说明 · 前端源码 · 后端接口文档）
 
-以下都是接入 jshERP 时实测出来的，**不是文档推测**——换任何真实被测系统都会遇到同类问题，是判断"做过真实迁移还是只跑了 demo 页"的关键差别。
+**角色语义**
 
-**角色语义（人工专家确认）**
+| 账号 | 角色 | 能做 | 测试基建用途 |
+| --- | --- | --- | --- |
+| `admin` | 平台管理员（`userLevel=10`） | 管理端登录后管理票务 / 订单 / 用户 / 优惠券等 | **管理端 UI 用例与 API 造数 / 清理统一使用** |
+| `selfheal_customer` | 商城客户（`userLevel=1`） | 商城浏览、下单、钱包与优惠券等买家侧操作 | **客户端用例与商城数据准备** |
 
-| 账号 | 角色 | 能做 | 不能做 | 测试基建用途 |
-| --- | --- | --- | --- | --- |
-| 租户（如 `jsh`） | 业务数据管理员 | 编辑全部业务数据 | —— | **UI 测试与 API 造数/清理统一使用** |
-| admin | 平台运维用户 | 配置平台菜单、创建租户 | **不能编辑任何业务数据** | **测试基建不得使用** |
+**接入参数**
 
-> 教训：曾误用 admin 做 API 造数（后端未拦截但语义违规），已纠正为租户凭证统一。
-
-**接入参数**：前端 `:3001`（Vue3 + Ant Design Vue，**非 Element-UI**）；后端 `:9999/jshERP-boot`（**非被测对象**，仅造数/清理）；
-登录 `POST /user/login`，**password 需 MD5 后提交**（明文报 `user password error`）；鉴权头 `X-Access-Token`；验证码由被测环境关闭。
+- 前端 `:3001`（React + Vite 单页应用，管理端与商城路由同文档渲染）；后端 `:8088/api`（Spring Boot，JWT 鉴权，统一响应 `{code,message,data}`）。
+- 登录：管理端 `POST /admin/login`，客户端 `POST /user/login`，均返回 `token`（有效期 24 小时）；管理端登录页无验证码。
+- 管理端首次启动依赖 `.env` 的 `BOOKING_ADMIN_PASSWORD`（`user` 表无 `admin` 记录时由 `AdminAccountInitializer` 创建，缺失会直接启动失败）；客户端账号首次由 fixture 注册。
+- 端口约定：本机 3000 被其他服务占用，前端固定 3001。
 
 **UI 结构与陷阱**
 
-1. **vue-router 异步跳转**：登录成功跳 `/dashboard/analysis`，必须 `wait_for_url`，立即断言 URL 会失败。
-2. **内容区不在 iframe**：SPA 同文档渲染，可直接 goto 路由。
-3. **antd 弹窗默认不销毁**：关闭后 DOM 残留（hidden），再次打开出现**两份同名 id** → 污染定位与自愈候选。
-   对策：避免同页签反复开关弹窗，或用 `.ant-modal:visible` 限定。
-4. **intro.js 新手引导遮罩拦截全页点击**（`root_cause=covered`），每账号首次登录触发。
-   对策：`dismiss_intro` 做 **DOM 移除**；**不能**用 `display:none`（会影响祖先层隐藏时其他元素的可见性判定）。
-5. **菜单为 JS 动态**（无 href）：不能 goto 直达未启用页面；当前实例未启用供应商页面。
-6. **造数模式**：`add` 响应不带 id → `list`（`search` 参数为 **JSON 字符串**）反查 id → `deleteBatch?ids=` 清理
-   （**单条 `delete` 实测 500**）。
+1. **React 首屏空白 + SPA 客户端跳转**：登录页首屏先渲染空容器，须等表单 `data-testid` 可见；登录成功后由前端路由跳转（管理端 `/`、商城 `/shop`），点完登录立即断言 URL 会失败，须 `wait_for_url` 或等首页标记。
+2. **同文档渲染**：管理端与商城都是同一单页应用内的路由，无 iframe，可直接 `goto` 目标路径。
+3. **HTTP 200 不代表成功**：后端业务错误同样返回 200 + `{code:非0,message}`，API 断言必须校验响应体 `code`。
+4. **两种 token 用途分离**：管理端接口用管理员 JWT，买家侧接口用客户 token；造数 / 清理统一用管理员 token，不混用。
+5. **定位以 `data-testid` 为主**：登录表单（`admin-login-form` / `admin-username` / `admin-password` / `admin-login-submit`，商城为 `shop-*` 同款）与 dashboard 统计卡片都有稳定 `data-testid`；改版注入即替换这些属性，自愈凭 `description` 语义重定位。
+6. **登录态由 fixture 提供**：`booking_admin_page` / `booking_shop_page` 在 fixture 内完成登录，用例不重复登录逻辑。
 
 **坑位速查**
 
 | 症状 | 根因 | 对策 |
 | --- | --- | --- |
-| 登录报 `user password error` | 密码未 MD5 | 提交前 `hashlib.md5` |
-| 点击被拦截 / `root_cause=covered` | intro.js 引导遮罩 | `dismiss_intro(page)` |
-| 定位器匹配 2 个 / 自愈候选同名 | antd 弹窗 DOM 残留 | 单弹窗场景设计 / `.ant-modal:visible` |
-| 断言 URL 仍是登录页 | vue-router 异步跳转 | `wait_for_url("**/dashboard/**")` |
-| 删除接口 500 | 单条 delete 不可用 | 用 `deleteBatch?ids=` |
+| 登录成功但断言 URL 仍在登录页 | react-router 客户端跳转异步 | `wait_for_url` 或等待首页 `data-testid` |
+| 接口返回 200 却取不到数据 | `code != 0` 的业务错误被当成成功 | 校验响应体 `code == 0` |
+| 管理端接口 401 | 未带 / 带错 token | `Authorization: Bearer <管理员 token>` |
+| 定位器改版后失效 | `data-testid` 被改 | 定位保留 `description` 语义 + `fallback`，进自愈闭环 |
+| 后端启动失败 `BOOKING_ADMIN_PASSWORD is required` | `.env` 缺管理端密码且 `user` 表无 `admin` | `.env` 补该变量 |
+
+## 测试分层与 fixtures
+
+marker 与目录一一对应（`pyproject.toml` 注册，`--strict-markers` 保证漏标即报错）：
+
+| 层 | marker | 位置 | 依赖 | 默认运行范围 |
+| --- | --- | --- | --- | --- |
+| 单元测试 | `unit` | `tests/unit/` | 无浏览器 / 网络 | CI 门禁 |
+| 端到端（自建页） | `e2e` | `tests/e2e/` 其余用例 | Playwright 浏览器内核 | CI e2e |
+| 端到端（真实 SUT） | `e2e` + `booking` | `tests/e2e/test_booking_*.py` | 本地票多星前端 3001 + 后端 8088 | 本地，CI 排除 |
+| 真实模型调用 | `live` | `test_llm_smoke` / `test_visual_smoke` | 可用 API Key（付费外呼） | 显式 `-m live` |
+
+- **基座 fixtures**（`tests/conftest.py`）：`settings` / `context` / `page` / `pom`（原生 Page）/ `healing_page`（`HealingPage`，自愈开启）/ `disabled_page` / `offline_healing_page`；engine 在 fixture 内惰性导入，`-m unit` 不依赖 playwright。
+- **SUT fixtures**：`booking_api`（管理端 API 客户端，session 级）、`booking_healing_page`（匿名 `HealingPage`，自愈开启、无登录态）、`booking_admin_page`（管理端已登录）、`booking_shop_page`（客户端已登录）；凭证缺失或服务不可达即 `pytest.skip`，不产生 ERROR。
+- **报告标签**：Allure feature 按 marker 优先级 `booking > healing > e2e > unit` 推导唯一标签，`booking` 用例归入「票多星票务平台」。
+- **CI / 本地过滤**：`pytest -m "e2e and not booking and not live"`——CI 的 e2e job 与常规本地 e2e 共用该口径，`booking` 与 `live` 只在本地显式运行。
 
 ## 分层
 
@@ -96,6 +109,40 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
    （先暂存、重试成功才落库；二次自愈会显式丢弃被替换的暂存）。
 6. **报告与审计**：`reporting/hooks.py` 记录全过程，供 Allure 附件 / HTML 看板 / 成本指标展示。
 
+## 自愈边界与失败分类
+
+**自愈只处理「定位类」失败，非定位类一律不修**：`engine/healing_locator.py` 的非超时异常
+直接上抛（`if not _is_timeout_error(exc): raise`），不进闭环、不消耗模型调用、不落自愈记录。
+这是架构保证，不靠调用方自觉。
+
+| 失败大类 | 判定来源 | 当前处理 |
+| --- | --- | --- |
+| 定位类（元素找不到 / 不可交互 / 超时） | `TimeoutError`（含探测预判） | 进自愈闭环（≤2 轮，见「轮次与升级」） |
+| 环境 / 驱动 | 浏览器启动失败、`TargetClosed` 等非超时异常 | 直接上抛，需人工 |
+| 鉴权 / 账号 | 登录失败、401/403 | 直接上抛；禁止改断言掩盖 |
+| 数据冲突 | 唯一键重复、数据校验失败 | 直接上抛；走幂等/造数思路，不是定位问题 |
+| 产品缺陷嫌疑 | 元素存在但业务结果错 | 断言失败即失败，禁止改预期 |
+| 需求不清 | 成功判据互相矛盾 | 停下并标待确认 |
+
+**轮次与升级**：闭环最多两轮（第一轮修根并重放链，第二轮修叶），`HealOutcome.round` 记录实际轮次；
+两轮都修不回且无 fallback 时，先记一条 `escalate=True` 的审计（root_cause=`rounds_exhausted`）再抛错，
+看板单列「需人工（达轮次上限）」。`round` / `escalate` 只增审计字段，不改路由行为。
+
+**断言不自愈**：模块级 `expect()` 只接受原生 Locator，传入 `HealingLocator` 会
+`ValueError: Unsupported type`；请用 `locator(...).native` 或 `BasePage.expect_text()`（内部解包）。
+把「文案变了」当定位问题修属于改预期，明确禁止。
+
+## 定位策略（主 / 备 / 禁止项）
+
+| 层级 | 允许 | 说明 |
+| --- | --- | --- |
+| 主定位 | `data-testid`，其次稳定 `id`、可见文本、`aria-label` | 自愈产出的新定位器即按此优先级生成（`dom/selector_builder.py`）；testid 专为测试而设，比可访问名更抗改版 |
+| 备用 | `locator(sel, fallback=...)` 人工备用定位器 | 置信度不足且无 fallback 时按 `on_uncertain=fail` 明确失败（D6） |
+| 语义定位 | `page.locator(root).get_by_role(...)` 链式写法 | **直呼 `page.get_by_role()` 不自愈**（原样透传）；自愈入口只有 `HealingPage.locator()` |
+| 禁止 | 绝对 xpath、纯下标、hash class、像素坐标 | 同上；多命中属编程错误，探测不提前判死，交 strict mode 报错 |
+
+> `expect()` 与 `wait_for()` 不在自愈动作集内；断言/等待失败按原生语义抛出。
+
 ## 关键设计决策
 
 > 编号化、可追溯的决策记录见 [decisions.md](decisions.md)；本节只保留设计层面的要点。
@@ -125,8 +172,8 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 
   | 口径 | 关闭探测 | 开启探测 | 降幅 |
   | :--- | ---: | ---: | ---: |
-  | 单条「失效定位器 → 自愈」用例 | 34.89s | 7.17s | -79% |
-  | 整个 e2e 套件（`--full`） | 447.97s | 112.33s | -75% |
+  | 单条「失效定位器 → 自愈」用例 | 34.72s | 7.09s | -80% |
+  | 整个 e2e 套件（`--full`） | 726.53s | 169.94s | -77% |
 
   两种口径含不同固定开销（pytest / 浏览器启动），**不可互相换算**；各自与自己的闭合比才有效。
 
@@ -169,6 +216,61 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 - **配置集中**：`src/selfheal/config.py` 用 pydantic 统一加载与严格校验（`extra='forbid'` 全层下发）；
   密钥只存环境变量名，`.env` 已 gitignore。
 
+## 可复现度量与口径（唯一事实源）
+
+> 其他文档（README / decisions / 面试材料）**只引用本表，不复述数字**；换机器重跑会浮动，
+> 归档证据见 `docs/evidence/`，每份报告都写明测量条件与复现命令。
+
+| 度量 | 当前值（2026-11-17 本机） | 口径 | 复现命令 |
+| --- | --- | --- | --- |
+| 单元测试 | **791 passed** | 不依赖浏览器 / 网络；含编码、注释、分层、提交信息门禁 | `pytest -m unit --basetemp=.cache/pytest-tmp` |
+| e2e（默认口径） | **32 passed / 10 xfailed** | 排除 `booking` / `live`；10 个 xfailed 是 A/B 场景的 `disabled` 变体（无自愈预期失败） | `pytest -m "e2e and not booking and not live"` |
+| A/B 构造场景（单轮） | 关闭 **0/10**、开启 **10/10**，人工修复 10 → 0，LLM/VLM **0 次**、¥0 | 10 个构造失效场景 × 双变体；确定性启发式，不依赖模型 | `python scripts/ab_compare.py` |
+| A/B 构造场景（2 轮） | 通过率 **20/20**，不稳定 **0** | 场景 × 轮次口径；「不稳定」= 部分轮次通过（flaky） | `python scripts/ab_compare.py --rounds 2` |
+| A/B 真实 SUT（单轮） | 关闭 **0/2**、开启 **2/2** | 票多星管理端 / 商城登录按钮改版注入；需本地 SUT | `python scripts/ab_compare.py --scenario-file tests/e2e/test_ab_booking_scenarios.py` |
+| A/B 真实 SUT（2 轮） | 通过率 **4/4**，不稳定 **0** | 同上 × 2 轮 | 同上 + `--rounds 2` |
+| 自愈触发延迟（单条） | **34.72s → 7.09s（-80%）** | 同机单次；唯一变量 `healing.probe.enabled` | `python scripts/benchmark_probe.py` |
+| 自愈触发延迟（全量 e2e） | **726.53s → 169.94s（-77%）** | `--full` 口径（含 pytest / 浏览器启动开销），**不可与单条口径换算** | `python scripts/benchmark_probe.py --full` |
+| 模型端点韧性 | **31.55s → 6.30s（-80%）**，请求 **45 → 9** | 默认参数（15 次逻辑调用 / 200ms / 熔断阈值 3）；模拟 429，数字为模拟值 | `python scripts/resilience_demo.py` |
+
+**度量边界**：以上都是本机单次测量或构造基线，**不是生产指标**；真实场景集扩充（10~20 个真实页面注入）
+仍是下一步——在补齐之前，禁止把构造基线的比例写成「日常场景修复率」。
+
+## 指标体系（愈合率 / 误愈率）
+
+`reporting/metrics.py` 的聚合口径（分母都是**成功数**，未成功记录不进分母）：
+
+| 指标 | 公式 | 含义 |
+| --- | --- | --- |
+| 愈合率 | `success / total` | 触发自愈后修好的比例（含知识库复用） |
+| 真自愈率 | `verified / success` | 修复后原定位器仍不可用 = 真修复 |
+| **误愈率** | `flaky / success` | 修复后原定位器已恢复可用 = 偶发变绿，不算自愈成功 |
+| 需人工率 | `escalate / total` | 两轮闭环均未修回，已升级人工 |
+
+看板把「真自愈 / flaky / 需人工」分列，避免把偶发通过掺进成功数。
+
+## 与商业自愈的对照
+
+| 维度 | 本项目 | 商业产品常见形态 |
+| --- | --- | --- |
+| 推理 | 用失败现场（截图 / DOM / 网络 / trace）得到新定位器 | 同类，另加历史成功率、视觉相似、跨项目统计 |
+| 生效位置 | **运行时只换本次执行定位器**；写回代码只出 `applied=false` 建议 + 草稿 PR（人审） | 常在执行时切备用定位；部分产品直接改码 |
+| 闭环与承诺 | 轮次上限（≤2）+ 升级人工 + 豁免 / dry-run；不承诺生产可用性 | 审批流、看板、愈合率承诺、SLA |
+| 共同风险 | 支付/强授权页误改代价高；偶发变绿 ≠ 自愈成功；看图调用有成本 | 同左 |
+
+## 技术视野与边界（只作对照，不冒充已上线）
+
+| 名词 | 一句定义 | 本项目锚点 | 是否已实现 | 风险一句 |
+| --- | --- | --- | --- | --- |
+| GraphRAG | 向量库之外再加"实体怎么连"的关系层，检索可沿边多跳 | 知识库只有向量检索 + 页面/结构指纹分桶 | **未实现**（仅了解） | 写"已上线 GraphRAG"会在追问图存储/抽边流水线时穿 |
+| 检索作 Tool | 把"查知识库"注册成 Tool，由模型决定查几次、怎么改写查询 | L3 语义检索是固定管道（一次检索，不够就 fail） | **未实现**（仅了解） | 需要步数上限与拒答口径，别写成"无人值守 Agent" |
+| 开会型多 Agent | Agent 之间自由讨论、辩论、投票 | 固定角色：orchestrator 派工，诊断 / 策略各自独立 | **未实现**（刻意不用） | 成本与越权难控；执行测试默认走固定链路 + 闸门 |
+| Locust / 性能 | 用压测脚本与指标证明容量 | 无性能工程，仅 2 处耗时基准（探测 / 熔断） | **未实现**（仅了解） | 简历不能写"AI 完成性能保障" |
+| 测试 AI | 把模型/Agent 当被测对象，核对返回字段、拒答、引用 | 本项目属"AI 赋能测试"，被测对象是业务系统 | **范围外** | 两条线证据分开写，别混成"AI 测试" |
+
+> 结论：以上名词只用于面试对照；README / 简历只写已落地能力。真正的下一步是把**真实失效场景集**做厚，
+> 而不是加新框架名词。
+
 ## 预期与风险（生产使用必读）
 
 自愈是**提效助手**，不是"无人值守的自动改码机"。落地前对齐以下边界：
@@ -182,7 +284,7 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 | **高风险页** | 支付 / 强授权 / 审计页误改代价高 | `healing.exclude_url_patterns` 命中即不触发自愈；`healing.dry_run` 仅报告不执行 |
 | **闭环** | 须有闸门与人审习惯 | 见下节 |
 | **模型不可用** | 无 key / 端点错配时能力静默消失 | 降级保留（诊断退规则式、语义 / 视觉跳过），但**每个降级点记 warning 说明原因**（2026-10-08 起） |
-| **模型端点限流 / 故障** | 瞬态抖动导致自愈误判失败；持续故障让每条用例空转重试（CI 被拖死） | D25：仅瞬态重试（指数退避）+ 三态熔断；熔断后毫秒级降级。模拟演示：15 次自愈等待 31.53s → 6.31s（-80%，`scripts/resilience_demo.py`） |
+| **模型端点限流 / 故障** | 瞬态抖动导致自愈误判失败；持续故障让每条用例空转重试（CI 被拖死） | D25：仅瞬态重试（指数退避）+ 三态熔断；熔断后毫秒级降级。模拟演示：15 次自愈等待 31.55s → 6.30s（-80%，`scripts/resilience_demo.py`） |
 
 ### 闸门与人审
 
@@ -200,20 +302,27 @@ AutoAiSelfHeal 的核心是一个「感知 → 诊断 → 决策 → 修复」�
 
 **已落地**：Phase 1–5 全部能力；现场内联 trace；风险控制（高风险页豁免 / dry-run / 人审 / flaky 区分 / 成本看板）；
 Allure 桥 + GitHub Pages 发布；通知基建（定时回归 cron 未启用）；A/B 对比演示；xdist 并行（分片聚合 + SQLite WAL）；
-草稿 PR；管伊佳 ERP 迁移；**2026-10-08 加固**（模型层护栏与异常分级、弹窗作用域、资源所有权、暂存与幂等窗口、
+草稿 PR；真实被测系统接入（票多星票务平台）；**2026-10-08 加固**（模型层护栏与异常分级、弹窗作用域、资源所有权、暂存与幂等窗口、
 知识库双后端语义对齐、CI 门禁补齐、人审入口脚本）；**2026-10-10 收尾**（工程细节、分层倒置修复 D19、
 链式自愈 e2e、语义意图闸门）；**2026-11-10 韧性层**（D25：指数退避重试 + 三态熔断、SDK 重试关闭、
 成本按真实尝试计、假 provider e2e）；**2026-11-12 延迟与知识库**（D22 自愈触发快速探测、D23 L3 阈值外置、
-D24 知识库运维 CLI）。
+D24 知识库运维 CLI）；**2026-11-17 被测系统切换**（D26：管理端 + 客户端商城双入口的真实全栈系统，
+e2e 被测层、fixture 与 marker 同步更名）；**2026-11-17 统计与证据**（D27 轮次审计 / 升级人工、
+D28 A/B 稳定性双轨口径：10 个构造场景 + 2 个真实 SUT 场景、多轮稳定性报告、`docs/evidence/` 归档）。
 
 **边界与下一步**（明细见维护者本地记录，不随代码入库）：
 
+- **真实场景集仍偏小**：当前 12 个 A/B 场景 = 10 个构造 + 2 个真实 SUT（登录按钮改版）。
+  真实页注入受"可观测锚点"限制（输入框无可访问名，改 testid 后启发式只有弱置信度），
+  扩充到 10~20 个真实场景需要更多页面观测点，是下一步第一优先级。
 - **L3 分桶仍按 `page_fingerprint`**（URL 路径 + DOM 结构哈希）：前端改版会换桶，极端情况下历史修复在换桶后不被检索到。
   计划 §3.2 的 **URL 路径分桶未实施**，列为下一步；当前取舍是不引入跨桶检索，避免把不同页面的修复互相污染。
 - **iframe / Shadow DOM 自愈**：跨 frame 候选解析与存在性验证属架构级改动，当前定位在 POM 的 `locator()` 边界，
   先做评估 spike 再决定是否立项。
-- **其余路线**：自愈指标跨运行时间序列；定时回归 cron 启用；A/B 真实失效场景集扩充与并行 e2e 收官；
-  视觉成本重估、链节点级描述、链式低置信兜底、链式用例知识库串扰、意图闸门按数据标定、ab 夹具 provider、CI 加固。
+- **其余路线**：自愈指标跨运行时间序列；定时回归 cron 启用；视觉成本重估、链节点级描述、链式低置信兜底、
+  链式用例知识库串扰、意图闸门按数据标定、ab 夹具 provider、CI 加固。
+- **隐私口径**：公开报告只用自建 demo 页与本地被测环境数据；真实业务数据入模型前必须脱敏；
+  截图 / DOM / 网络日志的保留范围见 `docs/evidence/`，不把生产数据放进公开附件。
 
 ## 已定选型与遗留 TBD
 

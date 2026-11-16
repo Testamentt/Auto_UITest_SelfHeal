@@ -98,7 +98,9 @@ def render_dashboard(records: list[HealingRecord], cost: dict | None = None) -> 
     for rec in records:
         # 口径对齐：未成功（豁免 / dry_run / on_uncertain=fail）既非真自愈也非 flaky，
         # 只有成功的记录才按 verified 区分"真自愈 vs flaky 侥幸通过"。
-        if not rec.success:
+        if rec.escalate:
+            kind = "🚫 需人工（达轮次上限）"
+        elif not rec.success:
             kind = "➖ 未成功"
         elif rec.verified:
             kind = "✅ 真自愈"
@@ -111,11 +113,12 @@ def render_dashboard(records: list[HealingRecord], cost: dict | None = None) -> 
             f"<td>{html.escape(rec.strategy or '')}</td>"
             f"<td>{rec.confidence:.2f}</td>"
             f"<td>{html.escape(rec.root_cause or '')}</td>"
+            f"<td>第 {int(rec.round)} 轮</td>"
             f"<td>{kind}</td>"
             f"<td>{'✅' if rec.success else '❌'}</td>"
             "</tr>"
         )
-    body = "\n".join(rows) or "<tr><td colspan='7'>(暂无自愈记录)</td></tr>"
+    body = "\n".join(rows) or "<tr><td colspan='8'>(暂无自愈记录)</td></tr>"
     cost_html = _render_cost(cost) if cost else ""
     return f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>自愈看板</title>
@@ -138,7 +141,7 @@ def render_dashboard(records: list[HealingRecord], cost: dict | None = None) -> 
 {cost_html}
 <h3>自愈审计明细</h3>
 <table>
-<thead><tr><th>原定位器</th><th>新定位器</th><th>策略</th><th>置信度</th><th>根因</th><th>类型</th><th>结果</th></tr></thead>
+<thead><tr><th>原定位器</th><th>新定位器</th><th>策略</th><th>置信度</th><th>根因</th><th>轮次</th><th>类型</th><th>结果</th></tr></thead>
 <tbody>
 {body}
 </tbody></table>

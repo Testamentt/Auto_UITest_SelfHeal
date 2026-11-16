@@ -166,7 +166,7 @@ def test_engine_retry_success_commits(monkeypatch):
 
 
 def test_engine_all_retries_fail_no_commit(monkeypatch):
-    """全部重试（含二次自愈）失败 → 不沉淀、无审计记录（未验证的修复不得入库）。"""
+    """全部重试（含二次自愈）失败 → 不沉淀成功修复；只留一条「需人工」审计。"""
     settings = Settings()
     settings.healing.strategy_order = ["fixed"]
     _use_fixed_strategy(monkeypatch, "#new")
@@ -178,4 +178,8 @@ def test_engine_all_retries_fail_no_commit(monkeypatch):
     with pytest.raises(_MyTimeout):
         hl.click()
     assert store.count_repairs() == 0
-    assert orch._reporter.records == []
+    # 失败不产生"成功自愈"记录；只留一条 escalate=True 的「轮次耗尽、需人工」审计
+    assert [r for r in orch._reporter.records if r.success] == []
+    escalations = [r for r in orch._reporter.records if r.escalate]
+    assert len(escalations) == 1
+    assert escalations[0].round == 2 and escalations[0].root_cause == "rounds_exhausted"

@@ -176,6 +176,29 @@ class SelfHealOrchestrator:
         """验证成功后沉淀知识 + 审计（委托 PersistenceHandler；幂等防重复提交）。"""
         self._persister.commit_pending(attempt_id)
 
+    def record_escalation(
+        self, original_selector: str, description: str | None = None, round_no: int = 1
+    ) -> None:
+        """轮次耗尽仍修不回：记一条「需人工接手」的失败审计（engine 在抛错前调用）。
+
+        - `success=False` → 不计入成功数与"真自愈/flaky"口径；
+        - `escalate=True` → 看板/简报据此统计"达上限升人工"，与"自愈失败"区分开；
+        - `round` 记录耗尽时的轮次，便于回答"试了几轮才交给人"。
+        """
+        self._reporter.record(
+            HealingRecord(
+                original_selector=original_selector,
+                new_selector=None,
+                strategy=None,
+                confidence=0.0,
+                root_cause="rounds_exhausted",
+                success=False,
+                verified=False,
+                round=round_no,
+                escalate=True,
+            )
+        )
+
     def discard_pending(self, attempt_id: str | None) -> None:
         """显式丢弃一条不会被 commit 的暂存（委托 PersistenceHandler；未知 id 安全 no-op）。"""
         self._persister.discard_pending(attempt_id)

@@ -3,11 +3,11 @@
 
 > **定位**：影响系统结构与可维护性的决策记录；D 编号稳定，是架构取舍的当前事实源。
 > **状态**：事实源（决策变化须与 [architecture.md](architecture.md) 同批更新）
-> **最后更新**：2026-11-12 · 关联：[architecture.md](architecture.md) 架构 · [../README.md](../README.md) 项目展示
+> **最后更新**：2026-11-17 · 关联：[architecture.md](architecture.md) 架构 · [../README.md](../README.md) 项目展示
 
 ## 使用约定
 
-- 编号沿用 D1–D25，单序列到底（不再有 T 前缀的独立编号）。
+- 编号沿用 D1–D28，单序列到底（不再有 T 前缀的独立编号）。
 - 代码实现细节用「问题 → 方案 → 验证」式注释自解释；关键取舍在注释中引用本表编号（如 D6 兜底、D19 分层、D25 韧性）。
 - 历史评审、计划、待办与路线图为维护者本地记录（不随代码入库）；本文件是决策的当前事实源。
 
@@ -77,7 +77,28 @@
 
 - **问题**：异常分级已区分 Fatal / Transient，但一直没有消费者；SDK 自带重试不可见、不区分 Fatal，且与业务重试叠加会放大付费调用。
 - **决策**：`llm/resilience.py` 统一实现指数退避 + 三态熔断（CLOSED / OPEN / HALF_OPEN）；瞬态故障重试，连续失败熔断后抛 `CircuitOpenError` 走既有降级；Fatal 不重试；SDK 自带重试固定关闭（`max_retries=0`）；熔断状态为单进程（xdist 各 worker 独立）。
-- **验证**：假 provider 的 e2e 覆盖重试 / 熔断 / 降级；模拟演示 15 次自愈等待 31.53s → 6.31s（`scripts/resilience_demo.py`）；成本按真实尝试次数计。
+- **验证**：假 provider 的 e2e 覆盖重试 / 熔断 / 降级；模拟演示 15 次自愈等待 31.55s → 6.30s（`scripts/resilience_demo.py`）；成本按真实尝试次数计。
+
+### D26 · 被测系统切换为票多星票务平台（2026-11-17）
+
+- **问题**：原被测系统（一套 ERP 类业务系统）的本地环境已不可得，真实系统上的自愈演示与 e2e 无法复跑；真实系统验证需要有前后端都能本地启动、且带真实业务页面的全栈项目承接。
+- **决策**：被测系统切换为**票多星票务平台**（前端一套单页应用同时承载管理端与客户端商城，后端为 Spring Boot 的 `booking-api`）。`SutConfig` 改为 `name="票多星"`、`base_url="http://localhost:3001"`、`api_base_url="http://localhost:8088/api"`；管理端凭证走 `BOOKING_ADMIN_USERNAME` / `BOOKING_ADMIN_PASSWORD`，客户端用例账号 `selfheal_customer` 的密码走 `BOOKING_CUSTOMER_PASSWORD`；marker 由 `erp` 改为 `booking`；页面对象迁至 `tests/e2e/pages/booking/`，API 客户端为 `tests/e2e/api/booking_client.py`（标准库 `urllib`，零第三方依赖）；fixture 为 `booking_api` / `booking_healing_page` / `booking_admin_page` / `booking_shop_page`。
+- **理由**：票多星是前后端均可本地启动的真实全栈项目（前端 `:3001`、后端 `:8088/api`），同时提供**管理端**（`/login` → `/`「数据概览」）与**客户端商城**（`/shop`、`/shop/login`）双入口，能覆盖登录、数据造数与落库断言、"登录页改版 → 自愈重定位 → 登录成功"完整链路，比单一自建演示页更接近真实工程现场。
+- **验证 / 影响**：e2e 被测层整体重写（页面对象、API 客户端、登录冒烟与自愈用例）；CI 与本地默认过滤统一为 `-m "e2e and not booking and not live"`，`booking` 用例只在本地跑（本地服务未启动时 skip）；知识库历史案例不清洗——修复案例按 `page_fingerprint` / selector 检索，与 SUT 品牌无关，旧页面案例仍可用，且不会误命中新页面。
+
+### D27 · 自愈轮次审计与升级人工（2026-11-17）
+
+- **问题**：闭环原本硬编码两档（修根 → 修叶），但审计记录只有"成功/失败"，答不出「这次试了几轮」「达上限后有没有交给人」；课程侧要求「达上限升人工」，项目侧观感上是"自愈失败"与"需要人接手"混在一起。
+- **决策**：`HealOutcome.round` 由引擎盖第几轮；`HealingRecord` 增 `round` / `escalate` 两字段（带默认值，既有构造点零改动）；两轮都修不回且无 fallback 时，先记一条 `escalate=True`、`root_cause=rounds_exhausted` 的失败审计，再抛 `HealingFailedError`；看板单列「需人工（达轮次上限）」。
+- **边界**：`escalate` 记录 `success=False`，**不进**成功数与「真自愈/flaky」口径（分母为成功数），但会进入 `total`——即「自愈成功率」分母变诚实；不引入可配 `max_rounds`（现状 2 轮已满足上限，放开只会增加额外模型调用风险）。
+- **验证**：`tests/unit/test_round_escalation.py`（9 条：默认值 / 盖章轮次 / 两轮耗尽 / 首轮耗尽 / fallback 不升级 / 编排器记录 / 持久化 round / 看板渲染）；全量 unit 全绿。
+
+### D28 · A/B 稳定性口径：构造 + 真实 SUT 双轨（2026-11-17）
+
+- **问题**：A/B 原本只有 3 个构造场景、单轮跑，只能回答"能不能修"，答不了"修得稳不稳"；且场景全在自建 demo 页，缺真实系统证据；`reports/` 被 gitignore，证据在公开仓库点不开。
+- **决策**：场景扩到 **12 个**（10 个构造 demo + 2 个真实票多星登录页注入），分 5 类失效形态（id 改版 / 链式断裂 / 属性重生成 / 文案微调 / DOM 结构变化）；`ab_compare` 增 `--rounds N`（多轮通过率 + **不稳定场景单列**，不并入成功）与 `--scenario-file`（真实 SUT 通道）；关键报告归档 `docs/evidence/` 并在文档里标注「本机单次 / 构造基线 / 非生产指标」。
+- **边界**：真实页只做「登录按钮 testid 改版」——票多星输入框无可访问名，改 testid 后启发式只有弱置信度，硬做会引入模型依赖；真实场景集 10~20 个仍属下一步。
+- **验证**：构造 10 场景 0/10 → 10/10、2 轮 20/20 不稳定 0；真实 SUT 2 场景 0/2 → 2/2、2 轮 4/4 不稳定 0；`pytest -m unit` 与 `-m "e2e and not booking and not live"` 全绿。
 
 ## 全部决策索引
 
@@ -87,7 +108,7 @@
 | D2 | LLM/VLM 接入 | Phase 2 接入，OpenAI 兼容优先 | 避免选型阻塞最小闭环 |
 | D3 | 演示对象 | 自建本地测试页（POM 化） | 可控、可复现、可无缝切换其他 POM 用例 |
 | D4 | 知识库后端 | SQLite | 零依赖、可持久化、易演示 |
-| D5 | 自愈集成方式 | Fixture 骨架 + 接口代理 + 装饰器补充；不用 import 魔法 | 可开关、POM 无缝、可维护 |
+| D5 | 自愈集成方式 | Fixture 骨架 + 接口代理（`HealingPage`）；不用 import 魔法。曾评估装饰器补充，判定不引入：无法覆盖链式 `locator()` 语义且增加一层包装 | 可开关、POM 无缝、可维护 |
 | D6 | 不确定时兜底 | use_fallback，无备用则 fail；pause 仅交互模式 | CI 友好 + 人工兜底 |
 | D7 | LLM 客户端形态 | 单一 OpenAI 兼容客户端（`base_url` + `model` 覆盖多 provider），SDK 惰性导入 | 切换 provider 只改配置；CI 无 openai 也能 import |
 | D8 | DOM 公共能力 | 抽 `agent/dom/` 公共工具（解析 / 稳定定位器 / 指纹 / 候选），策略与 LLM 提示共用 | 消除循环导入、重复与私有耦合 |
@@ -104,7 +125,10 @@
 | D19 | 分层倒置修复 | 新增装配层 `selfheal/plugin/` + 中立 DTO 层 `selfheal/contracts.py` + `dom/` 下沉为 `selfheal/dom/`；`engine/popup_guard.py` 用窄 Protocol `PopupKnowledge` 去掉对 knowledge 的依赖；分层不变量改由 AST 扫描用例守护 | 反向依赖让"能力建设层"实际拉起整个大脑与知识库：单测无法隔离、替换/裁剪困难。实测改后四个入口的 `sys.modules` 闭包里 agent/knowledge/reporting 全为空；护栏做过"故意违规必失败"验证 |
 | D20 | 阈值裁决 | 逐候选先按自身策略阈值过滤，合格者再取最优；被拒候选进人审建议；候选 strategy 归一为调度键 | 高置信未达标候选不得遮蔽低置信达标候选（审计复现过误判失败，见关键 ADR） |
 | D21 | 修复定位器校验 | `selector_exists` 唯一命中硬校验；可交互性按动作取舍（早接受门槛 / 同分 tie-break，不压置信度） | 非唯一 `text="提交"` 重试时 strict-mode 崩溃并污染知识库；隐藏上传框不可硬拒（见关键 ADR） |
-| D22 | 自愈触发快速探测 | 动作前以 `healing.probe.timeout_ms`（默认 2.5s）探测目标是否就绪，不就绪直接进自愈；探测**不改变结论、只改变到达结论的速度**；判定用 `wait_for()` 在预算内等待（不误杀慢加载）；`count>1` 与 `disabled` 不提前判死；链式重放复用同一预算 | 原实现要等满 Playwright 默认超时（30s）才进闭环，单条失效 +30s、e2e 全量 492s。实测：单条 30.63s → 0.63s、链式 33s → 5.4s、全量 492s → 106s。多命中属编程错误、disabled 可恢复，提前判会掩盖/误杀 |
+| D22 | 自愈触发快速探测 | 动作前以 `healing.probe.timeout_ms`（默认 2.5s）探测目标是否就绪，不就绪直接进自愈；探测**不改变结论、只改变到达结论的速度**；判定用 `wait_for()` 在预算内等待（不误杀慢加载）；`count>1` 与 `disabled` 不提前判死；链式重放复用同一预算 | 原实现要等满 Playwright 默认超时（30s）才进闭环。脚本口径实测（`scripts/benchmark_probe.py`）：单条 34.72s → 7.09s（-80%）、全量 726.53s → 169.94s（-77%）；两种口径不可换算。多命中属编程错误、disabled 可恢复，提前判会掩盖/误杀 |
 | D23 | L3 阈值外置 | 语义检索的 `min_sim` / `fresh_sim` / `verified_sim` / `fresh_days` 从模块常量改为 `knowledge.semantic` 配置（`L3Thresholds` 注入策略）；层级约束 `min <= fresh <= verified` 在加载期校验 | 阈值按被测系统标定要改代码、发版；倒挂配置会让"更严的信任条件反而更易采纳"，属静默错误 |
 | D24 | 知识库运维入口 | `scripts/knowledge_admin.py`：`--stats / --prune / --dedupe / --export`；写操作**默认 dry-run**；`--prune` 保护已人审与被复用过的案例 | `verify_case.py` 只管人审标记，缺"看全貌、清垃圾"入口；知识库长期运行会积累失效、低价值与重复案例，无入口只能人工直连数据库 |
-| D25 | 模型调用韧性 | `llm/resilience.py` 指数退避重试 + 三态熔断；瞬态重试、Fatal 不重试；`CircuitOpenError` 继承 `UnavailableError` 走既有降级；SDK 重试固定关闭；熔断状态单进程 | 异常分级长期无消费者；SDK 重试不可见且与业务层叠加成 9 次付费调用；模拟演示 31.53s → 6.31s |
+| D25 | 模型调用韧性 | `llm/resilience.py` 指数退避重试 + 三态熔断；瞬态重试、Fatal 不重试；`CircuitOpenError` 继承 `UnavailableError` 走既有降级；SDK 重试固定关闭；熔断状态单进程 | 异常分级长期无消费者；SDK 重试不可见且与业务层叠加成 9 次付费调用；模拟演示 31.55s → 6.30s |
+| D26 | 被测系统切换 | 由 ERP 类业务系统改为**票多星票务平台**（管理端 + 客户端商城双入口）；SUT 配置、账号 env、marker `booking`、页面对象与 API 客户端同步更名；CI 排除 booking | 原系统本地环境不可得；票多星前后端可本地启动、双入口覆盖真实登录与自愈链路，比自建演示页更接近真实工程现场 |
+| D27 | 轮次审计与升级人工 | `HealOutcome.round` 盖章轮次；`HealingRecord` 增 `round` / `escalate`；两轮耗尽且无 fallback → 记 `rounds_exhausted` 失败审计后抛错；看板单列「需人工」 | 原记录答不出"试了几轮/要不要人接手"；把"自愈失败"与"需人工"混为一谈会掩盖轮次上限失效 |
+| D28 | A/B 稳定性双轨口径 | 场景 12 个（10 构造 + 2 真实 SUT），5 类失效形态；`--rounds N` 多轮通过率 + 不稳定单列；`--scenario-file` 真实 SUT 通道；报告归档 `docs/evidence/` | 单轮 3 场景只能回答"能不能修"；真实页注入能回答"真实系统上是否成立"，构造 vs 真实必须分开标注 |

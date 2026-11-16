@@ -28,6 +28,10 @@ class HealingRecord:
     # 真自愈 vs flaky 侥幸通过。True=原定位器确已失效（真修复）；
     # False=修复后原定位器已恢复（失败是瞬时的，勿计为真修复）。
     verified: bool = True
+    # 第几轮闭环尝试得出本记录（1=修根/首轮，2=修叶/次轮）；默认 1 保证既有构造点零改动。
+    round: int = 1
+    # 达到轮次上限仍失败、已升级人工（仅失败记录会为 True）。
+    escalate: bool = False
 
 
 class HealingReporter:

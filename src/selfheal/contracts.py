@@ -50,6 +50,7 @@ class HealOutcome:
 
     - proposed_selector: 仅报告模式下建议采用的定位器（不实际应用）。
     - attempt_id: 策略修复成功后生成的暂存标识；引擎层重试成功后以此 commit_pending。
+    - round: 本次闭环是第几轮尝试（1 = 修根/首轮；2 = 修叶子/次轮），用于审计与看板。
     """
 
     success: bool
@@ -59,6 +60,7 @@ class HealOutcome:
     root_cause: str | None = None
     proposed_selector: str | None = None
     attempt_id: str | None = None
+    round: int = 1
 
 
 @dataclass

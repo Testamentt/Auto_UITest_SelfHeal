@@ -242,6 +242,7 @@ class PersistenceHandler:
                     root_cause=outcome.root_cause,
                     success=True,
                     verified=verified,
+                    round=outcome.round,
                 )
             )
         except Exception:  # noqa: BLE001 - 审计失败不影响已成功的自愈

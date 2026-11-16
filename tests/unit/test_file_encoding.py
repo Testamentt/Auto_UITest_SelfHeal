@@ -32,7 +32,7 @@ pytestmark = pytest.mark.unit
 
 _ROOT = Path(__file__).resolve().parents[2]
 
-# 声明文案。与 README「文件编码」小节、各文件首行保持一致；改这里必须同步改全仓文件。
+# 声明文案。与各文件首行保持一致；改这里必须同步改全仓文件。
 NOTICE = "本项目统一使用 UTF-8（无 BOM）编码。"
 PY_COOKIE = "# -*- coding: utf-8 -*-"
 
@@ -186,9 +186,7 @@ def test_files_have_no_bom():
 def test_files_declare_encoding():
     """全仓文本文件首行必须带 UTF-8 编码声明（shebang / frontmatter 例外见 _declaration_offset）。"""
     failures = _sweep(KIND_DECLARATION)
-    assert not failures, (
-        "以下文件缺少首行编码声明（规范见 README「文件编码」小节）：\n  " + "\n  ".join(failures)
-    )
+    assert not failures, "以下文件缺少首行编码声明：\n  " + "\n  ".join(failures)
 
 
 def test_guard_detects_gbk_file():

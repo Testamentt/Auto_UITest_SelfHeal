@@ -37,7 +37,7 @@ STATUS=$?
 if [ $STATUS -ne 0 ]; then
     echo "" >&2
     echo "提交已被拒绝。修好提交信息后重试（或用 git commit --amend）。" >&2
-    echo "规则见 README「提交规范」与 docs/decisions.md（允许公开 ADR：D 系列）。" >&2
+    echo "规则见 .claude/RULE.md §R9 与 scripts/check_commit_messages.py（允许公开 ADR：D 系列）。" >&2
 fi
 
 exit $STATUS
