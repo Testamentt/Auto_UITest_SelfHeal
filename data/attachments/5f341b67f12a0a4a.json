@@ -1,0 +1,12 @@
+{
+  "original_selector": "#inner-btn-old",
+  "new_selector": "#inner-btn-v2",
+  "strategy": "heuristic",
+  "confidence": 0.95,
+  "root_cause": "unknown",
+  "success": true,
+  "verified": true,
+  "round": 2,
+  "escalate": false,
+  "verified_by_selector_exists": true
+}

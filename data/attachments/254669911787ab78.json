@@ -1,0 +1,12 @@
+{
+  "original_selector": "#old",
+  "new_selector": null,
+  "strategy": null,
+  "confidence": 0.0,
+  "root_cause": "high_risk_page_excluded",
+  "success": false,
+  "verified": false,
+  "round": 1,
+  "escalate": false,
+  "verified_by_selector_exists": false
+}

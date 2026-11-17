@@ -1,0 +1,12 @@
+{
+  "original_selector": "#login-form [aria-label=\"备用入口\"]",
+  "new_selector": "[data-testid=\"secondary\"]",
+  "strategy": "heuristic",
+  "confidence": 0.95,
+  "root_cause": "unknown",
+  "success": true,
+  "verified": true,
+  "round": 1,
+  "escalate": false,
+  "verified_by_selector_exists": true
+}

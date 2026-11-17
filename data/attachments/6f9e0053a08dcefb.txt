@@ -1,0 +1,1 @@
+WARNING  selfheal.engine.base_page:base_page.py:72 当前 page 不支持自愈增强参数（原生 Page）：已忽略 description/fallback（首次出现在 selector='#a'）。需要自愈请注入 healing_page；这是「关闭自愈=原生行为」的预期语义。

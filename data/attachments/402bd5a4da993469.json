@@ -1,0 +1,12 @@
+{
+  "original_selector": "#login-form > [data-testid=\"username\"]",
+  "new_selector": "[data-testid=\"username\"]",
+  "strategy": "heuristic",
+  "confidence": 0.95,
+  "root_cause": "unknown",
+  "success": true,
+  "verified": true,
+  "round": 1,
+  "escalate": false,
+  "verified_by_selector_exists": true
+}

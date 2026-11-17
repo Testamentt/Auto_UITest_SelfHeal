@@ -1,0 +1,12 @@
+{
+  "original_selector": "#old",
+  "new_selector": "#new",
+  "strategy": null,
+  "confidence": 0.0,
+  "root_cause": null,
+  "success": true,
+  "verified": false,
+  "round": 2,
+  "escalate": false,
+  "verified_by_selector_exists": false
+}

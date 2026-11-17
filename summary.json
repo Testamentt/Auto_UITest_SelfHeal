@@ -1,1 +1,1 @@
-{"name":"AutoAiSelfHeal 自愈报告","stats":{"failed":0,"broken":0,"skipped":4,"passed":782,"unknown":0,"total":786},"status":"passed","duration":142219,"createdAt":1794717584929,"plugin":"Allure2","meta":{"reportId":"35c74bf7-0bfe-47d4-b597-c04372bb0b82","singleFile":false}}
+{"name":"AutoAiSelfHeal 自愈报告","stats":{"failed":0,"broken":0,"skipped":11,"passed":820,"unknown":0,"total":831},"status":"passed","duration":190729,"createdAt":1794896503097,"plugin":"Allure2","meta":{"reportId":"3d0501cf-7286-485b-9d59-e36d57d8abd7","singleFile":false}}

@@ -1,0 +1,12 @@
+{
+  "original_selector": "#submit-btn-old",
+  "new_selector": null,
+  "strategy": null,
+  "confidence": 0.0,
+  "root_cause": "rounds_exhausted",
+  "success": false,
+  "verified": false,
+  "round": 2,
+  "escalate": true,
+  "verified_by_selector_exists": false
+}

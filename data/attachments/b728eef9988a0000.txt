@@ -1,0 +1,34 @@
+# 自愈修复简报
+
+> 数据源：`reports/healing-records.json`（一次会话的自愈记录）· 只读渲染，不改任何业务数据
+> 字段缺失处如实写「未采集」，不替记录补编造值。
+
+## 汇总
+
+| 指标 | 值 |
+| --- | --- |
+| 自愈记录数 | 1 |
+| 成功 | 1 |
+| 真自愈 / flaky | 1 / 0 |
+| 达轮次上限转人工 | 0 |
+
+## 明细
+
+### 1. #submit-btn-old → [data-testid="submit-btn"]
+
+| 字段 | 值 |
+| --- | --- |
+| 模块 / 写法 | 未采集（数据模型未包含）（POM / keyword 由测试层决定，记录未带） |
+| Page 或层 | 未采集（数据模型未包含）（记录未带 page 对象名） |
+| 失败阶段 | smoke / formal 由用例数据决定，记录未带 |
+| 失败分类 | 定位类（根因：not_found） |
+| 轮次 | 第 1 / 2 轮 |
+| 旧定位 | `#submit-btn-old` |
+| 新定位 | `[data-testid="submit-btn"]` |
+| 依据 | 策略 `heuristic`，置信度 0.85 |
+| 缓存是否已写入 | 已沉淀知识库 |
+| 复跑命令 | `pytest -m "e2e and not booking and not live"` |
+| 残余风险 | 低：修复后原定位器仍不可用（真自愈），已沉淀知识库 |
+
+
+简报已写入 /tmp/pytest-of-runner/pytest-0/test_main_writes_report0/heal-brief.md
